@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { inPool, replayCase, RunMismatchError, runCases } from "../../src/cli/commands.ts";
 import { resultSchema, runRecordSchema } from "../../src/cli/runs.ts";
 import { compareRuns, scoreResults } from "../../src/cli/scores.ts";
+import { loadSet } from "../../src/cli/sets.ts";
 import { domainFor, INGESTERS } from "../../src/cli/domains.ts";
 import { DEFAULT_LIMITS, parseTrace, STOP_KEY } from "../../src/core/index.ts";
 import { DEFAULT_JUDGE } from "../../src/domains/legal-judge/index.ts";
@@ -62,6 +63,7 @@ describe("commands", () => {
 			out: join(folder, "out"),
 			concurrency: 2,
 			log: (line: string) => lines.push(line),
+			set: { name: "s", file: "set.json" },
 		};
 		const decider = fakeDecider(missingNothing(answering(0.8, () => STOP_KEY)));
 		const cases = [join(folder, "cases", "c1"), join(folder, "cases", "c2"), join(folder, "cases", "missing")];
@@ -74,6 +76,7 @@ describe("commands", () => {
 			limits: DEFAULT_LIMITS,
 			jeval: { version: expect.any(String) as unknown },
 			finished: expect.stringMatching(/^\d{4}-/) as unknown,
+			set: { name: "s", file: "set.json" },
 			totals: { cases: 2, failed: 0, calls: 4 },
 		});
 		const result = resultSchema.parse(
@@ -126,13 +129,18 @@ describe("commands", () => {
 			labels,
 			`${JSON.stringify({ id: "c1", items: [{ id: "S-1", pass: true }] })}\n${JSON.stringify({ id: "c3", items: [{ id: "S-1", pass: false }] })}\n`,
 		);
-		const all = await scoreResults(join(folder, "out"), labels);
-		expect(all.report).toMatchObject({ answers: 1, itemAgreementOverScheduled: 1 });
-		const scheduled = join(folder, "cases.txt");
-		await writeFile(scheduled, "c1\nc3\n");
-		const listed = await scoreResults(join(folder, "out"), labels, scheduled);
-		expect(listed.report).toMatchObject({ answers: 2, invalid: ["c3"] });
-		expect(listed.text).toContain("Invalid: c3");
+		const setFile = join(folder, "set.json");
+		await writeFile(
+			setFile,
+			JSON.stringify({ name: "s", cases: "cases", labels: "labels.jsonl", ids: ["c1", "c3"] }),
+		);
+		const set = await loadSet(setFile);
+		expect(set.folders).toEqual([join(folder, "cases", "c1"), join(folder, "cases", "c3")]);
+		const scored = await scoreResults(join(folder, "out"), set);
+		expect(scored.report).toMatchObject({ answers: 2, invalid: ["c3"], itemAgreementOverScheduled: 0.5 });
+		expect(scored.text).toContain("Invalid: c3");
+		await writeFile(setFile, JSON.stringify({ name: "s", cases: "cases", labels: "labels.jsonl", ids: [] }));
+		await expect(loadSet(setFile)).rejects.toThrow();
 	});
 
 	it("judges a run's cases again over its evidence, and compares the two runs on the cases both answered", async () => {
@@ -173,7 +181,12 @@ describe("commands", () => {
 			labels,
 			["c1", "c2", "c3"].map((id) => JSON.stringify({ id, items: [{ id: "S-1", pass: true }] })).join("\n"),
 		);
-		const compared = await compareRuns([join(folder, "first"), out], labels);
+		const setFile = join(folder, "set.json");
+		await writeFile(
+			setFile,
+			JSON.stringify({ name: "s", cases: "cases", labels: "labels.jsonl", ids: ["c1", "c2", "c3"] }),
+		);
+		const compared = await compareRuns([join(folder, "first"), out], await loadSet(setFile));
 		expect(compared.runs.map((entry) => [entry.judge.split("@")[0], entry.report.itemMetrics?.accuracy])).toEqual([
 			["legal-judge", 1],
 			["strict", 0],

@@ -28,20 +28,29 @@ task's files under `documents/` and the answer's files under `answer/`. `ingest`
 node src/cli/main.ts ingest input/case-1 cases/case-1
 ```
 
-`run` grades case folders with a classifier model that pi-ai lists, and reads its API key from `PROVIDER_API_KEY`,
-for example `TYPESAFE_API_KEY` for `typesafe/jev-latest`. It writes one run folder:
+`run` grades the cases of an eval set, or case folders named on the command line, with a classifier model that pi-ai
+lists, and reads its API key from `PROVIDER_API_KEY`, for example `TYPESAFE_API_KEY` for `typesafe/jev-latest`. It writes one run folder:
 
 ```text
 results/
-  run.json               what ran: domain and version, model, limits, jeval version and commit, times, totals
+  run.json               what ran: domain, version, judge, model, limits, set, jeval commit, evidence source, times, totals
   cases/<id>/
     result.json          the case's answers, or its error
     trace.jsonl          every menu, choice, observation and answer, in order
     requests.jsonl       every request sent to the model, as sent, with its answers and usage
 ```
 
+An eval set is a file kept with its private data, never in this repository. It names the set, the folder of its case
+folders and its labels file, both relative to the set file, and the ids of the cases it schedules:
+
+```json
+{ "name": "quick", "cases": "cases", "labels": "labels.jsonl", "ids": ["case-1", "case-2"] }
+```
+
+Labels are JSON Lines of `{"id", "items": [{"id", "pass"}]}`.
+
 ```bash
-node src/cli/main.ts run cases/* --out results --model typesafe/jev-latest
+node src/cli/main.ts run --set sets/quick.json --out results --model typesafe/jev-latest
 ```
 
 The judge is a file, `judges/legal-judge.json` unless `--judge` names another. It holds everything the model reads
@@ -53,12 +62,12 @@ version, its trace and `run.json`; to try other texts or questions, copy the fil
 
 A stopped run goes on in the same folder and skips the cases that are done; a folder that holds a run of another
 domain, judge, model or commit is refused. `replay` runs a case again from its trace; with `--fork <steps>`, it
-repeats that many recorded steps and lets the model go on from there. `score` compares a run with reference labels in
-JSON Lines (`{"id", "items": [{"id", "pass"}]}`):
+repeats that many recorded steps and lets the model go on from there. `score` compares a run with a set's labels, on
+every case the set schedules:
 
 ```bash
 node src/cli/main.ts replay cases/case-1 results/cases/case-1/trace.jsonl
-node src/cli/main.ts score results --labels labels.jsonl
+node src/cli/main.ts score results --set sets/quick.json
 ```
 
 `rejudge` judges the cases of a run again with another judge file or model, over the evidence that run gathered: it
@@ -67,8 +76,8 @@ the run it took the evidence from. `compare` scores runs side by side against th
 run answered:
 
 ```bash
-node src/cli/main.ts rejudge cases/* --from results --out results-strict --judge judges/strict.json
-node src/cli/main.ts compare results results-strict --labels labels.jsonl
+node src/cli/main.ts rejudge --set sets/quick.json --from results --out results-strict --judge judges/strict.json
+node src/cli/main.ts compare results results-strict --set sets/quick.json
 ```
 
 ## Write a domain

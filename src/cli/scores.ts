@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { formatReport, type Label, labelSchema, type Report, score, type Verdicts } from "../eval/score.ts";
 import { type CaseResult, readResults, readRunRecord } from "./runs.ts";
+import type { EvalSet } from "./sets.ts";
 
 async function readLabels(path: string): Promise<Label[]> {
 	return (await readFile(path, "utf8"))
@@ -8,9 +9,6 @@ async function readLabels(path: string): Promise<Label[]> {
 		.filter((line) => line.trim() !== "")
 		.map((line) => labelSchema.parse(JSON.parse(line)));
 }
-
-const readIds = async (path: string): Promise<Set<string>> =>
-	new Set((await readFile(path, "utf8")).split(/\s+/).filter(Boolean));
 
 function reportOn(results: readonly CaseResult[], labels: readonly Label[], cases: ReadonlySet<string>): Report {
 	const verdicts = new Map<string, Verdicts>(results.map((result) => [result.case, { answers: result.answers }]));
@@ -26,16 +24,9 @@ function reportOn(results: readonly CaseResult[], labels: readonly Label[], case
 	);
 }
 
-/** Scores a run's results against reference labels, on the scheduled cases or, without a list, every labeled result. */
-export async function scoreResults(
-	runFolder: string,
-	labelsPath: string,
-	scheduledPath?: string,
-): Promise<{ report: Report; text: string }> {
-	const results = await readResults(runFolder);
-	const scheduled =
-		scheduledPath === undefined ? new Set(results.map((result) => result.case)) : await readIds(scheduledPath);
-	const report = reportOn(results, await readLabels(labelsPath), scheduled);
+/** Scores a run against its set's labels on every case the set schedules; a case without answers counts as wrong. */
+export async function scoreResults(runFolder: string, set: EvalSet): Promise<{ report: Report; text: string }> {
+	const report = reportOn(await readResults(runFolder), await readLabels(set.labels), set.ids);
 	return { report, text: formatReport(report) };
 }
 
@@ -70,19 +61,18 @@ function formatComparison(cases: number, runs: readonly ComparedRun[]): string {
 }
 
 /**
- * Scores several runs against the same labels on the same cases: those every run answered, of the scheduled ones when
- * a list is given, so that a case one run failed does not count against it.
+ * Scores several runs against a set's labels on the same cases: those of the set that every run answered, so that a
+ * case one run failed does not count against it.
  */
 export async function compareRuns(
 	runFolders: readonly string[],
-	labelsPath: string,
-	scheduledPath?: string,
+	set: EvalSet,
 ): Promise<{ runs: ComparedRun[]; text: string }> {
-	const labels = await readLabels(labelsPath);
+	const labels = await readLabels(set.labels);
 	const loaded = await Promise.all(
 		runFolders.map(async (run) => ({ run, record: await readRunRecord(run), results: await readResults(run) })),
 	);
-	let common = scheduledPath === undefined ? new Set(labels.map((label) => label.id)) : await readIds(scheduledPath);
+	let common = new Set(set.ids);
 	for (const { results } of loaded) {
 		const answered = new Set(results.filter((result) => result.answers !== null).map((result) => result.case));
 		common = new Set([...common].filter((id) => answered.has(id)));

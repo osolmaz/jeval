@@ -27,6 +27,7 @@ export const runRecordSchema = z.object({
 	model: z.string(),
 	limits: z.object({ steps: z.number().int(), options: z.number().int(), windowShare: z.number() }),
 	jeval: z.object({ version: z.string(), commit: z.string().nullable(), changed: z.boolean().nullable() }),
+	set: z.object({ name: z.string(), file: z.string() }).nullable(),
 	evidenceFrom: z.string().nullable(),
 	started: z.string(),
 	finished: z.string().nullable(),

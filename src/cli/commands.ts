@@ -12,6 +12,8 @@ export interface RunOptions {
 	readonly log: (line: string) => void;
 	/** A run whose evidence each case reuses: its recorded steps are repeated, and only the judging is asked again. */
 	readonly evidenceFrom?: string;
+	/** The eval set the cases come from. */
+	readonly set?: { readonly name: string; readonly file: string };
 }
 
 /** The output folder already holds a run of something else. */
@@ -82,6 +84,7 @@ async function startRun(domain: DomainEntry, decider: Decider, options: RunOptio
 		model: decider.model,
 		limits: { ...domain.limits },
 		jeval: await jevalSource(),
+		set: options.set ?? null,
 		evidenceFrom: options.evidenceFrom ?? null,
 		started: new Date().toISOString(),
 		finished: null,
@@ -90,7 +93,7 @@ async function startRun(domain: DomainEntry, decider: Decider, options: RunOptio
 	if (!(await exists(runFile(options.out)))) return record;
 	const before = await readRunRecord(options.out);
 	const same = (run: RunRecord) =>
-		JSON.stringify([run.domain, run.version, run.model, run.limits, run.jeval.commit, run.evidenceFrom]);
+		JSON.stringify([run.domain, run.version, run.model, run.limits, run.jeval.commit, run.set, run.evidenceFrom]);
 	if (same(before) !== same(record)) {
 		throw new RunMismatchError(`${options.out} holds another run (${same(before)}); use another --out`);
 	}

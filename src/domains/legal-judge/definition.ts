@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { z } from "zod";
-import type { BoolQuestion } from "../../core/index.ts";
+import { type BoolQuestion, packageRoot } from "../../core/index.ts";
 import type { Item } from "./case.ts";
 
 /** One question asked about every rubric item. `{item}` in its instructions becomes the item's label and text. */
@@ -73,7 +74,7 @@ export async function loadJudge(path: string): Promise<Judge> {
 }
 
 /** The judge file in this repository, used when a command names none. */
-export const DEFAULT_JUDGE = new URL("../../../judges/legal-judge.json", import.meta.url).pathname;
+export const DEFAULT_JUDGE = join(packageRoot(import.meta.url), "judges", "legal-judge.json");
 
 export const itemLabel = (item: Item): string =>
 	`Rubric item ${item.id}${item.category === null ? "" : ` (${item.category})`}:\n${item.text}`;

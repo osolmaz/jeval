@@ -12,8 +12,13 @@
 	"bin": {
 		"jeval": "dist/src/cli/main.js"
 	},
+	"files": [
+		"dist",
+		"judges"
+	],
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
+		"prepare": "tsc -p tsconfig.build.json",
 		"typecheck": "tsc --noEmit",
 		"lint": "eslint .",
 		"format": "prettier --check .",

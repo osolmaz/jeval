@@ -19,6 +19,14 @@ cd jeval
 pnpm install
 ```
 
+## Install
+
+As a dependency, pinned to a commit; installing builds it, and the `jeval` command runs the build:
+
+```bash
+pnpm add github:osolmaz/jeval#<commit>
+```
+
 ## Use
 
 A case starts as an input folder with `request.md`, `rubric.json` (`{"items": [{"id", "category", "text"}]}`), the

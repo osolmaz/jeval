@@ -63,6 +63,22 @@ Sol, not accuracy.
 The differences between the two staged judges and meets-and-misses are within a point on both sets, so the cheapest
 won. Both branches stay in their closed pull requests.
 
+## Other question framings, also not adopted
+
+Asked over the evidence of the adopted run, one grading per answer, and scored against the same labels:
+
+| Rule                                                                            | Judge eval, items right | Agreement with Sol |
+| ------------------------------------------------------------------------------- | ----------------------- | ------------------ |
+| Meets and misses (adopted, this run)                                            | 94.6%                   | 84.4%              |
+| "How many requirements are met: none, some, most, all", passing at most or more | 95.2%                   | 81.6%              |
+| The same, passing only at all                                                   | 91.9%                   | 83.8%              |
+| "Is the requirement the answer covers least fully met?"                         | 94.6%                   | 83.3%              |
+| Meets and misses, and the weakest requirement met                               | 94.5%                   | 84.4%              |
+| Meets and misses, and no denial of a required thing                             | 91.1%                   | 80.8%              |
+
+None is better on both sets. A question about denials catches the item behind the probe (0.57), but as a veto it fails
+many good answers, which often state exclusions on purpose.
+
 ## Open
 
 - **Who is right where Jev and Sol disagree.** 234 items still pass with Jev and fail with Sol. Some may be Sol's

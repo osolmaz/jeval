@@ -88,9 +88,10 @@ export class Trace {
 		this.push({ type: "observation", step, action, key, source: observation.source, text: observation.text, images });
 	}
 
-	menu(step: number, items: readonly MenuItem[], stop: string): void {
+	/** `stop` is the stop option's text, or null when the model may not stop yet. */
+	menu(step: number, items: readonly MenuItem[], stop: string | null): void {
 		const options = items.map(({ key, action, text, informs }) => ({ key, action, text, informs: [...informs] }));
-		options.push({ key: STOP_KEY, action: STOP_KEY, text: stop, informs: [] });
+		if (stop !== null) options.push({ key: STOP_KEY, action: STOP_KEY, text: stop, informs: [] });
 		this.push({ type: "menu", step, options });
 	}
 

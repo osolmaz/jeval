@@ -1,6 +1,16 @@
 import type { Entry } from "../../core/index.ts";
 import type { CaseFile } from "./case.ts";
-import { LIMITS, partKey, partSource, partText, unreadParts, type Workspace } from "./workspace.ts";
+import {
+	evidenceTokens,
+	imagesSeen,
+	LIMITS,
+	partKey,
+	partSource,
+	partText,
+	readable,
+	unreadParts,
+	type Workspace,
+} from "./workspace.ts";
 
 function readAnswerFile(file: CaseFile, room: number): { entries: Entry[]; tokens: number } {
 	const entries: Entry[] = [];
@@ -59,6 +69,31 @@ export async function openAnswer(workspace: Workspace): Promise<Entry[]> {
 			room -= opened.tokens;
 			if (file.formatting !== null) entries.push(formatting(file));
 		}
+	}
+	return entries;
+}
+
+/** Less than the evidence budget, so that the evidence still fits beside a full batch of questions without cuts. */
+const PRELOAD_TOKENS = 30_000;
+
+/**
+ * The answer as `openAnswer` opens it, then every document: its parts in order while the evidence budget lasts, and
+ * its images while the image budget lasts.
+ */
+export async function openEverything(workspace: Workspace): Promise<Entry[]> {
+	const entries = await openAnswer(workspace);
+	let used = evidenceTokens(entries);
+	for (const file of workspace.case.files.filter((candidate) => candidate.role === "document")) {
+		if (readable(file)) {
+			for (const part of unreadParts(file, new Set())) {
+				if (used + part.tokens > PRELOAD_TOKENS) continue;
+				const observation = { source: partSource(part), text: partText(part) };
+				entries.push({ action: "read", key: `read:${partKey(part)}`, observation });
+				used += part.tokens;
+			}
+		}
+		const room = Math.max(0, LIMITS.images - imagesSeen(entries));
+		entries.push(...(await lookAtAnswerImages(workspace, file, room)));
 	}
 	return entries;
 }

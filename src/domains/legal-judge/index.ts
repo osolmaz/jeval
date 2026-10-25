@@ -7,7 +7,8 @@ import { read } from "./actions/read.ts";
 import { search } from "./actions/search.ts";
 import { meetsAndMisses } from "./judge.ts";
 import { GATHER, itemQuestion, STOP } from "./prompts.ts";
-import { openAnswer } from "./start.ts";
+import { openAnswer, openEverything } from "./start.ts";
+import { everyFileOpened } from "./stop.ts";
 import { view } from "./view.ts";
 import type { Workspace } from "./workspace.ts";
 
@@ -26,6 +27,20 @@ export const legalJudge: Domain<Workspace> = {
 	start: openAnswer,
 	view,
 	judge: meetsAndMisses,
+};
+
+/** Experiment: the model may not stop until it has opened every file it can. */
+export const legalJudgeOpenAll: Domain<Workspace> = {
+	...legalJudge,
+	name: "legal-judge-open-all",
+	mayStop: everyFileOpened,
+};
+
+/** Experiment: every document is read before the first choice, as far as the evidence budget allows. */
+export const legalJudgePreload: Domain<Workspace> = {
+	...legalJudge,
+	name: "legal-judge-preload",
+	start: openEverything,
 };
 
 export { type LegalCase, caseSchema } from "./case.ts";

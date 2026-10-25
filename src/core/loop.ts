@@ -78,8 +78,9 @@ async function gather<W>(
 		const menu = buildMenu(domain.actions, state, limits.options - 1);
 		if (menu.length === 0) break;
 		step += 1;
-		trace.menu(step, menu, domain.stop);
-		const chosen = await choose(domain, state, decider, limits, menu, trace);
+		const stop = (domain.mayStop?.(state, menu) ?? true) ? domain.stop : null;
+		trace.menu(step, menu, stop);
+		const chosen = await choose(domain, state, decider, limits, menu, stop, trace);
 		if (chosen === null) break;
 		trace.chose(step, chosen.key, chosen.probabilities, chosen.usage);
 		if (chosen.item === null) break;
@@ -103,6 +104,7 @@ async function choose<W>(
 	decider: Decider,
 	limits: Limits,
 	menu: readonly MenuItem[],
+	stop: string | null,
 	trace: Trace,
 ): Promise<Chosen | null> {
 	const labels = menu.map((_, index) => `o${String(index + 1)}`);
@@ -110,7 +112,7 @@ async function choose<W>(
 	menu.forEach((item, index) => {
 		choices[labels[index] ?? item.key] = item.text;
 	});
-	choices[STOP_KEY] = domain.stop;
+	if (stop !== null) choices[STOP_KEY] = stop;
 	const question: ChoiceQuestion = { kind: "choice", id: "next", instructions: domain.choose, choices };
 	const result = await ask(domain, state, decider, limits, [question], trace, undefined, "choose");
 	if (!result.ok) {

@@ -129,6 +129,8 @@ export interface Domain<W> {
 	/** The instructions of the question that picks the next step. */
 	readonly choose: string;
 	questions(workspace: W): readonly Question[];
+	/** Whether the model may stop gathering now, given the menu; it may always stop when this is missing. */
+	mayStop?(state: State<W>, menu: readonly MenuItem[]): boolean;
 	/** The observations every case starts with, made before the first choice. */
 	start(workspace: W): Promise<readonly Entry[]>;
 	/** The state the model sees, in at most `tokens` estimated tokens. */

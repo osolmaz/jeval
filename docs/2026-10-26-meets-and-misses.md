@@ -79,6 +79,28 @@ Asked over the evidence of the adopted run, one grading per answer, and scored a
 None is better on both sets. A question about denials catches the item behind the probe (0.57), but as a veto it fails
 many good answers, which often state exclusions on purpose.
 
+## Reading more, also not adopted
+
+With the menu, Jev usually reads the answer, opens one document and stops: it opened 37% of the documents in the
+judge eval and 28% in the Sol set. Two variants made it read more (branch `exp/read-more`):
+
+- **Open every file first:** stop is not offered while the menu can still open a file that no step has opened. Jev
+  then opened 76% and 59% of the documents, in 3 to 4 steps on average.
+- **Preload:** every document is read before the first choice, up to 30,000 estimated tokens.
+
+On the cases that all three finished (88 and 67 answers):
+
+| Rule                         | Judge eval, items right | Agreement with Sol |
+| ---------------------------- | ----------------------- | ------------------ |
+| Meets and misses, menu as is | 94.9%                   | 84.0%              |
+| Open every file first        | 94.8%                   | 84.3%              |
+| Preload                      | 95.1%                   | 84.5%              |
+
+The differences are within a point, so reading more is not what the judge lacks; the disagreements are about the
+answer's own text. Preloading also failed 12 judge-eval cases on Jev's window, because three characters a token
+undercounts some documents, and 4 Sol-set cases on images whose dimensions Jev rejects. The `look` action can send
+the same images, so ingest should check image dimensions.
+
 ## Open
 
 - **Who is right where Jev and Sol disagree.** 234 items still pass with Jev and fail with Sol. Some may be Sol's

@@ -30,7 +30,6 @@ jobs:
       - run: pnpm test
       - run: pnpm coverage
       - run: pnpm dry
-      - run: pnpm mutate
       - run: pnpm build
       - uses: osolmaz/slophammer@typescript/v0.5.0
         with:

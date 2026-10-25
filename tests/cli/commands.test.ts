@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { inPool, replayCase, resultSchema, runCases, scoreResults } from "../../src/cli/commands.ts";
 import { DOMAINS, type DomainEntry } from "../../src/cli/domains.ts";
-import { DEFAULT_LIMITS, STOP_KEY } from "../../src/core/index.ts";
+import { DEFAULT_LIMITS, parseTrace, STOP_KEY } from "../../src/core/index.ts";
 import { answering, fakeDecider } from "../helpers/fakes.ts";
 
 let folder = "";
@@ -73,7 +73,9 @@ describe("commands", () => {
 			categories: { "S-1": "substance" },
 		});
 		const trace = await readFile(join(folder, "out", "c1.trace.jsonl"), "utf8");
-		expect(trace.split("\n").filter(Boolean).length).toBeGreaterThan(3);
+		const ids = parseTrace(trace).map((entry) => entry.id);
+		expect(ids.length).toBeGreaterThan(3);
+		expect(ids).toEqual(ids.map((_, index) => index));
 		expect(lines).toEqual(
 			expect.arrayContaining(["c1: stop", "c2: stop", expect.stringMatching(/^missing: FAILED/)]),
 		);

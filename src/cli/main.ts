@@ -51,9 +51,9 @@ program
 
 program
 	.command("run")
-	.description("Run a domain on case folders and write each case's answers and trace")
+	.description("Run a domain on case folders into a run folder: run.json, and each case's result, trace and requests")
 	.argument("<cases...>")
-	.requiredOption("--out <folder>", "where results and traces go")
+	.requiredOption("--out <folder>", "the run folder; a stopped run goes on in its own folder")
 	.option("--domain <name>", "the domain", domainNamed, domainNamed("legal-judge"))
 	.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
 	.option("--api-key-env <variable>", "the environment variable that holds the API key")
@@ -113,13 +113,13 @@ program
 
 program
 	.command("score")
-	.description("Score run results against reference labels (JSON Lines of {id, items: [{id, pass}]})")
-	.argument("<results>")
+	.description("Score a run against reference labels (JSON Lines of {id, items: [{id, pass}]})")
+	.argument("<run>")
 	.requiredOption("--labels <file>", "the reference labels")
 	.option("--cases <file>", "the scheduled case ids, one per line; every labeled result by default")
 	.option("--json", "print the report as JSON")
-	.action(async (results: string, options: { labels: string; cases?: string; json?: boolean }) => {
-		const { report, text } = await scoreResults(results, options.labels, options.cases);
+	.action(async (run: string, options: { labels: string; cases?: string; json?: boolean }) => {
+		const { report, text } = await scoreResults(run, options.labels, options.cases);
 		process.stdout.write(`${options.json === true ? JSON.stringify(report, null, 1) : text}\n`);
 	});
 

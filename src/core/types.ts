@@ -174,3 +174,13 @@ export interface Limits {
 }
 
 export const DEFAULT_LIMITS: Limits = { steps: 8, options: 30, windowShare: 0.9 };
+
+/** One request to the decision model and its result, as a run's requests file keeps them. Images appear by label. */
+export interface Exchange {
+	readonly request: {
+		readonly state: JsonObject;
+		readonly images: readonly string[];
+		readonly questions: readonly Question[];
+	};
+	readonly result: DecisionResult;
+}

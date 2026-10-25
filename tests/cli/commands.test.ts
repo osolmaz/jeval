@@ -2,7 +2,15 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { inPool, replayCase, resultSchema, runCases, scoreResults } from "../../src/cli/commands.ts";
+import {
+	inPool,
+	replayCase,
+	resultSchema,
+	RunMismatchError,
+	runCases,
+	runRecordSchema,
+	scoreResults,
+} from "../../src/cli/commands.ts";
 import { DOMAINS, type DomainEntry } from "../../src/cli/domains.ts";
 import { DEFAULT_LIMITS, parseTrace, STOP_KEY } from "../../src/core/index.ts";
 import { answering, fakeDecider, missingNothing } from "../helpers/fakes.ts";
@@ -63,7 +71,18 @@ describe("commands", () => {
 		const decider = fakeDecider(missingNothing(answering(0.8, () => STOP_KEY)));
 		const cases = [join(folder, "cases", "c1"), join(folder, "cases", "c2"), join(folder, "cases", "missing")];
 		await runCases(legalJudge, cases, decider, options);
-		const result = resultSchema.parse(JSON.parse(await readFile(join(folder, "out", "c1.json"), "utf8")));
+		const run = runRecordSchema.parse(JSON.parse(await readFile(join(folder, "out", "run.json"), "utf8")));
+		expect(run).toMatchObject({
+			domain: "legal-judge",
+			model: "fake/decider",
+			limits: DEFAULT_LIMITS,
+			jeval: { version: expect.any(String) as unknown },
+			finished: expect.stringMatching(/^\d{4}-/) as unknown,
+			totals: { cases: 2, failed: 0, calls: 4 },
+		});
+		const result = resultSchema.parse(
+			JSON.parse(await readFile(join(folder, "out", "cases", "c1", "result.json"), "utf8")),
+		);
 		expect(result).toMatchObject({
 			case: "c1",
 			domain: "legal-judge",
@@ -72,7 +91,18 @@ describe("commands", () => {
 			error: null,
 			categories: { "S-1": "substance" },
 		});
-		const trace = await readFile(join(folder, "out", "c1.trace.jsonl"), "utf8");
+		const requests = (await readFile(join(folder, "out", "cases", "c1", "requests.jsonl"), "utf8"))
+			.split("\n")
+			.filter(Boolean)
+			.map(
+				(line) => JSON.parse(line) as { request: { state: Record<string, unknown>; questions: { id: string }[] } },
+			);
+		expect(requests.map((exchange) => exchange.request.questions.map((question) => question.id))).toEqual([
+			["next"],
+			["S-1/meets", "S-1/misses"],
+		]);
+		expect(requests[1]?.request.state).toMatchObject({ rules: expect.any(String) as unknown });
+		const trace = await readFile(join(folder, "out", "cases", "c1", "trace.jsonl"), "utf8");
 		const ids = parseTrace(trace).map((entry) => entry.id);
 		expect(ids.length).toBeGreaterThan(3);
 		expect(ids).toEqual(ids.map((_, index) => index));
@@ -83,7 +113,15 @@ describe("commands", () => {
 		await runCases(legalJudge, [join(folder, "cases", "c1")], decider, options);
 		expect(lines).toContain("c1: already done");
 
-		const replayed = await replayCase(legalJudge, join(folder, "cases", "c1"), join(folder, "out", "c1.trace.jsonl"));
+		await expect(
+			runCases(legalJudge, [], decider, { ...options, limits: { ...DEFAULT_LIMITS, steps: 2 } }),
+		).rejects.toThrow(RunMismatchError);
+
+		const replayed = await replayCase(
+			legalJudge,
+			join(folder, "cases", "c1"),
+			join(folder, "out", "cases", "c1", "trace.jsonl"),
+		);
 		expect(replayed.result.answers).toEqual(result.answers);
 
 		const labels = join(folder, "labels.jsonl");

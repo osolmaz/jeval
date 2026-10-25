@@ -1,5 +1,5 @@
-import { appendFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { z } from "zod";
 import {
 	answerSchema,
@@ -8,13 +8,16 @@ import {
 	type Limits,
 	limitsOf,
 	parseTrace,
+	recording,
 	replayDecider,
 	Trace,
 } from "../core/index.ts";
 import { formatReport, labelSchema, type Report, score, type Verdicts } from "../eval/score.ts";
 import type { CaseRun, DomainEntry } from "./domains.ts";
+import { caseFiles, casesFolder, jsonLines, runFile } from "./layout.ts";
+import { jevalSource } from "./source.ts";
 
-/** What `jeval run` writes for each case, next to its trace. */
+/** What `jeval run` writes as each case's `result.json`. */
 export const resultSchema = z.object({
 	case: z.string(),
 	domain: z.string(),
@@ -34,7 +37,30 @@ export interface RunOptions {
 	readonly log: (line: string) => void;
 }
 
-const resultPath = (out: string, id: string) => join(out, `${id}.json`);
+/** What `jeval run` writes as `run.json`: what ran, on which code, and when the run finished, its totals. */
+export const runRecordSchema = z.object({
+	domain: z.string(),
+	version: z.string(),
+	model: z.string(),
+	limits: z.object({ steps: z.number().int(), options: z.number().int(), windowShare: z.number() }),
+	jeval: z.object({ version: z.string(), commit: z.string().nullable(), changed: z.boolean().nullable() }),
+	started: z.string(),
+	finished: z.string().nullable(),
+	totals: z
+		.object({
+			cases: z.number().int(),
+			failed: z.number().int(),
+			calls: z.number().int(),
+			inputTokens: z.number().int(),
+		})
+		.nullable(),
+});
+export type RunRecord = z.infer<typeof runRecordSchema>;
+
+/** The output folder already holds a run of something else. */
+export class RunMismatchError extends Error {
+	override readonly name = "RunMismatchError";
+}
 
 async function exists(path: string): Promise<boolean> {
 	return readFile(path).then(
@@ -58,19 +84,22 @@ export async function inPool<T>(items: readonly T[], limit: number, work: (item:
 
 async function runOne(domain: DomainEntry, folder: string, decider: Decider, options: RunOptions): Promise<void> {
 	const id = await domain.caseId(folder);
-	if (await exists(resultPath(options.out, id))) {
+	const files = caseFiles(options.out, id);
+	if (await exists(files.result)) {
 		options.log(`${id}: already done`);
 		return;
 	}
-	const tracePath = join(options.out, `${id}.trace.jsonl`);
-	await writeFile(tracePath, "");
-	// Each line is appended after the one before it: concurrent appends could write the lines out of order.
-	let written = Promise.resolve();
+	await mkdir(files.folder, { recursive: true });
+	const traceLines = await jsonLines(files.trace);
+	const requestLines = await jsonLines(files.requests);
 	const trace = new Trace((entry) => {
-		written = written.then(() => appendFile(tracePath, `${JSON.stringify(entry)}\n`));
+		traceLines.add(entry);
 	});
-	const { result, categories } = await domain.run(folder, decider, options.limits, trace);
-	await written;
+	const recorded = recording(decider, (exchange) => {
+		requestLines.add(exchange);
+	});
+	const { result, categories } = await domain.run(folder, recorded, options.limits, trace);
+	await Promise.all([traceLines.done(), requestLines.done()]);
 	const record: CaseResult = {
 		case: id,
 		domain: domain.name,
@@ -81,19 +110,61 @@ async function runOne(domain: DomainEntry, folder: string, decider: Decider, opt
 		answers: result.answers,
 		categories,
 	};
-	await writeFile(resultPath(options.out, id), `${JSON.stringify(record, null, 1)}\n`);
+	await writeFile(files.result, `${JSON.stringify(record, null, 1)}\n`);
 	const chosen = trace.entries.flatMap((entry) => (entry.type === "choice" ? [entry.key] : []));
 	options.log(`${id}: ${chosen.join(" > ") || "-"}${result.error === null ? "" : ` | ERROR ${result.error}`}`);
 }
 
-/** Runs a domain on case folders and writes each case's result and trace; cases already done are skipped. */
+/** The run record to start from: a new one, or the folder's own when it holds the same run, which then goes on. */
+async function startRun(domain: DomainEntry, decider: Decider, options: RunOptions): Promise<RunRecord> {
+	const record: RunRecord = {
+		domain: domain.name,
+		version: domain.version,
+		model: decider.model,
+		limits: { ...options.limits },
+		jeval: await jevalSource(),
+		started: new Date().toISOString(),
+		finished: null,
+		totals: null,
+	};
+	if (!(await exists(runFile(options.out)))) return record;
+	const before = runRecordSchema.parse(JSON.parse(await readFile(runFile(options.out), "utf8")));
+	const same = (run: RunRecord) => JSON.stringify([run.domain, run.version, run.model, run.limits, run.jeval.commit]);
+	if (same(before) !== same(record)) {
+		throw new RunMismatchError(`${options.out} holds another run (${same(before)}); use another --out`);
+	}
+	return { ...record, started: before.started };
+}
+
+/** The totals of every case in the run folder, from their results and request files. */
+async function totals(out: string): Promise<NonNullable<RunRecord["totals"]>> {
+	const sum = { cases: 0, failed: 0, calls: 0, inputTokens: 0 };
+	for (const result of await readResults(out)) {
+		sum.cases += 1;
+		if (result.error !== null) sum.failed += 1;
+		const lines = (await readFile(caseFiles(out, result.case).requests, "utf8")).split("\n").filter(Boolean);
+		sum.calls += lines.length;
+		for (const line of lines) {
+			const usage = (JSON.parse(line) as { result: { usage: { inputTokens: number | null } } }).result.usage;
+			sum.inputTokens += usage.inputTokens ?? 0;
+		}
+	}
+	return sum;
+}
+
+/**
+ * Runs a domain on case folders into one run folder: `run.json`, and for each case its result, trace and requests.
+ * Cases already done are skipped, so a stopped run goes on where it stopped; a folder of another run is refused.
+ */
 export async function runCases(
 	domain: DomainEntry,
 	folders: readonly string[],
 	decider: Decider,
 	options: RunOptions,
 ): Promise<void> {
-	await mkdir(options.out, { recursive: true });
+	await mkdir(casesFolder(options.out), { recursive: true });
+	const record = await startRun(domain, decider, options);
+	await writeFile(runFile(options.out), `${JSON.stringify(record, null, 1)}\n`);
 	await inPool(folders, options.concurrency, async (folder) => {
 		try {
 			await runOne(domain, folder, decider, options);
@@ -101,6 +172,8 @@ export async function runCases(
 			options.log(`${basename(folder)}: FAILED ${error instanceof Error ? error.message : String(error)}`);
 		}
 	});
+	const finished = { ...record, finished: new Date().toISOString(), totals: await totals(options.out) };
+	await writeFile(runFile(options.out), `${JSON.stringify(finished, null, 1)}\n`);
 }
 
 /** Runs a case again from its trace: the recorded steps, then `fork.then` from step `fork.steps` when given. */
@@ -114,20 +187,23 @@ export async function replayCase(
 	return domain.run(folder, replayDecider(entries, fork), limitsOf(entries), new Trace());
 }
 
-async function readResults(folder: string): Promise<CaseResult[]> {
-	const names = (await readdir(folder)).filter((name) => name.endsWith(".json")).sort();
-	return Promise.all(
-		names.map(async (name) => resultSchema.parse(JSON.parse(await readFile(join(folder, name), "utf8")))),
-	);
+async function readResults(out: string): Promise<CaseResult[]> {
+	const ids = (await readdir(casesFolder(out))).sort();
+	const results: CaseResult[] = [];
+	for (const id of ids) {
+		const path = caseFiles(out, id).result;
+		if (await exists(path)) results.push(resultSchema.parse(JSON.parse(await readFile(path, "utf8"))));
+	}
+	return results;
 }
 
-/** Scores `jeval run` results against reference labels, on the scheduled cases or, without a list, every labeled result. */
+/** Scores a run's results against reference labels, on the scheduled cases or, without a list, every labeled result. */
 export async function scoreResults(
-	resultsFolder: string,
+	runFolder: string,
 	labelsPath: string,
 	scheduledPath?: string,
 ): Promise<{ report: Report; text: string }> {
-	const results = await readResults(resultsFolder);
+	const results = await readResults(runFolder);
 	const labels = (await readFile(labelsPath, "utf8"))
 		.split("\n")
 		.filter((line) => line.trim() !== "")

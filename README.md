@@ -29,19 +29,28 @@ node src/cli/main.ts ingest input/case-1 cases/case-1
 ```
 
 `run` grades case folders with a classifier model that pi-ai lists, and reads its API key from `PROVIDER_API_KEY`,
-for example `TYPESAFE_API_KEY` for `typesafe/jev-latest`. Each case gets `<id>.json` with its answers and
-`<id>.trace.jsonl` with every menu, choice and observation:
+for example `TYPESAFE_API_KEY` for `typesafe/jev-latest`. It writes one run folder:
+
+```text
+results/
+  run.json               what ran: domain and version, model, limits, jeval version and commit, times, totals
+  cases/<id>/
+    result.json          the case's answers, or its error
+    trace.jsonl          every menu, choice, observation and answer, in order
+    requests.jsonl       every request sent to the model, as sent, with its answers and usage
+```
 
 ```bash
 node src/cli/main.ts run cases/* --out results --model typesafe/jev-latest
 ```
 
-`replay` runs a case again from its trace; with `--fork <steps>`, it repeats that many recorded steps and lets the
-model go on from there. `score` compares results with reference labels in JSON Lines
-(`{"id", "items": [{"id", "pass"}]}`):
+A stopped run goes on in the same folder and skips the cases that are done; a folder that holds a run of another
+domain, model, limits or commit is refused. `replay` runs a case again from its trace; with `--fork <steps>`, it
+repeats that many recorded steps and lets the model go on from there. `score` compares a run with reference labels in
+JSON Lines (`{"id", "items": [{"id", "pass"}]}`):
 
 ```bash
-node src/cli/main.ts replay cases/case-1 results/case-1.trace.jsonl
+node src/cli/main.ts replay cases/case-1 results/cases/case-1/trace.jsonl
 node src/cli/main.ts score results --labels labels.jsonl
 ```
 

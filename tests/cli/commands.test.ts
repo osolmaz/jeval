@@ -2,15 +2,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-	inPool,
-	replayCase,
-	resultSchema,
-	RunMismatchError,
-	runCases,
-	runRecordSchema,
-	scoreResults,
-} from "../../src/cli/commands.ts";
+import { inPool, replayCase, RunMismatchError, runCases } from "../../src/cli/commands.ts";
+import { resultSchema, runRecordSchema } from "../../src/cli/runs.ts";
+import { compareRuns, scoreResults } from "../../src/cli/scores.ts";
 import { domainFor, INGESTERS } from "../../src/cli/domains.ts";
 import { DEFAULT_LIMITS, parseTrace, STOP_KEY } from "../../src/core/index.ts";
 import { DEFAULT_JUDGE } from "../../src/domains/legal-judge/index.ts";
@@ -139,6 +133,53 @@ describe("commands", () => {
 		const listed = await scoreResults(join(folder, "out"), labels, scheduled);
 		expect(listed.report).toMatchObject({ answers: 2, invalid: ["c3"] });
 		expect(listed.text).toContain("Invalid: c3");
+	});
+
+	it("judges a run's cases again over its evidence, and compares the two runs on the cases both answered", async () => {
+		await ingest(await inputFolder("c1"), join(folder, "cases", "c1"), "c1");
+		await ingest(await inputFolder("c2"), join(folder, "cases", "c2"), "c2");
+		const cases = [join(folder, "cases", "c1"), join(folder, "cases", "c2")];
+		const options = { concurrency: 2, log: () => undefined };
+		let calls = 0;
+		const first = fakeDecider(
+			missingNothing(answering(0.8, (labels) => (calls++ % 2 === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY))),
+		);
+		await runCases(legalJudge, cases, first, { ...options, out: join(folder, "first") });
+
+		const strict = join(folder, "strict.json");
+		const definition = JSON.parse(await readFile(DEFAULT_JUDGE, "utf8")) as { name: string };
+		await writeFile(strict, JSON.stringify({ ...definition, name: "strict" }));
+		const second = fakeDecider(answering(0.3, () => STOP_KEY));
+		const out = join(folder, "second");
+		await runCases(await domainFor(strict), cases, second, { ...options, out, evidenceFrom: join(folder, "first") });
+
+		// Only the judging went to the model: the steps were repeated from the first run.
+		expect(second.requests.map((request) => request.questions[0]?.id)).toEqual(["S-1/meets", "S-1/meets"]);
+		const run = runRecordSchema.parse(JSON.parse(await readFile(join(out, "run.json"), "utf8")));
+		expect(run).toMatchObject({
+			judge: { name: "strict" },
+			evidenceFrom: join(folder, "first"),
+			totals: { calls: 2 },
+		});
+		const observations = async (run: string) =>
+			parseTrace(await readFile(join(folder, run, "cases", "c1", "trace.jsonl"), "utf8"))
+				.filter((entry) => entry.type === "observation")
+				.map((entry) => entry.key);
+		expect(await observations("second")).toEqual(await observations("first"));
+		expect((await observations("first")).length).toBeGreaterThan(1);
+
+		const labels = join(folder, "labels.jsonl");
+		await writeFile(
+			labels,
+			["c1", "c2", "c3"].map((id) => JSON.stringify({ id, items: [{ id: "S-1", pass: true }] })).join("\n"),
+		);
+		const compared = await compareRuns([join(folder, "first"), out], labels);
+		expect(compared.runs.map((entry) => [entry.judge.split("@")[0], entry.report.itemMetrics?.accuracy])).toEqual([
+			["legal-judge", 1],
+			["strict", 0],
+		]);
+		expect(compared.text).toMatch(/^2 cases that every run answered/);
+		expect(compared.text).toContain(`evidence of ${join(folder, "first")}`);
 	});
 
 	it("records a failed case's error", async () => {

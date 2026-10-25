@@ -61,6 +61,16 @@ node src/cli/main.ts replay cases/case-1 results/cases/case-1/trace.jsonl
 node src/cli/main.ts score results --labels labels.jsonl
 ```
 
+`rejudge` judges the cases of a run again with another judge file or model, over the evidence that run gathered: it
+repeats each case's recorded steps and sends only the judging to the model, into a new run folder whose `run.json` names
+the run it took the evidence from. `compare` scores runs side by side against the same labels, on the cases that every
+run answered:
+
+```bash
+node src/cli/main.ts rejudge cases/* --from results --out results-strict --judge judges/strict.json
+node src/cli/main.ts compare results results-strict --labels labels.jsonl
+```
+
 ## Write a domain
 
 A domain declares actions, questions and a view; the core runs the loop. An action lists the options that make sense

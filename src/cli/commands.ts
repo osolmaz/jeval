@@ -1,71 +1,22 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { z } from "zod";
-import {
-	answerSchema,
-	type Decider,
-	type Fork,
-	limitsOf,
-	parseTrace,
-	recording,
-	replayDecider,
-	Trace,
-} from "../core/index.ts";
-import { formatReport, labelSchema, type Report, score, type Verdicts } from "../eval/score.ts";
+import { type Decider, type Fork, limitsOf, parseTrace, recording, replayDecider, Trace } from "../core/index.ts";
 import type { CaseRun, DomainEntry } from "./domains.ts";
 import { caseFiles, casesFolder, jsonLines, runFile } from "./layout.ts";
+import { type CaseResult, exists, readResults, readRunRecord, type RunRecord } from "./runs.ts";
 import { jevalSource } from "./source.ts";
-
-/** What `jeval run` writes as each case's `result.json`. */
-export const resultSchema = z.object({
-	case: z.string(),
-	domain: z.string(),
-	version: z.string(),
-	model: z.string(),
-	steps: z.number().int(),
-	error: z.string().nullable(),
-	answers: z.record(z.string(), answerSchema).nullable(),
-	categories: z.record(z.string(), z.string()),
-});
-export type CaseResult = z.infer<typeof resultSchema>;
 
 export interface RunOptions {
 	readonly out: string;
 	readonly concurrency: number;
 	readonly log: (line: string) => void;
+	/** A run whose evidence each case reuses: its recorded steps are repeated, and only the judging is asked again. */
+	readonly evidenceFrom?: string;
 }
-
-/** What `jeval run` writes as `run.json`: what ran, with which judge, on which code, and at the end its totals. */
-export const runRecordSchema = z.object({
-	domain: z.string(),
-	version: z.string(),
-	judge: z.object({ name: z.string(), hash: z.string(), definition: z.record(z.string(), z.unknown()) }),
-	model: z.string(),
-	limits: z.object({ steps: z.number().int(), options: z.number().int(), windowShare: z.number() }),
-	jeval: z.object({ version: z.string(), commit: z.string().nullable(), changed: z.boolean().nullable() }),
-	started: z.string(),
-	finished: z.string().nullable(),
-	totals: z
-		.object({
-			cases: z.number().int(),
-			failed: z.number().int(),
-			calls: z.number().int(),
-			inputTokens: z.number().int(),
-		})
-		.nullable(),
-});
-export type RunRecord = z.infer<typeof runRecordSchema>;
 
 /** The output folder already holds a run of something else. */
 export class RunMismatchError extends Error {
 	override readonly name = "RunMismatchError";
-}
-
-async function exists(path: string): Promise<boolean> {
-	return readFile(path).then(
-		() => true,
-		() => false,
-	);
 }
 
 /** Runs `items` with at most `limit` running at once, in order of start. */
@@ -97,7 +48,9 @@ async function runOne(domain: DomainEntry, folder: string, decider: Decider, opt
 	const recorded = recording(decider, (exchange) => {
 		requestLines.add(exchange);
 	});
-	const { result, categories } = await domain.run(folder, recorded, domain.limits, trace);
+	const from = options.evidenceFrom;
+	const caseDecider = from === undefined ? recorded : await reusing(from, id, recorded);
+	const { result, categories } = await domain.run(folder, caseDecider, domain.limits, trace);
 	await Promise.all([traceLines.done(), requestLines.done()]);
 	const record: CaseResult = {
 		case: id,
@@ -114,6 +67,12 @@ async function runOne(domain: DomainEntry, folder: string, decider: Decider, opt
 	options.log(`${id}: ${chosen.join(" > ") || "-"}${result.error === null ? "" : ` | ERROR ${result.error}`}`);
 }
 
+/** Repeats every recorded choice of the case in `run`, so its evidence is gathered again as it was; `then` judges. */
+async function reusing(run: string, id: string, then: Decider): Promise<Decider> {
+	const entries = parseTrace(await readFile(caseFiles(run, id).trace, "utf8"));
+	return replayDecider(entries, { steps: entries.filter((entry) => entry.type === "choice").length, then });
+}
+
 /** The run record to start from: a new one, or the folder's own when it holds the same run, which then goes on. */
 async function startRun(domain: DomainEntry, decider: Decider, options: RunOptions): Promise<RunRecord> {
 	const record: RunRecord = {
@@ -123,13 +82,15 @@ async function startRun(domain: DomainEntry, decider: Decider, options: RunOptio
 		model: decider.model,
 		limits: { ...domain.limits },
 		jeval: await jevalSource(),
+		evidenceFrom: options.evidenceFrom ?? null,
 		started: new Date().toISOString(),
 		finished: null,
 		totals: null,
 	};
 	if (!(await exists(runFile(options.out)))) return record;
-	const before = runRecordSchema.parse(JSON.parse(await readFile(runFile(options.out), "utf8")));
-	const same = (run: RunRecord) => JSON.stringify([run.domain, run.version, run.model, run.limits, run.jeval.commit]);
+	const before = await readRunRecord(options.out);
+	const same = (run: RunRecord) =>
+		JSON.stringify([run.domain, run.version, run.model, run.limits, run.jeval.commit, run.evidenceFrom]);
 	if (same(before) !== same(record)) {
 		throw new RunMismatchError(`${options.out} holds another run (${same(before)}); use another --out`);
 	}
@@ -185,43 +146,4 @@ export async function replayCase(
 ): Promise<CaseRun> {
 	const entries = parseTrace(await readFile(tracePath, "utf8"));
 	return domain.run(folder, replayDecider(entries, fork), limitsOf(entries), new Trace());
-}
-
-async function readResults(out: string): Promise<CaseResult[]> {
-	const ids = (await readdir(casesFolder(out))).sort();
-	const results: CaseResult[] = [];
-	for (const id of ids) {
-		const path = caseFiles(out, id).result;
-		if (await exists(path)) results.push(resultSchema.parse(JSON.parse(await readFile(path, "utf8"))));
-	}
-	return results;
-}
-
-/** Scores a run's results against reference labels, on the scheduled cases or, without a list, every labeled result. */
-export async function scoreResults(
-	runFolder: string,
-	labelsPath: string,
-	scheduledPath?: string,
-): Promise<{ report: Report; text: string }> {
-	const results = await readResults(runFolder);
-	const labels = (await readFile(labelsPath, "utf8"))
-		.split("\n")
-		.filter((line) => line.trim() !== "")
-		.map((line) => labelSchema.parse(JSON.parse(line)));
-	const verdicts = new Map<string, Verdicts>(results.map((result) => [result.case, { answers: result.answers }]));
-	const scheduled =
-		scheduledPath === undefined
-			? new Set(results.map((result) => result.case))
-			: new Set((await readFile(scheduledPath, "utf8")).split(/\s+/).filter(Boolean));
-	const categories = new Map(
-		results.flatMap((result) =>
-			Object.entries(result.categories).map(([item, category]) => [`${result.case}/${item}`, category] as const),
-		),
-	);
-	const report = score(
-		labels.filter((label) => scheduled.has(label.id)),
-		verdicts,
-		categories,
-	);
-	return { report, text: formatReport(report) };
 }

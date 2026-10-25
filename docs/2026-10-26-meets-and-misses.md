@@ -76,6 +76,14 @@ Asked over the evidence of the adopted run, one grading per answer, and scored a
 | Meets and misses, and the weakest requirement met                               | 94.5%                   | 84.4%              |
 | Meets and misses, and no denial of a required thing                             | 91.1%                   | 80.8%              |
 
+A rule about qualifiers was also added to the check's rules: "Most items turn on a condition, marked by words such as
+'despite', 'without', 'only', 'unless', 'even if', 'subject only to', 'at least' or 'within'. The answer meets the item
+only when it satisfies that condition as written, not just the item's topic. An answer that covers the topic but adds a
+condition the item excludes, or leaves out a condition the item requires, does not meet the item." With meets and
+misses over the same evidence it got 94.6% of the judge eval right (23 false passes, 46 false fails, against 26 and 44) and agreed with Sol on 85.1% (against 84.4%). It moves toward Sol by less than a point and leaves the judge eval as it
+was, so it waits for people's labels of the disagreements, which can tell whether moving toward Sol is moving toward
+correct.
+
 None is better on both sets. A question about denials catches the item behind the probe (0.57), but as a veto it fails
 many good answers, which often state exclusions on purpose.
 

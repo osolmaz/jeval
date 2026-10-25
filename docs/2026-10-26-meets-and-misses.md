@@ -28,7 +28,7 @@ answer meets the item and says nothing is missed. Both answers are kept in the t
 
 Every request tells Jev the process (gather, then check) and its stage, and the check carries rules: apply the PASS
 and FAIL rules as written; a mention, a denial or a stated absence does not meet a requirement; check facts, figures and
-citations against the task's documents. The texts are in `src/domains/legal-judge/prompts.ts`.
+citations against the task's documents. The texts are in `judges/legal-judge.json`.
 
 ## Why two questions
 
@@ -82,7 +82,9 @@ only when it satisfies that condition as written, not just the item's topic. An 
 condition the item excludes, or leaves out a condition the item requires, does not meet the item." With meets and
 misses over the same evidence it got 94.6% of the judge eval right (23 false passes, 46 false fails, against 26 and 44) and agreed with Sol on 85.1% (against 84.4%). It moves toward Sol by less than a point and leaves the judge eval as it
 was, so it waits for people's labels of the disagreements, which can tell whether moving toward Sol is moving toward
-correct.
+correct. It is kept as `judges/legal-judge-qualifiers.json`. Measured again with `jeval rejudge` over a fresh run's
+evidence, it moved the agreement with Sol from 84.7% to 84.8% and left the judge eval at 94.6%, so the earlier gain was
+mostly noise.
 
 None is better on both sets. A question about denials catches the item behind the probe (0.57), but as a veto it fails
 many good answers, which often state exclusions on purpose.

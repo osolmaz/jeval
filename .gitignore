@@ -3,3 +3,12 @@ dist/
 coverage/
 reports/
 .stryker-tmp/
+
+# Task data never goes into this repository: input folders, case folders, run results, traces and labels.
+input/
+inputs/
+cases/
+results/
+out/
+*.trace.jsonl
+labels*.jsonl

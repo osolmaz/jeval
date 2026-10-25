@@ -6,6 +6,8 @@
   `slophammer-ts check .`. Run `pnpm mutate` after a change to `src/core/menu.ts` or `src/core/loop.ts`.
 - Add or update a test for every behavior change. Tests make no model calls: use the fake decider in
   `tests/helpers/fakes.ts`.
+- Never commit task data: requests, rubrics, documents, answers, case folders, run results, traces or labels. They
+  are proprietary. Tests build their own small fixtures in code.
 
 ## Code
 

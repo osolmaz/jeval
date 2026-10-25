@@ -20,6 +20,7 @@ describe("run", () => {
 			"observation",
 			"menu",
 			"choice",
+			"asked",
 			"answers",
 		]);
 		expect(result.trace.entries.at(-1)?.parent).toBe(result.trace.entries.at(-2)?.id);

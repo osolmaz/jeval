@@ -1,6 +1,6 @@
 import type { Decider, Limits, RunResult, Trace } from "../core/index.ts";
 import { run } from "../core/index.ts";
-import { legalJudge } from "../domains/legal-judge/index.ts";
+import { createLegalJudge } from "../domains/legal-judge/index.ts";
 import { ingestCase } from "../domains/legal-judge/ingest/ingest.ts";
 import { loadCase } from "../domains/legal-judge/load.ts";
 
@@ -19,6 +19,8 @@ export interface DomainEntry {
 	run(folder: string, decider: Decider, limits: Limits, trace: Trace): Promise<CaseRun>;
 	ingest(input: string, output: string, id: string): Promise<void>;
 }
+
+const legalJudge = createLegalJudge();
 
 const legalJudgeEntry: DomainEntry = {
 	name: legalJudge.name,

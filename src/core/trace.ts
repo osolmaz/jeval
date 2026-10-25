@@ -52,6 +52,13 @@ export const traceEntrySchema = z.discriminatedUnion("type", [
 		answers: z.record(z.string(), answerSchema),
 		usage: z.array(usage),
 	}),
+	z.object({
+		...base,
+		type: z.literal("asked"),
+		stage: z.string(),
+		answers: z.record(z.string(), answerSchema),
+		usage: z.array(usage),
+	}),
 	z.object({ ...base, type: z.literal("note"), message: z.string() }),
 ]);
 
@@ -93,6 +100,10 @@ export class Trace {
 
 	answered(answers: Readonly<Record<string, Answer>>, used: readonly Usage[]): void {
 		this.push({ type: "answers", answers: { ...answers }, usage: [...used] });
+	}
+
+	asked(stage: string, answers: Readonly<Record<string, Answer>>, used: readonly Usage[]): void {
+		this.push({ type: "asked", stage, answers: { ...answers }, usage: [...used] });
 	}
 
 	note(message: string): void {

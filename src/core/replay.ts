@@ -35,11 +35,14 @@ export function replayDecider(entries: readonly TraceEntry[], fork?: Fork): Deci
 	};
 }
 
-const recordingOf = (entries: readonly TraceEntry[]): Recording => ({
-	menus: entries.filter((entry) => entry.type === "menu"),
-	choices: entries.filter((entry) => entry.type === "choice"),
-	answers: entries.find((entry) => entry.type === "answers"),
-});
+function recordingOf(entries: readonly TraceEntry[]): Recording {
+	const stages = entries.filter((entry) => entry.type === "asked" || entry.type === "answers");
+	return {
+		menus: entries.filter((entry) => entry.type === "menu"),
+		choices: entries.filter((entry) => entry.type === "choice"),
+		answers: stages.length === 0 ? null : new Map(stages.flatMap((entry) => Object.entries(entry.answers))),
+	};
+}
 
 export interface Fork {
 	/** How many recorded choices to repeat before `then` decides. */
@@ -52,7 +55,8 @@ type ChoiceEntry = Extract<TraceEntry, { type: "choice" }>;
 interface Recording {
 	readonly menus: readonly MenuEntry[];
 	readonly choices: readonly ChoiceEntry[];
-	readonly answers: Extract<TraceEntry, { type: "answers" }> | undefined;
+	/** Every recorded answer by question id, from every judging stage. */
+	readonly answers: ReadonlyMap<string, Answer> | null;
 }
 
 const nextQuestion = (request: DecisionRequest): ChoiceQuestion | null => {
@@ -101,14 +105,11 @@ function stopChoice(question: ChoiceQuestion): DecisionResult {
 	};
 }
 
-function repeatAnswers(
-	request: DecisionRequest,
-	recorded: Extract<TraceEntry, { type: "answers" }> | undefined,
-): DecisionResult {
-	if (recorded === undefined) throw new ReplayError("the trace has no answers to repeat");
+function repeatAnswers(request: DecisionRequest, recorded: ReadonlyMap<string, Answer> | null): DecisionResult {
+	if (recorded === null) throw new ReplayError("the trace has no answers to repeat");
 	const answers: Record<string, Answer> = {};
 	for (const question of request.questions) {
-		const known = recorded.answers[question.id];
+		const known = recorded.get(question.id);
 		if (known === undefined) throw new ReplayError(`the trace has no answer for ${question.id}`);
 		answers[question.id] = known;
 	}

@@ -1,10 +1,7 @@
 import type { Json, JsonObject, State, View } from "../../core/index.ts";
 import type { CaseFile } from "./case.ts";
+import { GATHER, PROCESS } from "./prompts.ts";
 import { LIMITS, readParts, type Workspace } from "./workspace.ts";
-
-export const GOAL =
-	"Grade an AI assistant's answer to a legal task against every rubric item. The evidence holds what has been read so far: " +
-	"the answer's files and any parts of the task's documents, searches, counts or comparisons.";
 
 const size = (value: Json): number => Math.ceil(JSON.stringify(value).length / LIMITS.charsPerToken);
 
@@ -17,7 +14,8 @@ function chooseState(state: State<Workspace>): JsonObject {
 	const legalCase = state.workspace.case;
 	const read = readParts(state.log);
 	return {
-		goal: GOAL,
+		process: PROCESS,
+		stage: GATHER,
 		request: legalCase.request,
 		rubric: legalCase.items.map((item) => ({ id: item.id, criterion: item.text })),
 		files: legalCase.files.map((file) => ({

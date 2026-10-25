@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  SLOPHAMMER_VERSION: 0.5.0
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install the programs ingestion uses
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils netpbm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm coverage
+      - run: pnpm dry
+      - run: pnpm mutate
+      - run: pnpm build
+      - uses: osolmaz/slophammer@typescript/v0.5.0
+        with:
+          checker: ts
+          version: ${{ env.SLOPHAMMER_VERSION }}

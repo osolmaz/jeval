@@ -1,0 +1,51 @@
+{
+	"name": "jeval",
+	"version": "0.1.0",
+	"private": true,
+	"description": "A harness that lets decision models work through multi-step tasks by choosing from steps that code lists.",
+	"license": "MIT",
+	"type": "module",
+	"engines": {
+		"node": ">=22.13.0"
+	},
+	"packageManager": "pnpm@10.20.0",
+	"bin": {
+		"jeval": "dist/src/cli/main.js"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc --noEmit",
+		"lint": "eslint .",
+		"format": "prettier --check .",
+		"format:write": "prettier --write .",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage",
+		"dry": "slophammer-ts dry .",
+		"slophammer": "slophammer-ts check .",
+		"mutate": "stryker run",
+		"check": "pnpm format && pnpm lint && pnpm typecheck && pnpm coverage && pnpm dry && pnpm slophammer"
+	},
+	"dependencies": {
+		"@earendil-works/pi-ai": "1.4.0",
+		"@xmldom/xmldom": "0.9.12",
+		"commander": "15.0.0",
+		"fflate": "0.8.3",
+		"pdfjs-dist": "6.4.299",
+		"postal-mime": "4.1.4",
+		"zod": "4.6.7"
+	},
+	"devDependencies": {
+		"@eslint/js": "10.0.1",
+		"@stryker-mutator/core": "10.1.1",
+		"@stryker-mutator/typescript-checker": "10.1.1",
+		"@stryker-mutator/vitest-runner": "10.1.1",
+		"@types/node": "22.19.1",
+		"@vitest/coverage-v8": "5.0.5",
+		"eslint": "10.13.0",
+		"prettier": "3.9.10",
+		"slophammer-ts": "0.5.0",
+		"typescript": "6.0.3",
+		"typescript-eslint": "8.72.0",
+		"vitest": "5.0.5"
+	}
+}

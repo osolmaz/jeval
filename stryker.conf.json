@@ -1,0 +1,18 @@
+{
+	"$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+	"packageManager": "pnpm",
+	"plugins": ["@stryker-mutator/vitest-runner", "@stryker-mutator/typescript-checker"],
+	"testRunner": "vitest",
+	"vitest": {
+		"configFile": "vitest.stryker.config.ts"
+	},
+	"coverageAnalysis": "perTest",
+	"checkers": ["typescript"],
+	"tsconfigFile": "tsconfig.json",
+	"mutate": ["src/core/menu.ts", "src/core/loop.ts"],
+	"thresholds": {
+		"high": 80,
+		"low": 60,
+		"break": 60
+	}
+}

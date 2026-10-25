@@ -41,16 +41,16 @@ were sampled across 359 tasks, 6,210 tool calls in all. The judge took a median 
 median of 3 gathered evidence. It nearly always worked in the same order: read the request and the rubric,
 list the files, read the answer, read some documents, write the verdicts.
 
-| Step | Sessions that took it |
-| --- | --- |
-| Read the answer | about 100% |
-| Open the task's documents, when the task had any | 97% |
-| Turn a PDF, a Word file or a spreadsheet into text | 44%, 38%, 6% |
-| Search for terms | 31% |
-| Count words, usually in one section | 26% |
-| Compare an edited contract with the original | 21% |
-| Check formatting in a Word file (bold, tracked changes, comments) | 21% |
-| Look at images, render pages, do arithmetic | 2% to 3% each |
+| Step                                                              | Sessions that took it |
+| ----------------------------------------------------------------- | --------------------- |
+| Read the answer                                                   | about 100%            |
+| Open the task's documents, when the task had any                  | 97%                   |
+| Turn a PDF, a Word file or a spreadsheet into text                | 44%, 38%, 6%          |
+| Search for terms                                                  | 31%                   |
+| Count words, usually in one section                               | 26%                   |
+| Compare an edited contract with the original                      | 21%                   |
+| Check formatting in a Word file (bold, tracked changes, comments) | 21%                   |
+| Look at images, render pages, do arithmetic                       | 2% to 3% each         |
 
 The judge opened a median of a third of the documents when there were two or more, so choosing which file
 to read matters. About half of its search terms came word for word from the rubric item; the rest were
@@ -72,11 +72,11 @@ or judge now. It ran on a balanced split of 100 saved answers (1,288 rubric item
 reference labels come from strong models and a review. Two chat-model judges in an agentic harness had
 graded the same answers earlier.
 
-| Judge on the same 100 answers | Items right | False passes | False fails | Whole answers right |
-| --- | --- | --- | --- | --- |
-| GPT-6 Luna, agentic harness | 93.5% | 26 | 58 | 88.0% |
-| DeepSeek-V4.1-Flash, agentic harness (1 answer failed) | 94.6% | 49 | 6 | 93.9% |
-| Jev with the menu | 94.6% | 49 | 21 | 93.0% |
+| Judge on the same 100 answers                          | Items right | False passes | False fails | Whole answers right |
+| ------------------------------------------------------ | ----------- | ------------ | ----------- | ------------------- |
+| GPT-6 Luna, agentic harness                            | 93.5%       | 26           | 58          | 88.0%               |
+| DeepSeek-V4.1-Flash, agentic harness (1 answer failed) | 94.6%       | 49           | 6           | 93.9%               |
+| Jev with the menu                                      | 94.6%       | 49           | 21          | 93.0%               |
 
 "Items right" counts a failed answer's items as wrong. Jev used a median of one step per answer and judged at
 once on 43 answers, mostly drafting tasks with no documents. The 100 answers took 325 calls, a median of
@@ -147,13 +147,13 @@ one step at a time.
 
 The core knows five things and nothing else.
 
-| Building block | What it is |
-| --- | --- |
-| Action schema | `name`, `when`, `options`, `observe`, `cost`; each option carries its text, its argument and the questions it informs |
-| Observation | What one step found, with its source, its size in tokens and a content hash |
-| Question | A typed `bool`, `choice` or `score` question with instructions and the text of each answer |
-| View | The function that turns the workspace and the observation log into the model's state, under a budget |
-| Budget | Limits on steps, tokens per request, total tokens, total cost and options per menu |
+| Building block | What it is                                                                                                            |
+| -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Action schema  | `name`, `when`, `options`, `observe`, `cost`; each option carries its text, its argument and the questions it informs |
+| Observation    | What one step found, with its source, its size in tokens and a content hash                                           |
+| Question       | A typed `bool`, `choice` or `score` question with instructions and the text of each answer                            |
+| View           | The function that turns the workspace and the observation log into the model's state, under a budget                  |
+| Budget         | Limits on steps, tokens per request, total tokens, total cost and options per menu                                    |
 
 Everything else is an extension built from these: rubric grading, belief-based stopping, the cascade,
 OCR, a Word file comparison.
@@ -199,15 +199,15 @@ adopted only after it is measured.
 Every run writes one trace, a JSON Lines file of entries that each name their parent, the same tree shape as
 Pi's session files.
 
-| Entry | What it holds |
-| --- | --- |
-| `case` | The domain and its version, the workspace's content hash, the model and its version, the budget |
-| `menu` | Every option's text, schema, argument and informed questions |
-| `choice` | The chosen option and every option's probability |
-| `observation` | The step's result or its content hash, and its size |
-| `beliefs` | The questions' probabilities, when belief-based stopping is on |
-| `answers` | The final typed answers with their probabilities |
-| `usage` | Tokens, time and cost of each model call |
+| Entry         | What it holds                                                                                   |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| `case`        | The domain and its version, the workspace's content hash, the model and its version, the budget |
+| `menu`        | Every option's text, schema, argument and informed questions                                    |
+| `choice`      | The chosen option and every option's probability                                                |
+| `observation` | The step's result or its content hash, and its size                                             |
+| `beliefs`     | The questions' probabilities, when belief-based stopping is on                                  |
+| `answers`     | The final typed answers with their probabilities                                                |
+| `usage`       | Tokens, time and cost of each model call                                                        |
 
 Because actions only read an immutable workspace, a trace can be replayed exactly. Forking a trace at step
 k with a different choice gives a counterfactual run: what would another choice have changed, or what would
@@ -249,11 +249,15 @@ One action, declared in its own file:
 export default action({
   name: "search",
   when: (s) => s.unsearchedTerms().length > 0,
-  options: (s) => s.unsearchedTerms().slice(0, 10).map((t) => ({
-    text: `Find the passages in the answer and the documents that mention “${t.term}”`,
-    arg: t,
-    informs: t.items,
-  })),
+  options: (s) =>
+    s
+      .unsearchedTerms()
+      .slice(0, 10)
+      .map((t) => ({
+        text: `Find the passages in the answer and the documents that mention “${t.term}”`,
+        arg: t,
+        informs: t.items,
+      })),
   observe: (w, t) => w.search(t.term, { hits: 8, context: 280 }),
   cost: () => ({ tokens: 600 }),
 });
@@ -284,16 +288,16 @@ Domains ship as npm or Git packages, in the way Pi packages ship, and a run name
 Pi's own design is the model for jeval's: its core is minimal, its features are primitives that extensions
 build on, and it lists what it chose not to build.
 
-| Pi | jeval |
-| --- | --- |
-| A minimal core; a feature that does not belong in the core is an extension | The core is only the loop and the trace |
-| Primitives, not features | Five building blocks; grading, stopping rules and the cascade are extensions |
-| Adapt the harness to the work, not the other way around | A domain declares its actions, questions and view; the engine never changes for a domain |
-| Packages from npm or Git | Domain packages |
-| A minimal system prompt, so the user does the context engineering | A tiny fixed framing; the domain's view is its context engineering |
-| Interactive, JSON, RPC and SDK modes | SDK, command line, interactive and Harbor verifier modes |
-| Sessions as JSON Lines entries in a tree | Traces in the same shape, with replay and forks |
-| A list of features left out on purpose | The list below |
+| Pi                                                                         | jeval                                                                                    |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| A minimal core; a feature that does not belong in the core is an extension | The core is only the loop and the trace                                                  |
+| Primitives, not features                                                   | Five building blocks; grading, stopping rules and the cascade are extensions             |
+| Adapt the harness to the work, not the other way around                    | A domain declares its actions, questions and view; the engine never changes for a domain |
+| Packages from npm or Git                                                   | Domain packages                                                                          |
+| A minimal system prompt, so the user does the context engineering          | A tiny fixed framing; the domain's view is its context engineering                       |
+| Interactive, JSON, RPC and SDK modes                                       | SDK, command line, interactive and Harbor verifier modes                                 |
+| Sessions as JSON Lines entries in a tree                                   | Traces in the same shape, with replay and forks                                          |
+| A list of features left out on purpose                                     | The list below                                                                           |
 
 Pi's agent loop itself does not carry over: it expects a model that writes free text and tool arguments. A
 decision model can only pick from a finite list, so in jeval code writes every option.

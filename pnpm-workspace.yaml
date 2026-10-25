@@ -1,0 +1,5 @@
+# pi-ai's provider SDKs ship install scripts that jeval does not need.
+onlyBuiltDependencies: []
+ignoredBuiltDependencies:
+  - "@google/genai"
+  - protobufjs

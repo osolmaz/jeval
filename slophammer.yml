@@ -1,0 +1,43 @@
+typescript:
+  coverage:
+    threshold: 85
+  complexity:
+    max: 8
+  dry:
+    max_findings: 0
+    paths:
+      - src
+    exclude:
+      - "**/*.test.ts"
+      - "dist/**"
+      - "coverage/**"
+    copied_blocks:
+      enabled: true
+      min_tokens: 100
+  mutation:
+    targets:
+      - src/core/menu.ts
+      - src/core/loop.ts
+  dependency_boundaries:
+    - from: src/core
+      allow:
+        - src/core
+    - from: src/models
+      allow:
+        - src/models
+        - src/core
+    - from: src/domains/legal-judge
+      allow:
+        - src/domains/legal-judge
+        - src/core
+    - from: src/eval
+      allow:
+        - src/eval
+        - src/core
+    - from: src/cli
+      allow:
+        - src/cli
+        - src/core
+        - src/models
+        - src/domains/legal-judge
+        - src/eval

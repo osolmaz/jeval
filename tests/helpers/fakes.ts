@@ -94,3 +94,14 @@ export const failing = (failure: "window" | "provider", message = "failed"): Dec
 	message,
 	usage: OK_USAGE,
 });
+
+/** `policy`, but every "misses" question gets `probability`: a judge that finds nothing missing, by default. */
+export function missingNothing(policy: Policy, probability = 0.1): Policy {
+	return (request, call) => {
+		const result = policy(request, call);
+		if (!result.ok) return result;
+		const answers: Record<string, Answer> = { ...result.answers };
+		for (const id of Object.keys(answers)) if (id.endsWith("/misses")) answers[id] = { kind: "bool", probability };
+		return { ...result, answers };
+	};
+}

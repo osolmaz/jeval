@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { run, STOP_KEY } from "../../../src/core/index.ts";
+import { type Answer, run, STOP_KEY } from "../../../src/core/index.ts";
 import { itemQuestion, legalJudge } from "../../../src/domains/legal-judge/index.ts";
+import { combine } from "../../../src/domains/legal-judge/judge.ts";
 import { openAnswer } from "../../../src/domains/legal-judge/start.ts";
 import { searchTerms, termsIn } from "../../../src/domains/legal-judge/terms.ts";
 import { fitEvidence, view } from "../../../src/domains/legal-judge/view.ts";
@@ -82,7 +83,15 @@ describe("view", () => {
 			},
 		];
 		const chosen = view({ workspace, log }, "choose", 50_000);
-		expect(Object.keys(chosen.state)).toEqual(["goal", "request", "rubric", "files", "steps_taken", "evidence"]);
+		expect(Object.keys(chosen.state)).toEqual([
+			"process",
+			"stage",
+			"request",
+			"rubric",
+			"files",
+			"steps_taken",
+			"evidence",
+		]);
 		expect(chosen.state["files"]).toEqual(
 			expect.arrayContaining([expect.objectContaining({ path: "documents/lease.pdf", read: "1 of 2 parts" })]),
 		);
@@ -104,19 +113,43 @@ describe("view", () => {
 });
 
 describe("legalJudge", () => {
-	it("asks one question per rubric item and grades a case end to end", async () => {
+	it("gathers evidence, then asks whether each item is met and whether anything is missed", async () => {
 		expect(itemQuestion({ id: "S-1", category: null, text: "PASS if x." }).instructions).toMatch(
-			/Rubric item S-1:\nPASS if x\.$/,
+			/Rubric item S-1:\nPASS if x\.\n\nDoes the submitted answer meet this item\?$/,
 		);
 		let calls = 0;
 		const decider = fakeDecider(answering(0.9, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
 		const result = await run(legalJudge, workspaceOf(legalCase()), decider, { case: "case-1" });
-		expect(result.answers).toEqual({
-			"S-001": { kind: "bool", probability: 0.9 },
-			"F-001": { kind: "bool", probability: 0.9 },
-		});
 		expect(result.steps).toBe(2);
 		const last = decider.requests.at(-1);
-		expect(last?.questions.map((question) => question.id)).toEqual(["S-001", "F-001"]);
+		expect(last?.questions.map((question) => question.id)).toEqual([
+			"S-001/meets",
+			"S-001/misses",
+			"F-001/meets",
+			"F-001/misses",
+		]);
+		expect(last?.state).toMatchObject({
+			process: expect.stringContaining("two stages") as unknown,
+			rules: expect.any(String) as unknown,
+		});
+		// Every question answered 0.9: the answer meets each item, but also misses something, so both fail.
+		expect(result.answers).toEqual({
+			"S-001": { kind: "bool", probability: expect.closeTo(0.1) as unknown },
+			"F-001": { kind: "bool", probability: expect.closeTo(0.1) as unknown },
+		});
+	});
+});
+
+describe("combine", () => {
+	const item = { id: "S-1", category: null, text: "PASS if x." };
+	const bool = (probability: number): Answer => ({ kind: "bool", probability });
+
+	it("passes an item only when it is met and nothing is missed", () => {
+		expect(combine(item, { "S-1/meets": bool(0.9), "S-1/misses": bool(0.2) })).toEqual(bool(0.8));
+		expect(combine(item, { "S-1/meets": bool(0.9), "S-1/misses": bool(0.7) })).toEqual(
+			bool(expect.closeTo(0.3) as unknown as number),
+		);
+		expect(combine(item, { "S-1/meets": bool(0.4), "S-1/misses": bool(0.1) })).toEqual(bool(0.4));
+		expect(combine(item, {})).toEqual(bool(0));
 	});
 });

@@ -100,6 +100,26 @@ export interface View {
 	readonly omitted: readonly string[];
 }
 
+/** How a judging stage asks questions: over the evidence view, or over a fixed state such as one rubric item. */
+export interface AskOptions {
+	/** The stage's name in the trace. */
+	readonly stage: string;
+	/** A fixed state instead of the evidence view; it is sent as is and never cut. */
+	readonly state?: JsonObject;
+	/** Fields added to the evidence view's state, such as a description of the stage. */
+	readonly extra?: JsonObject;
+}
+
+/** Asks questions in as many requests as the window needs and returns every answer; it throws `AskError` on failure. */
+export type Ask = (questions: readonly Question[], options: AskOptions) => Promise<Readonly<Record<string, Answer>>>;
+
+export interface JudgeContext<W> {
+	readonly state: State<W>;
+	/** The domain's questions: the judge must answer every one. */
+	readonly questions: readonly Question[];
+	readonly ask: Ask;
+}
+
 export interface Domain<W> {
 	readonly name: string;
 	readonly version: string;
@@ -113,6 +133,11 @@ export interface Domain<W> {
 	start(workspace: W): Promise<readonly Entry[]>;
 	/** The state the model sees, in at most `tokens` estimated tokens. */
 	view(state: State<W>, purpose: "choose" | "answer", tokens: number): View;
+	/**
+	 * Answers the questions in stages of its own, such as checking each part of an item before deciding the item.
+	 * Without it, the questions are asked once over the evidence view.
+	 */
+	judge?(context: JudgeContext<W>): Promise<Readonly<Record<string, Answer>>>;
 }
 
 export interface Usage {

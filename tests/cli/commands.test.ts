@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { inPool, replayCase, resultSchema, runCases, scoreResults } from "../../src/cli/commands.ts";
 import { DOMAINS, type DomainEntry } from "../../src/cli/domains.ts";
 import { DEFAULT_LIMITS, parseTrace, STOP_KEY } from "../../src/core/index.ts";
-import { answering, fakeDecider } from "../helpers/fakes.ts";
+import { answering, fakeDecider, missingNothing } from "../helpers/fakes.ts";
 
 let folder = "";
 const found = DOMAINS["legal-judge"];
@@ -60,7 +60,7 @@ describe("commands", () => {
 			limits: DEFAULT_LIMITS,
 			log: (line: string) => lines.push(line),
 		};
-		const decider = fakeDecider(answering(0.8, () => STOP_KEY));
+		const decider = fakeDecider(missingNothing(answering(0.8, () => STOP_KEY)));
 		const cases = [join(folder, "cases", "c1"), join(folder, "cases", "c2"), join(folder, "cases", "missing")];
 		await runCases(legalJudge, cases, decider, options);
 		const result = resultSchema.parse(JSON.parse(await readFile(join(folder, "out", "c1.json"), "utf8")));

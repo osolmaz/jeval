@@ -106,8 +106,8 @@ On the cases that all three finished (88 and 67 answers):
 
 The differences are within a point, so reading more is not what the judge lacks; the disagreements are about the
 answer's own text. Preloading also failed 12 judge-eval cases on Jev's window, because three characters a token
-undercounts some documents, and 4 Sol-set cases on images whose dimensions Jev rejects. The `look` action can send
-the same images, so ingest should check image dimensions.
+undercounts some documents, and 4 Sol-set cases on images whose dimensions Jev rejects. The `look` action could send
+the same images; ingest now scales every image so that no side is longer than 1,568 pixels, the most Jev accepts.
 
 ## Open
 

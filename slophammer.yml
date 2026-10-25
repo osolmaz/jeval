@@ -41,3 +41,7 @@ typescript:
         - src/models
         - src/domains/legal-judge
         - src/eval
+rules:
+  ts.mutation-required:
+    disabled: true
+    reason: The owner turned mutation tests off in CI on 2026-10-26 because they made every run slow; pnpm mutate still runs them locally.

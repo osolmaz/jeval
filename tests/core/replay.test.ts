@@ -54,11 +54,13 @@ describe("replayDecider", () => {
 		await expect(run(factsDomain, { facts: { z: "other" } }, replayDecider(entries), { case: "c" })).rejects.toThrow(
 			/not on the menu/,
 		);
-		const noAnswers = entries.filter((entry) => entry.type !== "answers");
+		const noAnswers = entries.filter((entry) => entry.type !== "answers" && entry.type !== "asked");
 		await expect(run(factsDomain, facts, replayDecider(noAnswers), { case: "c" })).rejects.toThrow(/no answers/);
 		const fewer = entries.filter((entry) => entry.type !== "menu");
 		await expect(run(factsDomain, facts, replayDecider(fewer), { case: "c" })).rejects.toThrow(/fewer choices/);
-		const missing = entries.map((entry) => (entry.type === "answers" ? { ...entry, answers: {} } : entry));
+		const missing = entries.map((entry) =>
+			entry.type === "answers" || entry.type === "asked" ? { ...entry, answers: {} } : entry,
+		);
 		await expect(run(factsDomain, facts, replayDecider(missing), { case: "c" })).rejects.toThrow(/no answer for a/);
 	});
 });

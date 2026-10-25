@@ -2,12 +2,14 @@ import { buildMenu } from "./menu.ts";
 import { STOP_KEY, Trace } from "./trace.ts";
 import type {
 	Answer,
+	Ask,
 	ChoiceQuestion,
 	Decider,
 	DecisionRequest,
 	DecisionResult,
 	Domain,
 	Entry,
+	JsonObject,
 	Limits,
 	MenuItem,
 	Question,
@@ -110,7 +112,7 @@ async function choose<W>(
 	});
 	choices[STOP_KEY] = domain.stop;
 	const question: ChoiceQuestion = { kind: "choice", id: "next", instructions: domain.choose, choices };
-	const result = await ask(domain, state, decider, limits, [question], "choose", trace);
+	const result = await ask(domain, state, decider, limits, [question], trace, undefined, "choose");
 	if (!result.ok) {
 		trace.note(`the choice failed (${result.failure}): ${result.message}; the case goes on to its answers`);
 		return null;
@@ -129,6 +131,11 @@ async function choose<W>(
 	return { item, key: keyOf(picked.choice), probabilities, usage: result.usage };
 }
 
+/** A judging stage failed: the model's window was exceeded, the provider failed, or a question got no answer. */
+export class AskError extends Error {
+	override readonly name = "AskError";
+}
+
 async function answer<W>(
 	domain: Domain<W>,
 	state: State<W>,
@@ -137,19 +144,55 @@ async function answer<W>(
 	questions: readonly Question[],
 	trace: Trace,
 ): Promise<{ answers: Record<string, Answer> | null; error: string | null }> {
-	const budget = Math.floor(decider.window * limits.windowShare);
-	const answers: Record<string, Answer> = {};
 	const usages: Usage[] = [];
-	for (const batch of batches(questions, Math.floor(budget * QUESTION_SHARE), decider.charsPerToken)) {
-		const result = await ask(domain, state, decider, limits, batch, "answer", trace);
-		usages.push(result.usage);
-		if (!result.ok) return { answers: null, error: `${result.failure}: ${result.message}` };
-		Object.assign(answers, result.answers);
+	const ask = asker(domain, state, decider, limits, trace, usages);
+	try {
+		const answers =
+			domain.judge === undefined
+				? await ask(questions, { stage: "answers" })
+				: await domain.judge({ state, questions, ask });
+		const final: Record<string, Answer> = {};
+		for (const question of questions) {
+			const found = answers[question.id];
+			if (found === undefined) throw new AskError(`no answer for ${question.id}`);
+			final[question.id] = found;
+		}
+		trace.answered(final, usages);
+		return { answers: final, error: null };
+	} catch (error: unknown) {
+		if (error instanceof AskError) return { answers: null, error: error.message };
+		throw error;
 	}
-	const missing = questions.filter((question) => answers[question.id] === undefined).map((question) => question.id);
-	if (missing.length > 0) return { answers: null, error: `no answer for ${missing.join(", ")}` };
-	trace.answered(answers, usages);
-	return { answers, error: null };
+}
+
+/** The `ask` a judge gets: batches that fit the window, over the evidence view or a fixed state, each stage traced. */
+function asker<W>(
+	domain: Domain<W>,
+	state: State<W>,
+	decider: Decider,
+	limits: Limits,
+	trace: Trace,
+	usages: Usage[],
+): Ask {
+	const room = Math.floor(decider.window * limits.windowShare * QUESTION_SHARE);
+	return async (questions, options) => {
+		const answers: Record<string, Answer> = {};
+		const used: Usage[] = [];
+		for (const batch of batches(questions, room, decider.charsPerToken)) {
+			const result =
+				options.state === undefined
+					? await ask(domain, state, decider, limits, batch, trace, options.extra)
+					: await decider.decide({ state: options.state, images: [], questions: batch });
+			used.push(result.usage);
+			if (!result.ok) throw new AskError(`${result.failure}: ${result.message}`);
+			Object.assign(answers, result.answers);
+		}
+		const missing = questions.filter((question) => answers[question.id] === undefined).map((question) => question.id);
+		if (missing.length > 0) throw new AskError(`no answer for ${missing.join(", ")}`);
+		usages.push(...used);
+		trace.asked(options.stage, answers, used);
+		return answers;
+	};
 }
 
 /** Questions in groups whose estimated size stays under `room` tokens; a single larger question gets its own group. */
@@ -177,23 +220,24 @@ async function ask<W>(
 	decider: Decider,
 	limits: Limits,
 	questions: readonly Question[],
-	purpose: "choose" | "answer",
 	trace: Trace,
+	extra: JsonObject | undefined,
+	purpose: "choose" | "answer" = "answer",
 ): Promise<DecisionResult> {
 	const budget = Math.floor(decider.window * limits.windowShare);
-	let room = budget - estimateTokens(questions, decider.charsPerToken);
+	let room = budget - estimateTokens(extra === undefined ? questions : [questions, extra], decider.charsPerToken);
 	for (let attempt = 1; ; attempt += 1) {
 		const view = domain.view(state, purpose, room);
 		noteOmissions(view, trace);
-		const result = await decider.decide(request(view, questions));
+		const result = await decider.decide(request(view, questions, extra));
 		if (result.ok || result.failure !== "window" || attempt === ATTEMPTS) return result;
 		room = Math.floor(room * SHRINK);
 		trace.note(`the request did not fit the model's window; trying a view of ${String(room)} tokens`);
 	}
 }
 
-function request(view: View, questions: readonly Question[]): DecisionRequest {
-	return { state: view.state, images: view.images, questions };
+function request(view: View, questions: readonly Question[], extra: JsonObject | undefined): DecisionRequest {
+	return { state: extra === undefined ? view.state : { ...view.state, ...extra }, images: view.images, questions };
 }
 
 function noteOmissions(view: View, trace: Trace): void {

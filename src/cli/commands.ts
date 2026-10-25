@@ -64,10 +64,13 @@ async function runOne(domain: DomainEntry, folder: string, decider: Decider, opt
 	}
 	const tracePath = join(options.out, `${id}.trace.jsonl`);
 	await writeFile(tracePath, "");
-	const pending: Promise<void>[] = [];
-	const trace = new Trace((entry) => pending.push(appendFile(tracePath, `${JSON.stringify(entry)}\n`)));
+	// Each line is appended after the one before it: concurrent appends could write the lines out of order.
+	let written = Promise.resolve();
+	const trace = new Trace((entry) => {
+		written = written.then(() => appendFile(tracePath, `${JSON.stringify(entry)}\n`));
+	});
 	const { result, categories } = await domain.run(folder, decider, options.limits, trace);
-	await Promise.all(pending);
+	await written;
 	const record: CaseResult = {
 		case: id,
 		domain: domain.name,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { run, STOP_KEY } from "../../../src/core/index.ts";
-import { itemQuestion, legalJudge } from "../../../src/domains/legal-judge/index.ts";
+import { createLegalJudge, itemQuestion } from "../../../src/domains/legal-judge/index.ts";
 import { openAnswer } from "../../../src/domains/legal-judge/start.ts";
 import { searchTerms, termsIn } from "../../../src/domains/legal-judge/terms.ts";
 import { fitEvidence, view } from "../../../src/domains/legal-judge/view.ts";
@@ -82,7 +82,15 @@ describe("view", () => {
 			},
 		];
 		const chosen = view({ workspace, log }, "choose", 50_000);
-		expect(Object.keys(chosen.state)).toEqual(["goal", "request", "rubric", "files", "steps_taken", "evidence"]);
+		expect(Object.keys(chosen.state)).toEqual([
+			"process",
+			"stage",
+			"request",
+			"rubric",
+			"files",
+			"steps_taken",
+			"evidence",
+		]);
 		expect(chosen.state["files"]).toEqual(
 			expect.arrayContaining([expect.objectContaining({ path: "documents/lease.pdf", read: "1 of 2 parts" })]),
 		);
@@ -103,20 +111,22 @@ describe("view", () => {
 	});
 });
 
-describe("legalJudge", () => {
-	it("asks one question per rubric item and grades a case end to end", async () => {
+describe("legal-judge domain", () => {
+	it("gathers evidence, then judges every rubric item through the staged judge", async () => {
 		expect(itemQuestion({ id: "S-1", category: null, text: "PASS if x." }).instructions).toMatch(
-			/Rubric item S-1:\nPASS if x\.$/,
+			/Rubric item S-1:\nPASS if x\.\n\nDoes the submitted answer meet this item\?$/,
 		);
 		let calls = 0;
-		const decider = fakeDecider(answering(0.9, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
-		const result = await run(legalJudge, workspaceOf(legalCase()), decider, { case: "case-1" });
+		const decider = fakeDecider(
+			answering(0.9, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : (labels.at(-1) ?? STOP_KEY))),
+		);
+		const result = await run(createLegalJudge(), workspaceOf(legalCase()), decider, { case: "case-1" });
 		expect(result.answers).toEqual({
 			"S-001": { kind: "bool", probability: 0.9 },
 			"F-001": { kind: "bool", probability: 0.9 },
 		});
 		expect(result.steps).toBe(2);
-		const last = decider.requests.at(-1);
-		expect(last?.questions.map((question) => question.id)).toEqual(["S-001", "F-001"]);
+		expect(decider.requests.at(-1)?.questions.map((question) => question.id)).toEqual(["S-001", "F-001"]);
+		expect(decider.requests[0]?.state).toMatchObject({ process: expect.stringContaining("four stages") as unknown });
 	});
 });

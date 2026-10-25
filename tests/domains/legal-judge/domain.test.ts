@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type Answer, run, STOP_KEY } from "../../../src/core/index.ts";
-import { itemQuestion, legalJudge } from "../../../src/domains/legal-judge/index.ts";
+import { itemQuestions, itemVerdict } from "../../../src/domains/legal-judge/definition.ts";
+import { DEFAULT_JUDGE, judgeOf, legalJudge, loadJudge } from "../../../src/domains/legal-judge/index.ts";
 import { combine } from "../../../src/domains/legal-judge/judge.ts";
 import { openAnswer } from "../../../src/domains/legal-judge/start.ts";
 import { searchTerms, termsIn } from "../../../src/domains/legal-judge/terms.ts";
@@ -8,6 +9,9 @@ import { fitEvidence, view } from "../../../src/domains/legal-judge/view.ts";
 import { LIMITS } from "../../../src/domains/legal-judge/workspace.ts";
 import { answering, fakeDecider } from "../../helpers/fakes.ts";
 import { file, legalCase, workspaceOf } from "../../helpers/cases.ts";
+
+const judge = await loadJudge(DEFAULT_JUDGE);
+const texts = judge.definition.texts;
 
 describe("terms", () => {
 	it("finds quoted text, amounts, durations, dates, clause references and names", () => {
@@ -82,7 +86,7 @@ describe("view", () => {
 				observation: { source: "documents/lease.pdf, page 1", text: "Section 4.2" },
 			},
 		];
-		const chosen = view({ workspace, log }, "choose", 50_000);
+		const chosen = view(texts, { workspace, log }, "choose", 50_000);
 		expect(Object.keys(chosen.state)).toEqual([
 			"process",
 			"stage",
@@ -95,7 +99,7 @@ describe("view", () => {
 		expect(chosen.state["files"]).toEqual(
 			expect.arrayContaining([expect.objectContaining({ path: "documents/lease.pdf", read: "1 of 2 parts" })]),
 		);
-		expect(Object.keys(view({ workspace, log }, "answer", 50_000).state)).toEqual(["request", "evidence"]);
+		expect(Object.keys(view(texts, { workspace, log }, "answer", 50_000).state)).toEqual(["request", "evidence"]);
 	});
 
 	it("cuts the longest evidence first to fit, and says so", () => {
@@ -114,13 +118,22 @@ describe("view", () => {
 
 describe("legalJudge", () => {
 	it("gathers evidence, then asks whether each item is met and whether anything is missed", async () => {
-		expect(itemQuestion({ id: "S-1", category: null, text: "PASS if x." }).instructions).toMatch(
-			/Rubric item S-1:\nPASS if x\.\n\nDoes the submitted answer meet this item\?$/,
-		);
+		const item = { id: "S-1", category: null, text: "PASS if x." };
+		expect(itemQuestions(judge.definition, item).map((question) => question.instructions)).toEqual([
+			"Rubric item S-1:\nPASS if x.\n\nDoes the submitted answer meet this item?",
+			expect.stringMatching(/^Rubric item S-1:\nPASS if x\.\n\nCheck each requirement/) as unknown,
+		]);
+		expect(itemVerdict({ ...item, category: "form" })).toMatchObject({
+			id: "S-1",
+			instructions: "Rubric item S-1 (form):\nPASS if x.",
+		});
+		const domain = legalJudge(judge);
+		expect(domain.version).toBe(`0.3.0 legal-judge@${judge.hash.slice(0, 12)}`);
 		let calls = 0;
 		const decider = fakeDecider(answering(0.9, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
-		const result = await run(legalJudge, workspaceOf(legalCase()), decider, { case: "case-1" });
+		const result = await run(domain, workspaceOf(legalCase()), decider, { case: "case-1" });
 		expect(result.steps).toBe(2);
+		expect(decider.requests[0]?.questions[0]?.instructions).toBe(`${texts.gather} ${texts.choose}`);
 		const last = decider.requests.at(-1);
 		expect(last?.questions.map((question) => question.id)).toEqual([
 			"S-001/meets",
@@ -128,10 +141,7 @@ describe("legalJudge", () => {
 			"F-001/meets",
 			"F-001/misses",
 		]);
-		expect(last?.state).toMatchObject({
-			process: expect.stringContaining("two stages") as unknown,
-			rules: expect.any(String) as unknown,
-		});
+		expect(last?.state).toMatchObject({ process: texts.process, stage: texts.check, rules: texts.rules });
 		// Every question answered 0.9: the answer meets each item, but also misses something, so both fail.
 		expect(result.answers).toEqual({
 			"S-001": { kind: "bool", probability: expect.closeTo(0.1) as unknown },
@@ -140,16 +150,38 @@ describe("legalJudge", () => {
 	});
 });
 
+describe("judge definitions", () => {
+	const definition = judge.definition;
+
+	it("are named by a hash of their content, not of their formatting", () => {
+		const reordered = Object.fromEntries(Object.entries(definition).reverse());
+		const reformatted = JSON.parse(JSON.stringify(reordered, null, 7)) as unknown;
+		expect(judgeOf(reformatted).hash).toBe(judge.hash);
+		expect(judge.hash).toMatch(/^[0-9a-f]{64}$/);
+		const changed = { ...definition, texts: { ...definition.texts, rules: `${definition.texts.rules} More.` } };
+		expect(judgeOf(changed).hash).not.toBe(judge.hash);
+	});
+
+	it("refuse unknown fields, a question without the item, and two questions with one id", () => {
+		expect(() => judgeOf({ ...definition, extra: 1 })).toThrow();
+		const [meets] = definition.questions;
+		if (meets === undefined) throw new Error("the judge has no questions");
+		expect(() => judgeOf({ ...definition, questions: [{ ...meets, instructions: "No item." }] })).toThrow();
+		expect(() => judgeOf({ ...definition, questions: [meets, meets] })).toThrow("question ids must differ");
+	});
+});
+
 describe("combine", () => {
 	const item = { id: "S-1", category: null, text: "PASS if x." };
 	const bool = (probability: number): Answer => ({ kind: "bool", probability });
+	const definition = judge.definition;
 
-	it("passes an item only when it is met and nothing is missed", () => {
-		expect(combine(item, { "S-1/meets": bool(0.9), "S-1/misses": bool(0.2) })).toEqual(bool(0.8));
-		expect(combine(item, { "S-1/meets": bool(0.9), "S-1/misses": bool(0.7) })).toEqual(
+	it("passes an item only when every question for it says yes and every question against it says no", () => {
+		expect(combine(definition, item, { "S-1/meets": bool(0.9), "S-1/misses": bool(0.2) })).toEqual(bool(0.8));
+		expect(combine(definition, item, { "S-1/meets": bool(0.9), "S-1/misses": bool(0.7) })).toEqual(
 			bool(expect.closeTo(0.3) as unknown as number),
 		);
-		expect(combine(item, { "S-1/meets": bool(0.4), "S-1/misses": bool(0.1) })).toEqual(bool(0.4));
-		expect(combine(item, {})).toEqual(bool(0));
+		expect(combine(definition, item, { "S-1/meets": bool(0.4), "S-1/misses": bool(0.1) })).toEqual(bool(0.4));
+		expect(combine(definition, item, {})).toEqual(bool(0));
 	});
 });

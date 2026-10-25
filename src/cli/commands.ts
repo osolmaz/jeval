@@ -5,7 +5,6 @@ import {
 	answerSchema,
 	type Decider,
 	type Fork,
-	type Limits,
 	limitsOf,
 	parseTrace,
 	recording,
@@ -33,14 +32,14 @@ export type CaseResult = z.infer<typeof resultSchema>;
 export interface RunOptions {
 	readonly out: string;
 	readonly concurrency: number;
-	readonly limits: Limits;
 	readonly log: (line: string) => void;
 }
 
-/** What `jeval run` writes as `run.json`: what ran, on which code, and when the run finished, its totals. */
+/** What `jeval run` writes as `run.json`: what ran, with which judge, on which code, and at the end its totals. */
 export const runRecordSchema = z.object({
 	domain: z.string(),
 	version: z.string(),
+	judge: z.object({ name: z.string(), hash: z.string(), definition: z.record(z.string(), z.unknown()) }),
 	model: z.string(),
 	limits: z.object({ steps: z.number().int(), options: z.number().int(), windowShare: z.number() }),
 	jeval: z.object({ version: z.string(), commit: z.string().nullable(), changed: z.boolean().nullable() }),
@@ -98,7 +97,7 @@ async function runOne(domain: DomainEntry, folder: string, decider: Decider, opt
 	const recorded = recording(decider, (exchange) => {
 		requestLines.add(exchange);
 	});
-	const { result, categories } = await domain.run(folder, recorded, options.limits, trace);
+	const { result, categories } = await domain.run(folder, recorded, domain.limits, trace);
 	await Promise.all([traceLines.done(), requestLines.done()]);
 	const record: CaseResult = {
 		case: id,
@@ -120,8 +119,9 @@ async function startRun(domain: DomainEntry, decider: Decider, options: RunOptio
 	const record: RunRecord = {
 		domain: domain.name,
 		version: domain.version,
+		judge: domain.judge,
 		model: decider.model,
-		limits: { ...options.limits },
+		limits: { ...domain.limits },
 		jeval: await jevalSource(),
 		started: new Date().toISOString(),
 		finished: null,

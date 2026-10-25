@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { Command, InvalidArgumentError } from "commander";
-import { DEFAULT_LIMITS, type Decider } from "../core/index.ts";
+import type { Decider } from "../core/index.ts";
+import { DEFAULT_JUDGE } from "../domains/legal-judge/index.ts";
 import { piAiDecider } from "../models/pi-ai.ts";
 import { replayCase, runCases, scoreResults } from "./commands.ts";
-import { DOMAINS, type DomainEntry } from "./domains.ts";
+import { domainFor, INGESTERS } from "./domains.ts";
 
 const positive = (value: string): number => {
 	const number = Number(value);
@@ -12,11 +13,12 @@ const positive = (value: string): number => {
 	return number;
 };
 
-const domainNamed = (name: string): DomainEntry => {
-	const domain = DOMAINS[name];
-	if (domain === undefined)
-		throw new InvalidArgumentError(`no domain ${name}; known: ${Object.keys(DOMAINS).join(", ")}`);
-	return domain;
+type Ingester = (typeof INGESTERS)[string];
+const ingesterNamed = (name: string): Ingester => {
+	const ingester = INGESTERS[name];
+	if (ingester === undefined)
+		throw new InvalidArgumentError(`no domain ${name}; known: ${Object.keys(INGESTERS).join(", ")}`);
+	return ingester;
 };
 
 /** The model's API key from `variable`, or from PROVIDER_API_KEY; white space around it is not part of it. */
@@ -43,10 +45,10 @@ program
 	.description("Turn an input folder (request.md, rubric.json, documents/, answer/) into a case folder")
 	.argument("<input>")
 	.argument("<output>")
-	.option("--domain <name>", "the domain", domainNamed, domainNamed("legal-judge"))
+	.option("--domain <name>", "the domain", ingesterNamed, ingesterNamed("legal-judge"))
 	.option("--id <id>", "the case id; the input folder's name by default")
-	.action(async (input: string, output: string, options: { domain: DomainEntry; id?: string }) => {
-		await options.domain.ingest(input, output, options.id ?? input.split("/").filter(Boolean).at(-1) ?? "case");
+	.action(async (input: string, output: string, options: { domain: Ingester; id?: string }) => {
+		await options.domain(input, output, options.id ?? input.split("/").filter(Boolean).at(-1) ?? "case");
 	});
 
 program
@@ -54,30 +56,18 @@ program
 	.description("Run a domain on case folders into a run folder: run.json, and each case's result, trace and requests")
 	.argument("<cases...>")
 	.requiredOption("--out <folder>", "the run folder; a stopped run goes on in its own folder")
-	.option("--domain <name>", "the domain", domainNamed, domainNamed("legal-judge"))
+	.option("--judge <file>", "the judge definition", DEFAULT_JUDGE)
 	.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
 	.option("--api-key-env <variable>", "the environment variable that holds the API key")
 	.option("--concurrency <n>", "cases at once", positive, 4)
-	.option("--steps <n>", "the most steps a case may take", positive, DEFAULT_LIMITS.steps)
-	.option("--options <n>", "the most options on a menu", positive, DEFAULT_LIMITS.options)
 	.action(
 		async (
 			cases: string[],
-			options: {
-				out: string;
-				domain: DomainEntry;
-				model: string;
-				apiKeyEnv?: string;
-				concurrency: number;
-				steps: number;
-				options: number;
-			},
+			options: { out: string; judge: string; model: string; apiKeyEnv?: string; concurrency: number },
 		) => {
-			const limits = { ...DEFAULT_LIMITS, steps: options.steps, options: options.options };
-			await runCases(options.domain, cases, decider(options.model, options.apiKeyEnv), {
+			await runCases(await domainFor(options.judge), cases, decider(options.model, options.apiKeyEnv), {
 				out: options.out,
 				concurrency: options.concurrency,
-				limits,
 				log,
 			});
 		},
@@ -90,7 +80,7 @@ program
 	)
 	.argument("<case>")
 	.argument("<trace>")
-	.option("--domain <name>", "the domain", domainNamed, domainNamed("legal-judge"))
+	.option("--judge <file>", "the judge definition the trace was made with", DEFAULT_JUDGE)
 	.option("--fork <steps>", "repeat this many recorded steps, then let --model decide", positive)
 	.option("--model <provider/id>", "the model for a fork", "typesafe/jev-latest")
 	.option("--api-key-env <variable>", "the environment variable that holds the API key")
@@ -98,13 +88,13 @@ program
 		async (
 			folder: string,
 			trace: string,
-			options: { domain: DomainEntry; fork?: number; model: string; apiKeyEnv?: string },
+			options: { judge: string; fork?: number; model: string; apiKeyEnv?: string },
 		) => {
 			const fork =
 				options.fork === undefined
 					? undefined
 					: { steps: options.fork, then: decider(options.model, options.apiKeyEnv) };
-			const { result } = await replayCase(options.domain, folder, trace, fork);
+			const { result } = await replayCase(await domainFor(options.judge), folder, trace, fork);
 			process.stdout.write(
 				`${JSON.stringify({ answers: result.answers, steps: result.steps, error: result.error }, null, 1)}\n`,
 			);

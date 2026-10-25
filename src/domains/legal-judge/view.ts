@@ -1,6 +1,6 @@
 import type { Json, JsonObject, State, View } from "../../core/index.ts";
 import type { CaseFile } from "./case.ts";
-import { GATHER, PROCESS } from "./prompts.ts";
+import type { JudgeDefinition } from "./definition.ts";
 import { LIMITS, readParts, type Workspace } from "./workspace.ts";
 
 const size = (value: Json): number => Math.ceil(JSON.stringify(value).length / LIMITS.charsPerToken);
@@ -10,12 +10,12 @@ function readStatus(file: CaseFile, read: ReadonlySet<number> | undefined): stri
 	return read.size >= file.units.length ? "all" : `${String(read.size)} of ${String(file.units.length)} parts`;
 }
 
-function chooseState(state: State<Workspace>): JsonObject {
+function chooseState(state: State<Workspace>, texts: JudgeDefinition["texts"]): JsonObject {
 	const legalCase = state.workspace.case;
 	const read = readParts(state.log);
 	return {
-		process: PROCESS,
-		stage: GATHER,
+		process: texts.process,
+		stage: texts.gather,
 		request: legalCase.request,
 		rubric: legalCase.items.map((item) => ({ id: item.id, criterion: item.text })),
 		files: legalCase.files.map((file) => ({
@@ -61,8 +61,13 @@ export function fitEvidence(evidence: readonly Evidence[], room: number): { evid
 }
 
 /** The state the model sees: for a choice, the rubric and the files as well; for the answers, the evidence. */
-export function view(state: State<Workspace>, purpose: "choose" | "answer", tokens: number): View {
-	const base = purpose === "choose" ? chooseState(state) : { request: state.workspace.case.request };
+export function view(
+	texts: JudgeDefinition["texts"],
+	state: State<Workspace>,
+	purpose: "choose" | "answer",
+	tokens: number,
+): View {
+	const base = purpose === "choose" ? chooseState(state, texts) : { request: state.workspace.case.request };
 	const evidence = state.log.map(({ observation }) => ({ source: observation.source, text: observation.text }));
 	const fitted = fitEvidence(evidence, tokens - size(base));
 	return {

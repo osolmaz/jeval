@@ -11,14 +11,16 @@ import {
 	runRecordSchema,
 	scoreResults,
 } from "../../src/cli/commands.ts";
-import { DOMAINS, type DomainEntry } from "../../src/cli/domains.ts";
+import { domainFor, INGESTERS } from "../../src/cli/domains.ts";
 import { DEFAULT_LIMITS, parseTrace, STOP_KEY } from "../../src/core/index.ts";
+import { DEFAULT_JUDGE } from "../../src/domains/legal-judge/index.ts";
 import { answering, fakeDecider, missingNothing } from "../helpers/fakes.ts";
 
 let folder = "";
-const found = DOMAINS["legal-judge"];
+const legalJudge = await domainFor(DEFAULT_JUDGE);
+const found = INGESTERS["legal-judge"];
 if (found === undefined) throw new Error("the legal-judge domain is missing");
-const legalJudge: DomainEntry = found;
+const ingest = found;
 
 async function inputFolder(name: string): Promise<string> {
 	const input = join(folder, "inputs", name);
@@ -59,13 +61,12 @@ describe("inPool", () => {
 
 describe("commands", () => {
 	it("ingests and runs cases, writes results and traces, skips done cases, replays a trace and scores the results", async () => {
-		await legalJudge.ingest(await inputFolder("c1"), join(folder, "cases", "c1"), "c1");
-		await legalJudge.ingest(await inputFolder("c2"), join(folder, "cases", "c2"), "c2");
+		await ingest(await inputFolder("c1"), join(folder, "cases", "c1"), "c1");
+		await ingest(await inputFolder("c2"), join(folder, "cases", "c2"), "c2");
 		const lines: string[] = [];
 		const options = {
 			out: join(folder, "out"),
 			concurrency: 2,
-			limits: DEFAULT_LIMITS,
 			log: (line: string) => lines.push(line),
 		};
 		const decider = fakeDecider(missingNothing(answering(0.8, () => STOP_KEY)));
@@ -74,6 +75,7 @@ describe("commands", () => {
 		const run = runRecordSchema.parse(JSON.parse(await readFile(join(folder, "out", "run.json"), "utf8")));
 		expect(run).toMatchObject({
 			domain: "legal-judge",
+			judge: { name: "legal-judge", hash: legalJudge.judge.hash },
 			model: "fake/decider",
 			limits: DEFAULT_LIMITS,
 			jeval: { version: expect.any(String) as unknown },
@@ -113,9 +115,10 @@ describe("commands", () => {
 		await runCases(legalJudge, [join(folder, "cases", "c1")], decider, options);
 		expect(lines).toContain("c1: already done");
 
-		await expect(
-			runCases(legalJudge, [], decider, { ...options, limits: { ...DEFAULT_LIMITS, steps: 2 } }),
-		).rejects.toThrow(RunMismatchError);
+		const variant = join(folder, "variant.json");
+		const definition = JSON.parse(await readFile(DEFAULT_JUDGE, "utf8")) as { limits: { steps: number } };
+		await writeFile(variant, JSON.stringify({ ...definition, limits: { ...definition.limits, steps: 2 } }));
+		await expect(runCases(await domainFor(variant), [], decider, options)).rejects.toThrow(RunMismatchError);
 
 		const replayed = await replayCase(
 			legalJudge,
@@ -139,7 +142,7 @@ describe("commands", () => {
 	});
 
 	it("records a failed case's error", async () => {
-		await legalJudge.ingest(await inputFolder("c1"), join(folder, "cases", "c1"), "c1");
+		await ingest(await inputFolder("c1"), join(folder, "cases", "c1"), "c1");
 		const lines: string[] = [];
 		const broken = fakeDecider((request, call) =>
 			request.questions[0]?.kind === "choice"
@@ -149,7 +152,6 @@ describe("commands", () => {
 		await runCases(legalJudge, [join(folder, "cases", "c1")], broken, {
 			out: join(folder, "out"),
 			concurrency: 1,
-			limits: DEFAULT_LIMITS,
 			log: (line) => lines.push(line),
 		});
 		expect(lines).toEqual(["c1: stop | ERROR provider: down"]);

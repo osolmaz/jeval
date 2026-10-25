@@ -44,8 +44,15 @@ results/
 node src/cli/main.ts run cases/* --out results --model typesafe/jev-latest
 ```
 
+The judge is a file, `judges/legal-judge.json` unless `--judge` names another. It holds everything the model reads
+apart from the case: the description of the process and of each stage, the rules for applying a rubric, the questions
+asked about every rubric item, and the limits of evidence gathering. `{item}` in a question becomes the item's label and
+text. Each question counts for the item or against it, and an item passes only when every question for it says yes
+and every question against it says no. A judge is named by the SHA-256 of its parsed content, which appears in the run's
+version, its trace and `run.json`; to try other texts or questions, copy the file and run with `--judge`.
+
 A stopped run goes on in the same folder and skips the cases that are done; a folder that holds a run of another
-domain, model, limits or commit is refused. `replay` runs a case again from its trace; with `--fork <steps>`, it
+domain, judge, model or commit is refused. `replay` runs a case again from its trace; with `--fork <steps>`, it
 repeats that many recorded steps and lets the model go on from there. `score` compares a run with reference labels in
 JSON Lines (`{"id", "items": [{"id", "pass"}]}`):
 

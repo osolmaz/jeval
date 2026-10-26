@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/cover.svg" alt="Switch: a framework for building decision-model harnesses for any kind of task" width="880">
+  <img src="assets/cover.svg" alt="switch: a framework for building decision-model harnesses for any kind of task" width="880">
 </p>
 
-# Switch
+# switch
 
-Switch is a framework for building decision-model harnesses for any kind of task.
+switch is a framework for building decision-model harnesses for any kind of task.
 
 A decision model reads a state, such as text or a JSON object, and answers typed questions about it. It picks one of a
 list of options, rates the state on a scale, or gives the probability that a statement is true, and every answer comes
@@ -17,29 +17,29 @@ API as Jev, and the Hugging Face Hub tags thousands of models as
 them with Jev on tasks such as tool use, retrieval, reasoning and games.
 
 Decision models are fast and cheap, but they cannot write a tool call, so the usual agent loop does not fit them.
-Switch gives them a loop that does. At each step, your program offers the model a short list of possible next steps
+switch gives them a loop that does. At each step, your program offers the model a short list of possible next steps
 and the model picks one. Your program carries out that step and shows the model what it found, and this repeats until
 the model can answer the task's questions. The name comes from a railway switch, where one track splits into a few:
 your program lays the tracks, and the model sets the switch.
 
 The task itself comes from a domain, which you write in a few small pieces of TypeScript. A domain defines the
 workspace of one case and the actions that can be taken in it. It also sets the questions the model answers at the end
-and how the state is shown to the model. Switch runs the same loop for every domain and keeps the model's probability
+and how the state is shown to the model. switch runs the same loop for every domain and keeps the model's probability
 for every option on every menu. It fits the state into the model's window and writes a trace of every step, which can
-be replayed or forked. Switch ships two domains: `legal-judge`, which grades answers to legal tasks against a rubric, and `chess`. The
+be replayed or forked. switch ships two domains: `legal-judge`, which grades answers to legal tasks against a rubric, and `chess`. The
 same loop fits any task where a model should look around before it decides, such as routing a support ticket after
 reading its logs or deciding whether a report needs a person.
 
 ## Install
 
-Switch needs Node.js 22.13 or newer and pnpm. To use it as a library or command in another project, add it pinned to a
+switch needs Node.js 22.13 or newer and pnpm. To use it as a library or command in another project, add it pinned to a
 commit; installing builds it.
 
 ```bash
 pnpm add github:osolmaz/switch#<commit>
 ```
 
-To work on Switch itself, clone it and run `pnpm install`. A domain that needs other programs lists them in its own
+To work on switch itself, clone it and run `pnpm install`. A domain that needs other programs lists them in its own
 README.
 
 ## Domains

@@ -7,7 +7,7 @@ import { packageRoot } from "../core/index.ts";
 const run = promisify(execFile);
 const ROOT = packageRoot(import.meta.url);
 
-/** The Switch code that ran: its package version and, in a Git checkout, its commit and whether it had changes. */
+/** The switch code that ran: its package version and, in a Git checkout, its commit and whether it had changes. */
 export interface Source {
 	readonly version: string;
 	readonly commit: string | null;

@@ -1,4 +1,4 @@
-# pi-ai's provider SDKs ship install scripts that Switch does not need.
+# pi-ai's provider SDKs ship install scripts that switch does not need.
 onlyBuiltDependencies: []
 ignoredBuiltDependencies:
   - "@google/genai"

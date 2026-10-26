@@ -8,7 +8,7 @@ date: 2026-10-25
 
 ## TL;DR
 
-Switch's `legal-judge` domain with Jev agreed with the reference labels on 94.6% and 95.0% of 1,288 rubric items in two
+switch's `legal-judge` domain with Jev agreed with the reference labels on 94.6% and 95.0% of 1,288 rubric items in two
 runs on the same 100 saved answers. That is level with the best of two chat-model judges in an agentic harness
 (DeepSeek-V4.1-Flash, 94.6% over the same scheduled items) and above GPT-6 Luna (93.5%). A run took about 320 calls of
 about 0.3 seconds each and 3.2 million input tokens.
@@ -36,11 +36,11 @@ about 0.3 seconds each and 3.2 million input tokens.
 | ------------------------------------------------------ | ----------- | ----- | ------------ | ----------- | ------------------- |
 | GPT-6 Luna, agentic harness                            | 93.5%       | 0.83  | 26           | 58          | 88.0%               |
 | DeepSeek-V4.1-Flash, agentic harness (1 answer failed) | 94.6%       | 0.87  | 49           | 6           | 93.9%               |
-| Switch prototype (a single script), Jev                | 94.6%       | 0.84  | 49           | 21          | 93.0%               |
-| Switch, Jev, first run                                 | 95.0%       | 0.86  | 42           | 23          | 92.0%               |
-| Switch, Jev, second run                                | 94.6%       | 0.84  | 49           | 21          | 91.0%               |
+| switch prototype (a single script), Jev                | 94.6%       | 0.84  | 49           | 21          | 93.0%               |
+| switch, Jev, first run                                 | 95.0%       | 0.86  | 42           | 23          | 92.0%               |
+| switch, Jev, second run                                | 94.6%       | 0.84  | 49           | 21          | 91.0%               |
 
-The two Switch runs differ by 5 items, which is within the variation between runs; they are a tie. By category, the
+The two switch runs differ by 5 items, which is within the variation between runs; they are a tie. By category, the
 second run got form items 100%, substance items 94.4% and citation items 92.9% right.
 
 ## How Jev used the menu

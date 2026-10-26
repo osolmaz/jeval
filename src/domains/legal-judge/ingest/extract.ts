@@ -81,7 +81,7 @@ const READERS: Readonly<Record<string, (bytes: Uint8Array, tools: Tools) => Prom
 	doc: async (bytes, tools) => plain("text", textUnits(await tools.docText(bytes))),
 };
 
-/** A file's text, parts and images, by its extension. A format Switch does not read gives a file with no parts. */
+/** A file's text, parts and images, by its extension. A format switch does not read gives a file with no parts. */
 export async function extractFile(path: string, bytes: Uint8Array, tools: Tools): Promise<Extracted> {
 	const extension = extensionOf(path);
 	if (extension in IMAGES) return image(extension, bytes, tools);

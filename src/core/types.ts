@@ -1,5 +1,5 @@
 /**
- * The building blocks of Switch: a domain declares actions, questions and a view over a workspace; the core runs the
+ * The building blocks of switch: a domain declares actions, questions and a view over a workspace; the core runs the
  * loop that lets a decision model choose actions until it can answer the questions.
  */
 

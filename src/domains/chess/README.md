@@ -7,7 +7,7 @@ moves of the model.
 
 ## Install
 
-Chess needs nothing beyond Switch itself; install it as the [main README](../../../README.md#install) says.
+Chess needs nothing beyond switch itself; install it as the [main README](../../../README.md#install) says.
 
 ## Cases
 

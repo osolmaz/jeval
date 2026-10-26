@@ -9,7 +9,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import type { Answer, Decider, DecisionRequest, DecisionResult, Question } from "../core/index.ts";
 
-/** The part of pi-ai's model registry that Switch uses; tests pass a fake. */
+/** The part of pi-ai's model registry that switch uses; tests pass a fake. */
 export interface ClassifierRegistry {
 	getModelOfType(type: "classifier", provider: string, id: string): ClassifierModel<ClassifierApi> | undefined;
 	classify(

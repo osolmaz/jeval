@@ -8,7 +8,7 @@ a variant of the judge is another file passed with `--judge`.
 
 ## Install
 
-Install Switch first, as the [main README](../../../README.md#install) says. `ingest` also calls three programs, which
+Install switch first, as the [main README](../../../README.md#install) says. `ingest` also calls three programs, which
 must be on the `PATH`. It calls each one only for the files that need it:
 
 - Poppler's `pdftoppm` renders PDF pages that have no text layer, such as scans, as images.
@@ -36,7 +36,7 @@ node src/cli/main.ts ingest input/case-1 cases/case-1
 node src/cli/main.ts run cases/case-1 --out results --model typesafe/jev-latest
 ```
 
-A run writes one folder. `run.json` records what ran, including the judge's hash and the Switch commit. Each case keeps
+A run writes one folder. `run.json` records what ran, including the judge's hash and the switch commit. Each case keeps
 its answers and a trace of every step, and `requests.jsonl` keeps every request exactly as the model received it. A
 stopped run goes on in the same folder.
 

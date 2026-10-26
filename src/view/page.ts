@@ -137,7 +137,7 @@ export function casePage(input: PageInput): string {
 		"</nav>",
 	].join("");
 	const body = `<body${liveData}>${header}${controls}<main>${sections.join("")}</main><script>${SCRIPT}</script></body>`;
-	return document(`${story.case} · Switch`, body);
+	return document(`${story.case} · switch`, body);
 }
 
 /** A page that links each case of a run, with its outcome when it has one. */
@@ -147,7 +147,7 @@ export function indexPage(run: string, cases: readonly { id: string; outcome: st
 			`<li><a href="/case/${encodeURIComponent(id)}">${escape(id)}</a>${outcome === null ? "" : ` <span class="meta">${escape(outcome)}</span>`}</li>`,
 	);
 	const body = `<body><header class="top"><h1>${escape(run)}</h1></header><main class="list"><ul>${items.join("")}</ul></main></body>`;
-	return document(`${run} · Switch`, body);
+	return document(`${run} · switch`, body);
 }
 
 function document(title: string, body: string): string {

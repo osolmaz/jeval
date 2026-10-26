@@ -1,6 +1,6 @@
 # AGENTS.md
 
-- Read [docs/2026-10-25-jeval-plan.md](docs/2026-10-25-jeval-plan.md) before you change the design or start a
+- Read [docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) before you change the design or start a
   phase.
 - Run `pnpm check` before you finish: format, lint, typecheck, tests with the 85% coverage gate, the DRY scan and
   `slophammer-ts check .`. CI does not run mutation tests; `pnpm mutate` runs

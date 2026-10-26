@@ -1,21 +1,21 @@
 ---
-title: jeval plan
+title: Switch plan
 author: Onur Solmaz
 date: 2026-10-25
 ---
 
-# jeval plan
+# Switch plan
 
 ## TL;DR
 
-jeval is a harness that lets a decision model, such as TypeSafe's Jev, work through a multi-step task. At
+Switch is a harness that lets a decision model, such as TypeSafe's Jev, work through a multi-step task. At
 each step code lists the steps that are allowed, the model picks one, and code runs it, until the model can
 answer typed questions about the case. A prototype that graded legal answers this way got 94.6% of 1,288
 rubric items right on a labeled eval, as many as the best chat-model judge, at about 0.3 seconds a call.
 The plan is a small core with five building blocks, domains declared as packages, control from the model's
 own probabilities, and replayable traces, built and measured in six phases.
 
-## What jeval is
+## What Switch is
 
 Decision models do not write text. They read a JSON state and answer typed questions: pick one of several
 choices, answer yes or no, or give a score, each with a probability. TypeSafe's Jev is one; Cloudflare's
@@ -23,7 +23,7 @@ Clef and the decision models that llama.cpp serves are others. They are fast and
 probabilities are calibrated, but they cannot write a tool call or a shell command, so the usual agent loop
 does not fit them.
 
-jeval gives them a loop that does fit. Code builds the menu of steps that make sense in the current state,
+Switch gives them a loop that does fit. Code builds the menu of steps that make sense in the current state,
 the model chooses one with a `choice` question, code runs the step and adds what it found to the state, and
 the loop ends when the model chooses to stop or a budget runs out. The model then answers the case's
 questions. Grading an answer against a rubric is the first use, but nothing in the core is about grading:
@@ -55,7 +55,7 @@ list the files, read the answer, read some documents, write the verdicts.
 The judge opened a median of a third of the documents when there were two or more, so choosing which file
 to read matters. About half of its search terms came word for word from the rubric item; the rest were
 clause numbers, dates and names from the answer or the documents. This list of steps became the first menu.
-jeval does not have to copy the judge's path; it has to reach verdicts as good.
+Switch does not have to copy the judge's path; it has to reach verdicts as good.
 
 ### A decision model without the documents
 
@@ -134,11 +134,11 @@ Two ideas from planning fit our case better than plain PDDL.
   planner can search ahead. A search's result is unknown until it runs. Planning with sensing actions
   handles this, and the knowledge-level planner PKS (Petrick and Bacchus, 2002) lets a goal be "know
   whether X" instead of "make X true".
-- **A goal about knowing.** A judge's goal is: for every rubric item, know whether it passes. In jeval,
+- **A goal about knowing.** A judge's goal is: for every rubric item, know whether it passes. In Switch,
   "know" means the model's probability for the item is far from 0.5. That gives the stopping rule below
   directly from the formal model.
 
-What jeval takes from PDDL: the domain and case split, typed parameters, conditions on actions, and
+What Switch takes from PDDL: the domain and case split, typed parameters, conditions on actions, and
 filling the schemas in to get a finite menu. What it leaves out: PDDL's syntax, because options and
 observations need real code, and the planner's search, because the decision model is the policy and acts
 one step at a time.
@@ -217,7 +217,7 @@ menus and, later, to train a decision model on.
 ## Models
 
 The model sits behind pi-ai's classifier interface (`classify`), so any classifier that pi-ai lists can
-drive jeval: Jev from TypeSafe and the providers that resell it, Clef on Cloudflare Workers AI, the decision
+drive Switch: Jev from TypeSafe and the providers that resell it, Clef on Cloudflare Workers AI, the decision
 models that llama.cpp serves, and a chat model used as a classifier, which reads answers from next-token
 probabilities. Images go with the state for models that accept them. A run records the model's exact
 identifier and, where the provider returns it, the served version, because a name such as `jev-latest`
@@ -275,20 +275,20 @@ Domains ship as npm or Git packages, in the way Pi packages ship, and a run name
 ## Modes
 
 - **SDK.** The core is a TypeScript library; the other modes are built on it.
-- **Command line.** `jeval run --domain <package> --case <dir>` writes the trace and prints the answers as
+- **Command line.** `switch run --domain <package> --case <dir>` writes the trace and prints the answers as
   JSON.
 - **Interactive.** A person watches each menu with its probabilities and can override a choice or an answer.
   The same screen is a labeling tool: a person's answers become reference labels, with the trace as the
   record of what they saw.
-- **Harbor verifier.** For a judge domain, an adapter runs jeval as a Harbor verifier, so a benchmark can be
-  graded by jeval and a judge eval can measure it.
+- **Harbor verifier.** For a judge domain, an adapter runs Switch as a Harbor verifier, so a benchmark can be
+  graded by Switch and a judge eval can measure it.
 
 ## Principles borrowed from Pi
 
-Pi's own design is the model for jeval's: its core is minimal, its features are primitives that extensions
+Pi's own design is the model for Switch's: its core is minimal, its features are primitives that extensions
 build on, and it lists what it chose not to build.
 
-| Pi                                                                         | jeval                                                                                    |
+| Pi                                                                         | Switch                                                                                   |
 | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | A minimal core; a feature that does not belong in the core is an extension | The core is only the loop and the trace                                                  |
 | Primitives, not features                                                   | Five building blocks; grading, stopping rules and the cascade are extensions             |
@@ -300,13 +300,13 @@ build on, and it lists what it chose not to build.
 | A list of features left out on purpose                                     | The list below                                                                           |
 
 Pi's agent loop itself does not carry over: it expects a model that writes free text and tool arguments. A
-decision model can only pick from a finite list, so in jeval code writes every option.
+decision model can only pick from a finite list, so in Switch code writes every option.
 
-## What jeval leaves out
+## What Switch leaves out
 
 - **Free-form tool arguments.** Every option is written by code; the model only chooses.
 - **Side effects in actions.** Actions only read the workspace. A decision with an effect, such as sending a
-  case to a person, is a typed answer that the host program carries out. So jeval needs no permission
+  case to a person, is a typed answer that the host program carries out. So Switch needs no permission
   prompts and no sandbox for its own steps.
 - **A planner.** The decision model is the policy; there is no search ahead.
 - **Rubric logic in the core.** Grading is a domain.
@@ -354,7 +354,7 @@ versions, the number of repeats, the budget and the criteria for going further.
 - **Configurations.** Jev with the answer only; Jev with the menu; the menu plus belief-based stopping;
   the menu plus the cascade.
 - **Baselines.** Chat-model judges in an agentic harness on the same answers, and Pydantic AI's agent with
-  Jev as its model, with jeval's actions as its tools, run once to decide whether jeval needs its own loop.
+  Jev as its model, with Switch's actions as its tools, run once to decide whether Switch needs its own loop.
 - **Measures.** Item accuracy over all scheduled items, with failed cases counted as wrong; false passes and
   false fails; Cohen's kappa; whole-answer accuracy; accuracy by item category; agreement between repeats;
   calls, tokens, time and cost per answer; and for the cascade, accuracy against the share of items sent
@@ -401,7 +401,7 @@ The command line, the interactive mode with overrides and label export, and the 
 
 ### Phase 6: second domain
 
-A second domain that is not a judge, such as routing a request to a model or sorting a report. jeval's core
+A second domain that is not a judge, such as routing a request to a model or sorting a report. Switch's core
 changes only if the second domain shows a gap; then the domains move to their own packages.
 
 ## Prior art
@@ -414,8 +414,8 @@ changes only if the second domain shows a gap; then the domains move to their ow
 - **Planning.** STRIPS (Fikes and Nilsson, 1971), PDDL (McDermott and others, 1998), and planning with
   sensing actions and knowledge goals, such as PKS (Petrick and Bacchus, 2002).
 - **Machine learning.** Active feature acquisition, sequential hypothesis testing, and selective prediction.
-- **Pi.** The minimal, extensible agent harness whose principles jeval follows, and pi-ai, whose classifier
-  interface jeval uses.
+- **Pi.** The minimal, extensible agent harness whose principles Switch follows, and pi-ai, whose classifier
+  interface Switch uses.
 
 ## Risks and open questions
 

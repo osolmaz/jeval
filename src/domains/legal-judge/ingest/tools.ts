@@ -45,7 +45,7 @@ export function pnmSize(pnm: Uint8Array): { width: number; height: number } {
 }
 
 async function inTemporaryFolder<T>(work: (folder: string) => Promise<T>): Promise<T> {
-	const folder = await mkdtemp(join(tmpdir(), "jeval-"));
+	const folder = await mkdtemp(join(tmpdir(), "switch-"));
 	try {
 		return await work(folder);
 	} finally {

@@ -30,7 +30,7 @@ async function inputFolder(name: string): Promise<string> {
 }
 
 beforeEach(async () => {
-	folder = await mkdtemp(join(tmpdir(), "jeval-cli-"));
+	folder = await mkdtemp(join(tmpdir(), "switch-cli-"));
 });
 afterEach(async () => {
 	await rm(folder, { recursive: true, force: true });
@@ -74,7 +74,7 @@ describe("commands", () => {
 			judge: { name: "legal-judge", hash: legalJudge.judge.hash },
 			model: "fake/decider",
 			limits: DEFAULT_LIMITS,
-			jeval: { version: expect.any(String) as unknown },
+			switch: { version: expect.any(String) as unknown },
 			finished: expect.stringMatching(/^\d{4}-/) as unknown,
 			set: { name: "s", file: "set.json" },
 			totals: { cases: 2, failed: 0, calls: 4 },

@@ -1,32 +1,33 @@
 <p align="center">
-  <img src="assets/cover.svg" alt="jeval: a framework for building decision-model harnesses for any kind of task" width="880">
+  <img src="assets/cover.svg" alt="Switch: a framework for building decision-model harnesses for any kind of task" width="880">
 </p>
 
-# jeval
+# Switch
 
-jeval is a framework for building decision-model harnesses for any kind of task. A decision model is a classifier
+Switch is a framework for building decision-model harnesses for any kind of task. A decision model is a classifier
 that answers typed questions about what it has been shown, such as TypeSafe's Jev. At each step, your program offers
 the model a short list of possible next steps and the model picks one. Your program carries out that step and shows
-the model what it found, and this repeats until the model can answer the task's questions.
+the model what it found, and this repeats until the model can answer the task's questions. The name comes from a
+railway switch, where one track splits into a few: your program lays the tracks, and the model sets the switch.
 
 The task itself comes from a domain, which you write in a few small pieces of TypeScript. A domain defines the
 workspace of one case and the actions that can be taken in it. It also sets the questions the model answers at the end
-and how the state is shown to the model. jeval runs the same loop for every domain and keeps the model's probability
+and how the state is shown to the model. Switch runs the same loop for every domain and keeps the model's probability
 for every option on every menu. It fits the state into the model's window and writes a trace of every step, which can
-be replayed or forked. jeval ships one domain, `legal-judge`, which grades answers to legal tasks against a rubric. The
+be replayed or forked. Switch ships one domain, `legal-judge`, which grades answers to legal tasks against a rubric. The
 same loop fits any task where a model should look around before it decides, such as routing a support ticket after
 reading its logs or deciding whether a report needs a person.
 
 ## Install
 
-jeval needs Node.js 22.13 or newer and pnpm. To use it as a library or command in another project, add it pinned to a
+Switch needs Node.js 22.13 or newer and pnpm. To use it as a library or command in another project, add it pinned to a
 commit; installing builds it.
 
 ```bash
-pnpm add github:osolmaz/jeval#<commit>
+pnpm add github:osolmaz/switch#<commit>
 ```
 
-To work on jeval itself, clone it and run `pnpm install`. The `legal-judge` domain also needs Poppler and LibreOffice
+To work on Switch itself, clone it and run `pnpm install`. The `legal-judge` domain also needs Poppler and LibreOffice
 to read PDF scans and old Word files, and Netpbm to scale images.
 
 ## Write a domain
@@ -87,7 +88,7 @@ const result = await run(triage, ticket, decider, { case: "ticket-1" });
 `result.answers` holds the answers. `result.trace` holds every menu the model saw with the probability it gave each
 option, and what each step found. A domain that needs more than one round of questions, such as asking about each part
 of an item before deciding the item, adds a `judge` function that asks in stages. `src/domains/legal-judge/` is the
-complete example, and [docs/2026-10-25-jeval-plan.md](docs/2026-10-25-jeval-plan.md) explains the design.
+complete example, and [docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) explains the design.
 
 ## Legal judge
 
@@ -108,7 +109,7 @@ node src/cli/main.ts ingest input/case-1 cases/case-1
 node src/cli/main.ts run cases/case-1 --out results --model typesafe/jev-latest
 ```
 
-A run writes one folder. `run.json` records what ran, including the judge's hash and the jeval commit. Each case keeps
+A run writes one folder. `run.json` records what ran, including the judge's hash and the Switch commit. Each case keeps
 its answers and a trace of every step, and `requests.jsonl` keeps every request exactly as the model received it. A
 stopped run goes on in the same folder.
 

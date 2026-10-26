@@ -54,7 +54,7 @@ const log = (line: string): void => {
 };
 
 const program = new Command()
-	.name("jeval")
+	.name("switch")
 	.description("Let a decision model work through cases by choosing from steps that code lists.");
 
 program

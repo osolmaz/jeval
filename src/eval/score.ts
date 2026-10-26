@@ -8,7 +8,7 @@ export const labelSchema = z.object({
 });
 export type Label = z.infer<typeof labelSchema>;
 
-/** A judge's verdicts on one case, as `jeval run` writes them; `answers` is null when the case failed. */
+/** A judge's verdicts on one case, as `switch run` writes them; `answers` is null when the case failed. */
 export interface Verdicts {
 	readonly answers: Readonly<Record<string, Answer>> | null;
 }

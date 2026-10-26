@@ -3,7 +3,7 @@ import { z } from "zod";
 import { answerSchema } from "../core/index.ts";
 import { caseFiles, casesFolder, runFile } from "./layout.ts";
 
-/** What `jeval run` writes as each case's `result.json`. */
+/** What `switch run` writes as each case's `result.json`. */
 export const resultSchema = z.object({
 	case: z.string(),
 	domain: z.string(),
@@ -17,7 +17,7 @@ export const resultSchema = z.object({
 export type CaseResult = z.infer<typeof resultSchema>;
 
 /**
- * What `jeval run` writes as `run.json`: what ran, with which judge and model, on which code, from which earlier run's
+ * What `switch run` writes as `run.json`: what ran, with which judge and model, on which code, from which earlier run's
  * evidence if any, and at the end its totals.
  */
 export const runRecordSchema = z.object({
@@ -26,7 +26,7 @@ export const runRecordSchema = z.object({
 	judge: z.object({ name: z.string(), hash: z.string(), definition: z.record(z.string(), z.unknown()) }),
 	model: z.string(),
 	limits: z.object({ steps: z.number().int(), options: z.number().int(), windowShare: z.number() }),
-	jeval: z.object({ version: z.string(), commit: z.string().nullable(), changed: z.boolean().nullable() }),
+	switch: z.object({ version: z.string(), commit: z.string().nullable(), changed: z.boolean().nullable() }),
 	set: z.object({ name: z.string(), file: z.string() }).nullable(),
 	evidenceFrom: z.string().nullable(),
 	started: z.string(),

@@ -8,7 +8,7 @@ date: 2026-10-25
 
 ## TL;DR
 
-jeval's `legal-judge` domain with Jev agreed with the reference labels on 94.6% and 95.0% of 1,288 rubric items in two
+Switch's `legal-judge` domain with Jev agreed with the reference labels on 94.6% and 95.0% of 1,288 rubric items in two
 runs on the same 100 saved answers. That is level with the best of two chat-model judges in an agentic harness
 (DeepSeek-V4.1-Flash, 94.6% over the same scheduled items) and above GPT-6 Luna (93.5%). A run took about 320 calls of
 about 0.3 seconds each and 3.2 million input tokens.
@@ -19,7 +19,7 @@ about 0.3 seconds each and 3.2 million input tokens.
   reference labels come from strong models and a review. The tasks include clause drafting, contract redlines,
   extraction from scanned filings, and memos over data rooms. The answers were seen in earlier judge work, so this is
   not a held-out result.
-- **Cases.** `jeval ingest` turned each answer and its task into a case folder: 172 answer files, 71 PDFs (129 page
+- **Cases.** `switch ingest` turned each answer and its task into a case folder: 172 answer files, 71 PDFs (129 page
   images of pages without a text layer), 53 Word files, 12 emails, 8 spreadsheets, 11 text files and one slide deck,
   with no extraction errors.
 - **Model.** `typesafe/jev-latest` through pi-ai 1.4.0, with the default limits: 8 steps, 30 options a menu and 90% of
@@ -36,11 +36,11 @@ about 0.3 seconds each and 3.2 million input tokens.
 | ------------------------------------------------------ | ----------- | ----- | ------------ | ----------- | ------------------- |
 | GPT-6 Luna, agentic harness                            | 93.5%       | 0.83  | 26           | 58          | 88.0%               |
 | DeepSeek-V4.1-Flash, agentic harness (1 answer failed) | 94.6%       | 0.87  | 49           | 6           | 93.9%               |
-| jeval prototype (a single script), Jev                 | 94.6%       | 0.84  | 49           | 21          | 93.0%               |
-| jeval, Jev, first run                                  | 95.0%       | 0.86  | 42           | 23          | 92.0%               |
-| jeval, Jev, second run                                 | 94.6%       | 0.84  | 49           | 21          | 91.0%               |
+| Switch prototype (a single script), Jev                | 94.6%       | 0.84  | 49           | 21          | 93.0%               |
+| Switch, Jev, first run                                 | 95.0%       | 0.86  | 42           | 23          | 92.0%               |
+| Switch, Jev, second run                                | 94.6%       | 0.84  | 49           | 21          | 91.0%               |
 
-The two jeval runs differ by 5 items, which is within the variation between runs; they are a tie. By category, the
+The two Switch runs differ by 5 items, which is within the variation between runs; they are a tie. By category, the
 second run got form items 100%, substance items 94.4% and citation items 92.9% right.
 
 ## How Jev used the menu

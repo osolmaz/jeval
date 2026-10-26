@@ -172,7 +172,7 @@ describe("ingestCase and loadCase", () => {
 	});
 
 	it("turns an input folder into a case folder that loads back with its images", async () => {
-		folder = await mkdtemp(join(tmpdir(), "jeval-test-"));
+		folder = await mkdtemp(join(tmpdir(), "switch-test-"));
 		const input = join(folder, "input");
 		await mkdir(join(input, "answer", "files"), { recursive: true });
 		await mkdir(join(input, "documents"), { recursive: true });
@@ -206,7 +206,7 @@ describe("ingestCase and loadCase", () => {
 	});
 
 	it("reads a case with no documents folder", async () => {
-		folder = await mkdtemp(join(tmpdir(), "jeval-test-"));
+		folder = await mkdtemp(join(tmpdir(), "switch-test-"));
 		await mkdir(join(folder, "in", "answer"), { recursive: true });
 		await writeFile(join(folder, "in", "request.md"), "Draft a clause.");
 		await writeFile(

@@ -1,5 +1,5 @@
 {
-	"name": "@osolmaz/jeval",
+	"name": "@osolmaz/switch",
 	"version": "0.1.0",
 	"private": true,
 	"description": "A harness that lets decision models work through multi-step tasks by choosing from steps that code lists.",
@@ -10,7 +10,7 @@
 	},
 	"packageManager": "pnpm@10.20.0",
 	"bin": {
-		"jeval": "dist/src/cli/main.js"
+		"switch": "dist/src/cli/main.js"
 	},
 	"files": [
 		"dist",

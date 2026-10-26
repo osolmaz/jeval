@@ -4,7 +4,7 @@ import { type Decider, type Fork, limitsOf, parseTrace, recording, replayDecider
 import type { CaseRun, DomainEntry } from "./domains.ts";
 import { caseFiles, casesFolder, jsonLines, runFile } from "./layout.ts";
 import { type CaseResult, exists, readResults, readRunRecord, type RunRecord } from "./runs.ts";
-import { jevalSource } from "./source.ts";
+import { switchSource } from "./source.ts";
 
 export interface RunOptions {
 	readonly out: string;
@@ -83,7 +83,7 @@ async function startRun(domain: DomainEntry, decider: Decider, options: RunOptio
 		judge: domain.judge,
 		model: decider.model,
 		limits: { ...domain.limits },
-		jeval: await jevalSource(),
+		switch: await switchSource(),
 		set: options.set ?? null,
 		evidenceFrom: options.evidenceFrom ?? null,
 		started: new Date().toISOString(),
@@ -93,7 +93,7 @@ async function startRun(domain: DomainEntry, decider: Decider, options: RunOptio
 	if (!(await exists(runFile(options.out)))) return record;
 	const before = await readRunRecord(options.out);
 	const same = (run: RunRecord) =>
-		JSON.stringify([run.domain, run.version, run.model, run.limits, run.jeval.commit, run.set, run.evidenceFrom]);
+		JSON.stringify([run.domain, run.version, run.model, run.limits, run.switch.commit, run.set, run.evidenceFrom]);
 	if (same(before) !== same(record)) {
 		throw new RunMismatchError(`${options.out} holds another run (${same(before)}); use another --out`);
 	}

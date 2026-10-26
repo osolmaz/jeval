@@ -7,14 +7,14 @@ import { packageRoot } from "../core/index.ts";
 const run = promisify(execFile);
 const ROOT = packageRoot(import.meta.url);
 
-/** The jeval code that ran: its package version and, in a Git checkout, its commit and whether it had changes. */
+/** The Switch code that ran: its package version and, in a Git checkout, its commit and whether it had changes. */
 export interface Source {
 	readonly version: string;
 	readonly commit: string | null;
 	readonly changed: boolean | null;
 }
 
-export async function jevalSource(root = ROOT): Promise<Source> {
+export async function switchSource(root = ROOT): Promise<Source> {
 	const { version } = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { version: string };
 	try {
 		const commit = (await run("git", ["-C", root, "rev-parse", "HEAD"])).stdout.trim();

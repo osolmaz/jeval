@@ -51,9 +51,9 @@ Sol, not accuracy.
 | Staged with pointing to evidence, decide                       | 94.8%                   | 83.6%              | 972, 11.1 M                 |
 | Pointing as a gate: every requirement needs a pointed sentence | 81.8%                   | 72.7%              | as above                    |
 
-- **Splitting** (osolmaz/jeval#2) found requirement boundaries well with overlapping windows of word gaps, but checking
+- **Splitting** (osolmaz/switch#2) found requirement boundaries well with overlapping windows of word gaps, but checking
   each part added little over the two questions.
-- **Pointing** (osolmaz/jeval#4) let Jev choose one branch at a time down a tree of the answer to the sentence that
+- **Pointing** (osolmaz/switch#4) let Jev choose one branch at a time down a tree of the answer to the sentence that
   meets a requirement. Shown a single sentence, Jev judged six of six correctly, including "There is no automatic
   extension." against "the extension mechanism" (0.07), which it passes at 0.8 inside a whole answer. But many
   requirements are not one sentence, such as a word limit, that the output is a single clause, or that something is
@@ -82,7 +82,7 @@ only when it satisfies that condition as written, not just the item's topic. An 
 condition the item excludes, or leaves out a condition the item requires, does not meet the item." With meets and
 misses over the same evidence it got 94.6% of the judge eval right (23 false passes, 46 false fails, against 26 and 44) and agreed with Sol on 85.1% (against 84.4%). It moves toward Sol by less than a point and leaves the judge eval as it
 was, so it waits for people's labels of the disagreements, which can tell whether moving toward Sol is moving toward
-correct. It is kept as `judges/legal-judge-qualifiers.json`. Measured again with `jeval rejudge` over a fresh run's
+correct. It is kept as `judges/legal-judge-qualifiers.json`. Measured again with `switch rejudge` over a fresh run's
 evidence, it moved the agreement with Sol from 84.7% to 84.8% and left the judge eval at 94.6%, so the earlier gain was
 mostly noise.
 

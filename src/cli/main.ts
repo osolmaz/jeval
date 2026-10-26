@@ -3,12 +3,12 @@ import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { resolve } from "node:path";
 import { Command, InvalidArgumentError } from "commander";
 import type { Decider } from "../core/index.ts";
-import { DEFAULT_JUDGE } from "../domains/legal-judge/index.ts";
 import { piAiDecider } from "../models/pi-ai.ts";
 import { replayCase, runCases } from "./commands.ts";
-import { domainFor, INGESTERS } from "./domains.ts";
+import { domainNamed, INGESTERS } from "./domains.ts";
 import { compareRuns, scoreResults } from "./scores.ts";
 import { loadSet } from "./sets.ts";
+import { onlyCase, viewServer, writeCasePage } from "./view.ts";
 
 const positive = (value: string): number => {
 	const number = Number(value);
@@ -74,22 +74,36 @@ program
 	.argument("[cases...]", "case folders, when no --set names them")
 	.option("--set <file>", "an eval set file; its scheduled cases are run")
 	.requiredOption("--out <folder>", "the run folder; a stopped run goes on in its own folder")
-	.option("--judge <file>", "the judge definition", DEFAULT_JUDGE)
+	.option("--domain <name>", "the domain: legal-judge or chess", "legal-judge")
+	.option("--judge <file>", "the judge definition, for legal-judge; its default judge when none is given")
 	.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
 	.option("--api-key-env <variable>", "the environment variable that holds the API key")
 	.option("--concurrency <n>", "cases at once", positive, 4)
 	.action(
 		async (
 			cases: string[],
-			options: { out: string; set?: string; judge: string; model: string; apiKeyEnv?: string; concurrency: number },
+			options: {
+				out: string;
+				set?: string;
+				domain: string;
+				judge?: string;
+				model: string;
+				apiKeyEnv?: string;
+				concurrency: number;
+			},
 		) => {
 			const { folders, set } = await casesOf(cases, options.set);
-			await runCases(await domainFor(options.judge), folders, decider(options.model, options.apiKeyEnv), {
-				out: options.out,
-				concurrency: options.concurrency,
-				log,
-				...(set === undefined ? {} : { set }),
-			});
+			await runCases(
+				await domainNamed(options.domain, options.judge),
+				folders,
+				decider(options.model, options.apiKeyEnv),
+				{
+					out: options.out,
+					concurrency: options.concurrency,
+					log,
+					...(set === undefined ? {} : { set }),
+				},
+			);
 		},
 	);
 
@@ -100,7 +114,8 @@ program
 	.option("--set <file>", "an eval set file; its scheduled cases are judged again")
 	.requiredOption("--from <run>", "the run whose evidence to reuse")
 	.requiredOption("--out <folder>", "the new run folder")
-	.option("--judge <file>", "the judge definition", DEFAULT_JUDGE)
+	.option("--domain <name>", "the domain: legal-judge or chess", "legal-judge")
+	.option("--judge <file>", "the judge definition, for legal-judge; its default judge when none is given")
 	.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
 	.option("--api-key-env <variable>", "the environment variable that holds the API key")
 	.option("--concurrency <n>", "cases at once", positive, 4)
@@ -111,20 +126,26 @@ program
 				from: string;
 				out: string;
 				set?: string;
-				judge: string;
+				domain: string;
+				judge?: string;
 				model: string;
 				apiKeyEnv?: string;
 				concurrency: number;
 			},
 		) => {
 			const { folders, set } = await casesOf(cases, options.set);
-			await runCases(await domainFor(options.judge), folders, decider(options.model, options.apiKeyEnv), {
-				out: options.out,
-				concurrency: options.concurrency,
-				log,
-				evidenceFrom: options.from,
-				...(set === undefined ? {} : { set }),
-			});
+			await runCases(
+				await domainNamed(options.domain, options.judge),
+				folders,
+				decider(options.model, options.apiKeyEnv),
+				{
+					out: options.out,
+					concurrency: options.concurrency,
+					log,
+					evidenceFrom: options.from,
+					...(set === undefined ? {} : { set }),
+				},
+			);
 		},
 	);
 
@@ -135,7 +156,8 @@ program
 	)
 	.argument("<case>")
 	.argument("<trace>")
-	.option("--judge <file>", "the judge definition the trace was made with", DEFAULT_JUDGE)
+	.option("--domain <name>", "the domain the trace was made with", "legal-judge")
+	.option("--judge <file>", "the judge definition the trace was made with, for legal-judge")
 	.option("--fork <steps>", "repeat this many recorded steps, then let --model decide", positive)
 	.option("--model <provider/id>", "the model for a fork", "typesafe/jev-latest")
 	.option("--api-key-env <variable>", "the environment variable that holds the API key")
@@ -143,13 +165,13 @@ program
 		async (
 			folder: string,
 			trace: string,
-			options: { judge: string; fork?: number; model: string; apiKeyEnv?: string },
+			options: { domain: string; judge?: string; fork?: number; model: string; apiKeyEnv?: string },
 		) => {
 			const fork =
 				options.fork === undefined
 					? undefined
 					: { steps: options.fork, then: decider(options.model, options.apiKeyEnv) };
-			const { result } = await replayCase(await domainFor(options.judge), folder, trace, fork);
+			const { result } = await replayCase(await domainNamed(options.domain, options.judge), folder, trace, fork);
 			process.stdout.write(
 				`${JSON.stringify({ answers: result.answers, steps: result.steps, error: result.error }, null, 1)}\n`,
 			);
@@ -176,6 +198,24 @@ program
 	.action(async (runs: string[], options: { set: string; json?: boolean }) => {
 		const compared = await compareRuns(runs, await loadSet(options.set));
 		process.stdout.write(`${options.json === true ? JSON.stringify(compared.runs, null, 1) : compared.text}\n`);
+	});
+
+program
+	.command("view")
+	.description("Show a run's cases step by step in the browser; a case's page follows it while it runs")
+	.argument("<run>")
+	.option("--case <id>", "the case to open")
+	.option("--port <n>", "the local port", positive, 4173)
+	.option("--html <file>", "write one case's page to a file instead: --case, or the run's only case")
+	.action(async (run: string, options: { case?: string; port: number; html?: string }) => {
+		if (options.html !== undefined) {
+			await writeCasePage(run, options.case ?? (await onlyCase(run)), options.html);
+			return;
+		}
+		const path = options.case === undefined ? "" : `case/${encodeURIComponent(options.case)}`;
+		viewServer(run).listen(options.port, "127.0.0.1", () => {
+			log(`http://127.0.0.1:${String(options.port)}/${path}`);
+		});
 	});
 
 await program.parseAsync();

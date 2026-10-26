@@ -30,6 +30,14 @@ typescript:
       allow:
         - src/domains/legal-judge
         - src/core
+    - from: src/domains/chess
+      allow:
+        - src/domains/chess
+        - src/core
+    - from: src/view
+      allow:
+        - src/view
+        - src/core
     - from: src/eval
       allow:
         - src/eval
@@ -40,7 +48,9 @@ typescript:
         - src/core
         - src/models
         - src/domains/legal-judge
+        - src/domains/chess
         - src/eval
+        - src/view
 rules:
   ts.mutation-required:
     disabled: true

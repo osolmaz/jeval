@@ -52,7 +52,7 @@ async function runOne(domain: DomainEntry, folder: string, decider: Decider, opt
 	});
 	const from = options.evidenceFrom;
 	const caseDecider = from === undefined ? recorded : await reusing(from, id, recorded);
-	const { result, categories } = await domain.run(folder, caseDecider, domain.limits, trace);
+	const { result, categories, outcome } = await domain.run(folder, caseDecider, domain.limits, trace);
 	await Promise.all([traceLines.done(), requestLines.done()]);
 	const record: CaseResult = {
 		case: id,
@@ -63,10 +63,13 @@ async function runOne(domain: DomainEntry, folder: string, decider: Decider, opt
 		error: result.error,
 		answers: result.answers,
 		categories,
+		outcome,
 	};
 	await writeFile(files.result, `${JSON.stringify(record, null, 1)}\n`);
 	const chosen = trace.entries.flatMap((entry) => (entry.type === "choice" ? [entry.key] : []));
-	options.log(`${id}: ${chosen.join(" > ") || "-"}${result.error === null ? "" : ` | ERROR ${result.error}`}`);
+	const story =
+		outcome === null ? chosen.join(" > ") || "-" : `${String(result.steps)} steps, ${JSON.stringify(outcome)}`;
+	options.log(`${id}: ${story}${result.error === null ? "" : ` | ERROR ${result.error}`}`);
 }
 
 /** Repeats every recorded choice of the case in `run`, so its evidence is gathered again as it was; `then` judges. */

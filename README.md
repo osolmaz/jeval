@@ -26,7 +26,7 @@ The task itself comes from a domain, which you write in a few small pieces of Ty
 workspace of one case and the actions that can be taken in it. It also sets the questions the model answers at the end
 and how the state is shown to the model. Switch runs the same loop for every domain and keeps the model's probability
 for every option on every menu. It fits the state into the model's window and writes a trace of every step, which can
-be replayed or forked. Switch ships one domain, `legal-judge`, which grades answers to legal tasks against a rubric. The
+be replayed or forked. Switch ships two domains: `legal-judge`, which grades answers to legal tasks against a rubric, and `chess`. The
 same loop fits any task where a model should look around before it decides, such as routing a support ticket after
 reading its logs or deciding whether a report needs a person.
 
@@ -48,6 +48,18 @@ Each domain has a README that says what it does, what else it needs installed an
 
 - [Legal judge](src/domains/legal-judge/README.md) (`legal-judge`) grades a saved answer to a legal task against the
   task's rubric.
+- [Chess](src/domains/chess/README.md) (`chess`) plays a game of chess against an opponent that picks random legal
+  moves.
+
+## View a run
+
+`view` opens a run in the browser, one step at a time: the menu of each step with the model's probability for every
+option, the chosen option and what the step found. A domain can also draw its state; chess draws the board with arrows
+for the likeliest moves. A case's page follows the case while it runs, and `--html <file>` writes it to a file instead:
+
+```bash
+node src/cli/main.ts view runs/chess --case white-seed-1
+```
 
 ## Write a domain
 

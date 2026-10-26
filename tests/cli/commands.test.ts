@@ -6,13 +6,13 @@ import { inPool, replayCase, RunMismatchError, runCases } from "../../src/cli/co
 import { resultSchema, runRecordSchema } from "../../src/cli/runs.ts";
 import { compareRuns, scoreResults } from "../../src/cli/scores.ts";
 import { loadSet } from "../../src/cli/sets.ts";
-import { domainFor, INGESTERS } from "../../src/cli/domains.ts";
+import { domainNamed, INGESTERS } from "../../src/cli/domains.ts";
 import { DEFAULT_LIMITS, parseTrace, STOP_KEY } from "../../src/core/index.ts";
 import { DEFAULT_JUDGE } from "../../src/domains/legal-judge/index.ts";
 import { answering, fakeDecider, missingNothing } from "../helpers/fakes.ts";
 
 let folder = "";
-const legalJudge = await domainFor(DEFAULT_JUDGE);
+const legalJudge = await domainNamed("legal-judge", DEFAULT_JUDGE);
 const found = INGESTERS["legal-judge"];
 if (found === undefined) throw new Error("the legal-judge domain is missing");
 const ingest = found;
@@ -115,7 +115,9 @@ describe("commands", () => {
 		const variant = join(folder, "variant.json");
 		const definition = JSON.parse(await readFile(DEFAULT_JUDGE, "utf8")) as { limits: { steps: number } };
 		await writeFile(variant, JSON.stringify({ ...definition, limits: { ...definition.limits, steps: 2 } }));
-		await expect(runCases(await domainFor(variant), [], decider, options)).rejects.toThrow(RunMismatchError);
+		await expect(runCases(await domainNamed("legal-judge", variant), [], decider, options)).rejects.toThrow(
+			RunMismatchError,
+		);
 
 		const replayed = await replayCase(
 			legalJudge,
@@ -159,7 +161,11 @@ describe("commands", () => {
 		await writeFile(strict, JSON.stringify({ ...definition, name: "strict" }));
 		const second = fakeDecider(answering(0.3, () => STOP_KEY));
 		const out = join(folder, "second");
-		await runCases(await domainFor(strict), cases, second, { ...options, out, evidenceFrom: join(folder, "first") });
+		await runCases(await domainNamed("legal-judge", strict), cases, second, {
+			...options,
+			out,
+			evidenceFrom: join(folder, "first"),
+		});
 
 		// Only the judging went to the model: the steps were repeated from the first run.
 		expect(second.requests.map((request) => request.questions[0]?.id)).toEqual(["S-1/meets", "S-1/meets"]);

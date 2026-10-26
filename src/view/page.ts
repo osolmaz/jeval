@@ -1,21 +1,3 @@
-import type { Answer } from "../core/index.ts";
-import type { Frame, FrameOption, Seen, Story } from "./frames.ts";
-
-/** A domain's picture of a step: the state the model chose in, with the options and their probabilities. */
-export type Picture = (seen: Seen | null, options: readonly FrameOption[]) => string;
-
-export interface PageInput {
-	readonly story: Story;
-	/** What the case's domain reports about how the case ended; null while it runs or when it reports nothing. */
-	readonly outcome: Readonly<Record<string, unknown>> | null;
-	readonly picture?: Picture | undefined;
-	/** Where the page asks whether the case changed, and its version now; null for a page that never changes. */
-	readonly live: { readonly url: string; readonly version: string } | null;
-}
-
-/** How many of the likeliest options a step lists; the chosen option is always listed. */
-const LISTED = 10;
-
 const ESCAPES: Readonly<Record<string, string>> = {
 	"&": "&amp;",
 	"<": "&lt;",
@@ -25,119 +7,29 @@ const ESCAPES: Readonly<Record<string, string>> = {
 };
 export const escape = (text: string): string => text.replace(/[&<>"']/g, (char) => ESCAPES[char] ?? char);
 
-const percent = (probability: number | null): string =>
-	probability === null ? "–" : `${(probability * 100).toFixed(probability < 0.001 ? 2 : 1)}%`;
+/** JSON that is safe inside a script element: no `<`, so no `</script>`. */
+export const scriptJson = (value: unknown): string => JSON.stringify(value).replace(/</g, "\\u003c");
 
-/** A value from a domain's outcome as text: lists and objects become comma-separated parts. */
-export function plain(value: unknown): string {
-	if (Array.isArray(value)) return value.map(plain).join(", ");
-	if (typeof value === "object" && value !== null) {
-		return Object.entries(value)
-			.map(([key, inner]) => `${key} ${plain(inner)}`)
-			.join(", ");
-	}
-	return typeof value === "string" ? value : JSON.stringify(value);
+export interface ViewerPage {
+	readonly title: string;
+	/** The viewer's script, from `viewerScript`. */
+	readonly script: string;
+	/** What the viewer starts with: its session or where to fetch it, and the piece images. */
+	readonly config: Readonly<Record<string, unknown>>;
 }
 
-function optionRow(option: FrameOption): string {
-	const share = option.probability ?? 0;
-	return [
-		`<li${option.chosen ? ' class="chosen"' : ""}>`,
-		`<span class="text">${escape(option.text)}${option.chosen ? '<span class="hidden"> (chosen)</span>' : ""}</span>`,
-		`<span class="track" aria-hidden="true"><span style="--p:${share.toFixed(4)}"></span></span>`,
-		`<span class="p">${percent(option.probability)}</span>`,
-		"</li>",
-	].join("");
-}
-
-function menuList(options: readonly FrameOption[]): string {
-	const ranked = [...options].sort((a, b) => (b.probability ?? 0) - (a.probability ?? 0));
-	const listed = ranked.filter((option, rank) => rank < LISTED || option.chosen);
-	const rest = options.length - listed.length;
-	const more = rest > 0 ? `<p class="more">and ${String(rest)} more options</p>` : "";
-	return `<ol class="menu">${listed.map(optionRow).join("")}</ol>${more}`;
-}
-
-function seenBlock(title: string, seen: readonly Seen[]): string {
-	if (seen.length === 0) return "";
-	return `<h3>${escape(title)}</h3>${seen.map((item) => `<p class="found">${escape(item.text)}</p>`).join("")}`;
-}
-
-function notesBlock(notes: readonly string[]): string {
-	return notes.map((note) => `<p class="notes">${escape(note)}</p>`).join("");
-}
-
-function section(id: string, label: string, picture: string, panel: string): string {
-	const art = picture === "" ? "" : `<div class="picture">${picture}</div>`;
-	return `<section class="frame${picture === "" ? " plain" : ""}" id="${id}" data-label="${escape(label)}" hidden>${art}<div class="panel">${panel}</div></section>`;
-}
-
-function stepSection(frame: Frame, total: number, picture: Picture | undefined): string {
-	const label = `Step ${String(frame.step)} of ${String(total)}`;
-	const after = frame.after === null ? [] : [frame.after];
-	const panel = [
-		`<h2>${label}</h2>`,
-		menuList(frame.options),
-		seenBlock("What the step found", after),
-		notesBlock(frame.notes),
-	].join("");
-	return section(`step-${String(frame.step)}`, label, picture?.(frame.before, frame.options) ?? "", panel);
-}
-
-function answersBlock(answers: Readonly<Record<string, Answer>> | null): string {
-	if (answers === null || Object.keys(answers).length === 0) return "";
-	const rows = Object.entries(answers).map(([id, answer]) => {
-		const value =
-			answer.kind === "bool"
-				? `yes ${percent(answer.probability)}`
-				: answer.kind === "choice"
-					? `${answer.choice} ${percent(answer.probabilities[answer.choice] ?? null)}`
-					: `${answer.score.toFixed(2)} (confidence ${percent(answer.confidence)})`;
-		return `<dt>${escape(id)}</dt><dd>${escape(value)}</dd>`;
-	});
-	return `<h3>Answers</h3><dl class="facts">${rows.join("")}</dl>`;
-}
-
-function endSection(input: PageInput): string {
-	const { story, outcome } = input;
-	const facts =
-		outcome === null
-			? '<p class="found">The case has no result yet.</p>'
-			: `<dl class="facts">${Object.entries(outcome)
-					.map(([key, value]) => `<dt>${escape(key)}</dt><dd>${escape(plain(value))}</dd>`)
-					.join("")}</dl>`;
-	const panel = `<h2>End</h2>${facts}${answersBlock(story.answers)}${notesBlock(story.notes)}`;
-	return section("end", "End", input.picture?.(story.last, []) ?? "", panel);
-}
-
-function startSection(input: PageInput): string {
-	const { story } = input;
-	const panel = `<h2>Start</h2>${seenBlock("The case starts with", story.opening)}`;
-	return section("start", "Start", input.picture?.(story.opening.at(-1) ?? null, []) ?? "", panel);
-}
-
-/** A whole page for one case: its start, every step and its end, one at a time, with controls to move through them. */
-export function casePage(input: PageInput): string {
-	const { story, live } = input;
-	const total = story.frames.length;
-	const sections = [
-		startSection(input),
-		...story.frames.map((frame) => stepSection(frame, total, input.picture)),
-		endSection(input),
-	];
-	const liveData = live === null ? "" : ` data-live="${escape(live.url)}" data-version="${escape(live.version)}"`;
-	const header = `<header class="top"><h1>${escape(story.case)}</h1><p class="meta">${escape(`${story.domain} · ${story.model}`)}</p></header>`;
-	const controls = [
-		'<nav class="controls" aria-label="Steps">',
-		'<button type="button" id="prev">Previous</button>',
-		'<button type="button" id="play">Play</button>',
-		'<button type="button" id="next">Next</button>',
-		`<input type="range" id="scrub" min="0" max="${String(sections.length - 1)}" value="0" aria-label="Step">`,
-		'<output id="where" aria-live="polite"></output>',
-		"</nav>",
-	].join("");
-	const body = `<body${liveData}>${header}${controls}<main>${sections.join("")}</main><script>${SCRIPT}</script></body>`;
-	return document(`${story.case} · switch`, body);
+/** A case's page: the viewer's script, started on `config`. It needs nothing else when the session is in it. */
+export function viewerPage(page: ViewerPage): string {
+	const boot = 'start(document.getElementById("app"), JSON.parse(document.getElementById("config").textContent));';
+	return document(
+		page.title,
+		[
+			'<body><div id="app"></div>',
+			`<script type="application/json" id="config">${scriptJson(page.config)}</script>`,
+			`<script>(() => {\n${page.script}\n${boot}\n})();</script>`,
+			"</body>",
+		].join(""),
+	);
 }
 
 /** A page that links each case of a run, with its outcome when it has one. */
@@ -146,7 +38,7 @@ export function indexPage(run: string, cases: readonly { id: string; outcome: st
 		({ id, outcome }) =>
 			`<li><a href="/case/${encodeURIComponent(id)}">${escape(id)}</a>${outcome === null ? "" : ` <span class="meta">${escape(outcome)}</span>`}</li>`,
 	);
-	const body = `<body><header class="top"><h1>${escape(run)}</h1></header><main class="list"><ul>${items.join("")}</ul></main></body>`;
+	const body = `<body><div class="app"><header class="bar"><span class="brand">switch</span><h1>${escape(run)}</h1></header><ul class="list">${items.join("")}</ul></div></body>`;
 	return document(`${run} · switch`, body);
 }
 
@@ -156,7 +48,7 @@ function document(title: string, body: string): string {
 		'<meta name="viewport" content="width=device-width, initial-scale=1">',
 		`<title>${escape(title)}</title>`,
 		'<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
-		'<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">',
+		'<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">',
 		`<style>${STYLE}</style></head>`,
 		body,
 		"</html>",
@@ -164,90 +56,87 @@ function document(title: string, body: string): string {
 }
 
 const STYLE = `
-:root{--bg:#F5F0E6;--ink:#111111;--muted:#4A4A4A;--line:#D2C9B8;--panel:#FFFFFF;--track:#E3DBCB;--gutter:24px;color-scheme:light}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000000;--ink:#F5F5F5;--muted:#BDBDBD;--line:#3A3A3A;--panel:#141414;--track:#2A2A2A;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#000000;--ink:#F5F5F5;--muted:#BDBDBD;--line:#3A3A3A;--panel:#141414;--track:#2A2A2A;color-scheme:dark}
+:root{--bg:#F5F0E6;--ink:#111111;--muted:#4A4A4A;--quiet:#7A705F;--line:#D9D0BF;--panel:#FFFFFF;--track:#E6DECE;--light:#F0E6D2;--dark:#B8A383;--gutter:24px;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#000000;--ink:#F5F5F5;--muted:#BDBDBD;--quiet:#8F8F8F;--line:#2E2E2E;--panel:#121212;--track:#2A2A2A;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#000000;--ink:#F5F5F5;--muted:#BDBDBD;--quiet:#8F8F8F;--line:#2E2E2E;--panel:#121212;--track:#2A2A2A;color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,Helvetica,Arial,"Liberation Sans",sans-serif}
-.top{padding:var(--gutter) var(--gutter) 0}
-h1{font-size:22px;line-height:1.2;margin:0;overflow-wrap:anywhere}
-.meta{color:var(--muted);margin:4px 0 0}
-.controls{position:sticky;top:0;z-index:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:16px var(--gutter);background:var(--bg)}
-button{font:inherit;min-height:32px;padding:4px 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);cursor:pointer}
-button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-input[type=range]{flex:1 1 180px;accent-color:var(--ink)}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Inter,Helvetica,Arial,"Liberation Sans",sans-serif}
+.app{max-width:1240px;margin:0 auto;padding:var(--gutter)}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:20px}
+.brand{font-weight:600;letter-spacing:-0.01em}
+.bar h1{font-size:18px;line-height:1.2;font-weight:600;margin:0;overflow-wrap:anywhere}
+.meta{color:var(--muted)}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#C2410C}
+.live::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.spacer{flex:1}
+button,select,.download{font:inherit;min-height:34px;padding:4px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.layout{display:grid;grid-template-columns:minmax(0,640px) minmax(280px,1fr);gap:32px;align-items:start}
+@media (max-width:920px){.layout{grid-template-columns:minmax(0,1fr)}}
+.stage{display:grid;gap:10px}
+.player-slot{min-height:28px}
+.player{display:flex;align-items:center;gap:10px;min-height:28px}
+.swatch{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--ink)}
+.swatch.w{background:#FFFFFF}.swatch.b{background:#111111}
+.name{font-weight:600;overflow-wrap:anywhere}
+.taken{display:flex;align-items:center}
+.taken img{width:22px;height:22px;margin-right:-7px}
+.lead{color:var(--muted);font-variant-numeric:tabular-nums;margin-left:6px}
+.board{position:relative;width:100%;aspect-ratio:1;border-radius:6px;overflow:hidden;border:1px solid var(--line);user-select:none}
+.squares{position:absolute;inset:0;display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr)}
+.square{position:relative}
+.square.light{background:var(--light)}.square.dark{background:var(--dark)}
+.square span{position:absolute;font-size:clamp(9px,1.6vw,12px);font-weight:600;line-height:1}
+.square .rank{top:4px;left:4px}.square .file{bottom:3px;right:4px}
+.square.light span{color:var(--dark)}.square.dark span{color:var(--light)}
+.marks,.pieces{position:absolute;inset:0;pointer-events:none}
+.mark,.piece{position:absolute;left:0;top:0;width:12.5%;height:12.5%;transform:translate(calc(var(--x) * 100%),calc(var(--y) * 100%))}
+.mark.last{background:rgba(205,170,40,.38)}
+.mark.check{background:rgba(214,40,40,.32);box-shadow:inset 0 0 0 3px rgba(214,40,40,.85)}
+.piece{background-position:center;background-repeat:no-repeat;background-size:86%;transition:transform var(--motion,320ms) ease,opacity var(--motion,320ms) ease}
+.piece.taken{opacity:0}
+.arrows{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.arrow{fill:#4E4636;fill-opacity:.38}
+.arrow.chosen{fill:#14110C;fill-opacity:.78}
+.found-card{min-height:240px;padding:20px;border:1px solid var(--line);border-radius:8px;background:var(--panel);white-space:pre-wrap;overflow-wrap:anywhere}
+.controls{display:grid;gap:10px;margin-top:6px}
+.buttons{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.buttons button{min-width:40px;justify-content:center}
+.buttons .play{min-width:84px;font-weight:600}
+input[type=range]{width:100%;margin:0;accent-color:var(--ink)}
 output{min-width:8.5em;color:var(--muted);font-variant-numeric:tabular-nums}
-.frame{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:var(--gutter);align-items:start;padding:0 var(--gutter) var(--gutter)}
-.frame.plain{grid-template-columns:minmax(0,760px)}
-.frame[hidden]{display:none}
-@media (max-width:860px){.frame{grid-template-columns:minmax(0,1fr)}}
-.picture svg{display:block;width:100%;height:auto;color:var(--muted)}
-h2{font-size:17px;line-height:1.2;margin:0 0 12px}
-h3{font-size:14px;color:var(--muted);font-weight:600;margin:20px 0 6px}
+.speed{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.side{display:grid;gap:24px;min-width:0}
+.side-slot{display:grid;gap:24px}
+.side h2{font-size:13px;font-weight:600;color:var(--muted);margin:0 0 10px}
 .menu{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.menu li{display:grid;grid-template-columns:minmax(0,1fr) minmax(60px,120px) 4.5em;gap:10px;align-items:center}
+.menu li{display:grid;grid-template-columns:minmax(0,1fr) minmax(48px,96px) 4.2em;gap:10px;align-items:center}
 .menu .text{overflow-wrap:anywhere}
 .menu .chosen .text{font-weight:600}
 .track{height:8px;border-radius:4px;background:var(--track);overflow:hidden}
-.track span{display:block;height:100%;width:calc(var(--p) * 100%);background:var(--muted)}
+.track span{display:block;height:100%;width:calc(var(--p) * 100%);background:var(--quiet)}
 .chosen .track span{background:var(--ink)}
 .p{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
-.more,.notes{color:var(--muted);font-size:14px;margin:8px 0 0}
-.found{margin:0 0 4px}
+.quiet{color:var(--muted);font-size:14px;margin:8px 0 0}
+.found{margin:0}
+.side h3{font-size:13px;font-weight:600;color:var(--muted);margin:16px 0 4px}
+.headline{font-size:20px;font-weight:600;margin:0 0 8px}
+.headline::first-letter{text-transform:uppercase}
 .facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 16px;margin:0}
 .facts dt{color:var(--muted)}.facts dd{margin:0;overflow-wrap:anywhere}
+.spark svg{display:block;width:100%;height:64px}
+.spark polyline{fill:none;stroke:var(--ink);stroke-width:1.5;vector-effect:non-scaling-stroke}
+.spark .mid{stroke:var(--line);vector-effect:non-scaling-stroke}
+.spark .now{stroke:var(--quiet);stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+.plies{list-style:none;margin:0;padding:0;display:grid;gap:2px;max-height:340px;overflow:auto}
+.plies li{display:grid;grid-template-columns:3em minmax(0,1fr) minmax(0,1fr);align-items:center;gap:4px}
+.plies .number{color:var(--muted);font-variant-numeric:tabular-nums}
+.ply{min-height:28px;padding:2px 8px;border:0;border-radius:6px;background:transparent;justify-content:flex-start;gap:8px}
+.ply small{color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.ply.current{background:var(--ink);color:var(--bg)}
+.ply.current small{color:inherit}
 .hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.list{padding:16px var(--gutter)}.list li{margin:4px 0}.list a{color:var(--ink)}
-`;
-
-/** Moves through the sections; with data-live, reloads when the case changes and stays at the end if it was there. */
-const SCRIPT = `
-const frames = Array.from(document.querySelectorAll(".frame"));
-const prev = document.getElementById("prev");
-const next = document.getElementById("next");
-const play = document.getElementById("play");
-const scrub = document.getElementById("scrub");
-const where = document.getElementById("where");
-let index = 0;
-let timer = null;
-function show(wanted) {
-	index = Math.max(0, Math.min(frames.length - 1, wanted));
-	frames.forEach((frame, at) => { frame.hidden = at !== index; });
-	scrub.value = String(index);
-	where.textContent = frames[index].dataset.label;
-	history.replaceState(null, "", "#" + frames[index].id);
-}
-function stop() { clearInterval(timer); timer = null; play.textContent = "Play"; }
-function start() {
-	if (index === frames.length - 1) show(0);
-	play.textContent = "Pause";
-	timer = setInterval(() => { if (index >= frames.length - 1) stop(); else show(index + 1); }, 1000);
-}
-prev.addEventListener("click", () => { stop(); show(index - 1); });
-next.addEventListener("click", () => { stop(); show(index + 1); });
-play.addEventListener("click", () => { if (timer === null) start(); else stop(); });
-scrub.addEventListener("input", () => { stop(); show(Number(scrub.value)); });
-document.addEventListener("keydown", (event) => {
-	if (event.target instanceof HTMLInputElement || event.altKey || event.ctrlKey || event.metaKey) return;
-	if (event.key === "ArrowLeft") { stop(); show(index - 1); }
-	if (event.key === "ArrowRight") { stop(); show(index + 1); }
-	if (event.key === " " && !(event.target instanceof HTMLButtonElement)) {
-		event.preventDefault();
-		if (timer === null) start(); else stop();
-	}
-});
-const asked = location.hash === "#latest" ? frames.length - 1 : frames.findIndex((frame) => "#" + frame.id === location.hash);
-show(asked >= 0 ? asked : 0);
-const live = document.body.dataset.live;
-if (live) {
-	const version = document.body.dataset.version;
-	setInterval(async () => {
-		try {
-			const response = await fetch(live, { cache: "no-store" });
-			if (!response.ok || (await response.text()) === version) return;
-			if (index === frames.length - 1) history.replaceState(null, "", "#latest");
-			location.reload();
-		} catch {}
-	}, 1000);
-}
+.list{list-style:none;padding:0;margin:0;display:grid;gap:6px}.list a{color:var(--ink);font-weight:600}
+@media (prefers-reduced-motion:reduce){.piece{transition:none}}
 `;

@@ -8,7 +8,7 @@ import { replayCase, runCases } from "./commands.ts";
 import { domainNamed, INGESTERS } from "./domains.ts";
 import { compareRuns, scoreResults } from "./scores.ts";
 import { loadSet } from "./sets.ts";
-import { onlyCase, viewServer, writeCasePage } from "./view.ts";
+import { onlyCase, serveRun, writeCasePage } from "./view.ts";
 
 const positive = (value: string): number => {
 	const number = Number(value);
@@ -53,6 +53,10 @@ const log = (line: string): void => {
 	process.stderr.write(`${line}\n`);
 };
 
+/** The viewer's default local port. */
+const VIEW_PORT = 4173;
+const caseUrl = (port: number, id: string): string => `http://127.0.0.1:${String(port)}/case/${encodeURIComponent(id)}`;
+
 const program = new Command()
 	.name("switch")
 	.description("Let a decision model work through cases by choosing from steps that code lists.");
@@ -79,6 +83,7 @@ program
 	.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
 	.option("--api-key-env <variable>", "the environment variable that holds the API key")
 	.option("--concurrency <n>", "cases at once", positive, 4)
+	.option("--view [port]", "watch the cases in the browser while they run, on this local port", positive)
 	.action(
 		async (
 			cases: string[],
@@ -90,20 +95,24 @@ program
 				model: string;
 				apiKeyEnv?: string;
 				concurrency: number;
+				view?: number | true;
 			},
 		) => {
 			const { folders, set } = await casesOf(cases, options.set);
-			await runCases(
-				await domainNamed(options.domain, options.judge),
-				folders,
-				decider(options.model, options.apiKeyEnv),
-				{
-					out: options.out,
-					concurrency: options.concurrency,
-					log,
-					...(set === undefined ? {} : { set }),
-				},
-			);
+			const domain = await domainNamed(options.domain, options.judge);
+			const model = decider(options.model, options.apiKeyEnv);
+			if (options.view !== undefined) {
+				const port = options.view === true ? VIEW_PORT : options.view;
+				await serveRun(options.out, port);
+				for (const folder of folders) log(caseUrl(port, await domain.caseId(folder)));
+			}
+			await runCases(domain, folders, model, {
+				out: options.out,
+				concurrency: options.concurrency,
+				log,
+				...(set === undefined ? {} : { set }),
+			});
+			if (options.view !== undefined) log("The run is done. The viewer stays open until you stop it with Ctrl-C.");
 		},
 	);
 
@@ -205,17 +214,17 @@ program
 	.description("Show a run's cases step by step in the browser; a case's page follows it while it runs")
 	.argument("<run>")
 	.option("--case <id>", "the case to open")
-	.option("--port <n>", "the local port", positive, 4173)
+	.option("--port <n>", "the local port", positive, VIEW_PORT)
 	.option("--html <file>", "write one case's page to a file instead: --case, or the run's only case")
 	.action(async (run: string, options: { case?: string; port: number; html?: string }) => {
 		if (options.html !== undefined) {
 			await writeCasePage(run, options.case ?? (await onlyCase(run)), options.html);
 			return;
 		}
-		const path = options.case === undefined ? "" : `case/${encodeURIComponent(options.case)}`;
-		viewServer(run).listen(options.port, "127.0.0.1", () => {
-			log(`http://127.0.0.1:${String(options.port)}/${path}`);
-		});
+		await serveRun(run, options.port);
+		log(
+			options.case === undefined ? `http://127.0.0.1:${String(options.port)}/` : caseUrl(options.port, options.case),
+		);
 	});
 
 await program.parseAsync();

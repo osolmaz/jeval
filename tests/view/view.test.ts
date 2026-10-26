@@ -1,6 +1,11 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { Script } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { run, STOP_KEY, type TraceEntry } from "../../src/core/index.ts";
-import { casePage, escape, indexPage, plain, type Story, storyOf } from "../../src/view/index.ts";
+import { buildScript, escape, indexPage, scriptJson, storyOf, viewerPage } from "../../src/view/index.ts";
 import { answering, type Facts, factsDomain, failing, fakeDecider } from "../helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact <b>" } };
@@ -59,74 +64,19 @@ describe("storyOf", () => {
 	});
 });
 
-const story: Story = {
-	case: "c<1>",
-	domain: "facts",
-	model: "fake/decider",
-	opening: [{ source: "intro", text: "Hello", data: null }],
-	frames: [
-		{
-			step: 1,
-			before: null,
-			options: [
-				...Array.from({ length: 12 }, (_, index) => ({
-					key: `k${String(index)}`,
-					text: `option ${String(index)}`,
-					probability: 0.01 * (index + 1),
-					chosen: false,
-					data: null,
-				})),
-				{ key: "x", text: "<script>bad()</script>", probability: 0.0005, chosen: true, data: null },
-			],
-			chosen: "x",
-			after: { source: "x", text: "found & kept", data: null },
-			notes: ["a note"],
-		},
-	],
-	last: null,
-	answers: {
-		yes: { kind: "bool", probability: 0.25 },
-		pick: { kind: "choice", choice: "b", probabilities: { b: 0.6 } },
-		level: { kind: "score", score: 1.5, confidence: 0.4 },
-	},
-	notes: ["outside a step"],
-};
-
-describe("the case page", () => {
-	it("has a section for the start, each step and the end, and escapes every text", () => {
-		const page = casePage({ story, outcome: null, live: null });
-		expect(page.match(/<section class="frame/g)).toHaveLength(3);
-		expect(page).toContain('&lt;script&gt;bad()&lt;/script&gt;<span class="hidden"> (chosen)</span>');
-		expect(page).not.toContain("<script>bad()");
-		expect(page).toContain("<h1>c&lt;1&gt;</h1>");
-		expect(page).toContain("found &amp; kept");
-		expect(page).toContain("The case has no result yet.");
-		expect(page).not.toContain("data-live");
-	});
-
-	it("lists the ten likeliest options and the chosen one, and counts the rest", () => {
-		const page = casePage({ story, outcome: null, live: null });
-		expect(page.match(/<li[ >]/g)).toHaveLength(11);
-		expect(page).toContain("and 2 more options");
-		expect(page).toContain("12.0%");
-		expect(page).toContain("0.05%");
-	});
-
-	it("shows the outcome, the answers and the notes at the end, and the domain's picture", () => {
-		const page = casePage({
-			story,
-			outcome: { result: "win", material: { white: 3 }, moves: 4 },
-			picture: (seen, options) => `<svg data-options="${String(options.length)}">${seen?.text ?? "none"}</svg>`,
-			live: { url: "/case/c1/version", version: "10:false" },
+describe("the page", () => {
+	it("starts the viewer on its config, with the config safe inside its script element", () => {
+		const page = viewerPage({
+			title: "c<1> · switch",
+			script: "function start() {}",
+			config: { note: "</script><b>" },
 		});
-		expect(page).toContain("<dt>material</dt><dd>white 3</dd>");
-		expect(page).toContain("<dt>yes</dt><dd>yes 25.0%</dd>");
-		expect(page).toContain("<dt>pick</dt><dd>b 60.0%</dd>");
-		expect(page).toContain("<dt>level</dt><dd>1.50 (confidence 40.0%)</dd>");
-		expect(page).toContain("outside a step");
-		expect(page).toContain('<svg data-options="13">none</svg>');
-		expect(page).toContain('<svg data-options="0">Hello</svg>');
-		expect(page).toContain('data-live="/case/c1/version" data-version="10:false"');
+		expect(page).toContain("<title>c&lt;1&gt; · switch</title>");
+		expect(page).toContain(
+			'<script type="application/json" id="config">{"note":"\\u003c/script>\\u003cb>"}</script>',
+		);
+		expect(page).toContain('(() => {\nfunction start() {}\nstart(document.getElementById("app")');
+		expect(JSON.parse(scriptJson({ a: "</b>" }).replace(/\\u003c/g, "<"))).toEqual({ a: "</b>" });
 	});
 
 	it("links every case of a run from the index", () => {
@@ -136,11 +86,37 @@ describe("the case page", () => {
 		]);
 		expect(page).toContain('<a href="/case/x%20y">x y</a> <span class="meta">win, checkmate</span>');
 		expect(page).toContain('<a href="/case/z">z</a></li>');
+		expect(escape(`<a href="x">'`)).toBe("&lt;a href=&quot;x&quot;&gt;&#39;");
+	});
+});
+
+describe("the viewer's script", () => {
+	it("joins the browser modules into one script without types, imports or exports", async () => {
+		const script = await buildScript();
+		expect(script).not.toMatch(/^\s*(import|export)\s/m);
+		expect(script).not.toMatch(/:\s*(string|number|boolean)\b[^"'`]*[,)=;]/);
+		expect(() => new Script(`(() => {\n${script}\n})();`)).not.toThrow();
+		const names = [...script.matchAll(/^(?:async )?(?:function|const|let|class) (\w+)/gm)].map((match) => match[1]);
+		expect(new Set(names).size).toBe(names.length);
+		expect(names).toContain("start");
 	});
 
-	it("writes values and lists as plain text", () => {
-		expect(plain([1, "a", { b: true }])).toBe("1, a, b true");
-		expect(plain(null)).toBe("null");
-		expect(escape(`<a href="x">'`)).toBe("&lt;a href=&quot;x&quot;&gt;&#39;");
+	it("reads the built JavaScript next to a module that is JavaScript", async () => {
+		const folder = await mkdtemp(join(tmpdir(), "switch-script-"));
+		try {
+			await mkdir(join(folder, "web"));
+			for (const name of ["model", "board", "panels", "app"]) {
+				await writeFile(
+					join(folder, "web", `${name}.js`),
+					`import { a } from "./other.js";\nexport function ${name}() {}\n`,
+				);
+			}
+			const script = await buildScript(pathToFileURL(join(folder, "bundle.js")).href);
+			expect(script).toBe(
+				"\nfunction model() {}\n\n\nfunction board() {}\n\n\nfunction panels() {}\n\n\nfunction app() {}\n",
+			);
+		} finally {
+			await rm(folder, { recursive: true, force: true });
+		}
 	});
 });

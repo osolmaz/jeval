@@ -14,7 +14,8 @@
 	},
 	"files": [
 		"dist",
-		"judges"
+		"judges",
+		"assets/pieces"
 	],
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
@@ -48,6 +49,7 @@
 		"@types/node": "22.19.1",
 		"@vitest/coverage-v8": "5.0.5",
 		"eslint": "10.13.0",
+		"happy-dom": "21.0.1",
 		"prettier": "3.9.10",
 		"slophammer-ts": "0.5.0",
 		"typescript": "6.0.3",

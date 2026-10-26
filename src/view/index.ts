@@ -1,2 +1,5 @@
+export { buildScript, viewerScript } from "./bundle.ts";
 export { type Frame, type FrameOption, type Seen, type Story, storyOf } from "./frames.ts";
-export { casePage, escape, indexPage, type PageInput, type Picture, plain } from "./page.ts";
+export { escape, indexPage, scriptJson, viewerPage, type ViewerPage } from "./page.ts";
+export { pieceImages } from "./pieces.ts";
+export { plain, type Session } from "./web/model.ts";

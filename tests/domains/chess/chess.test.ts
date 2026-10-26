@@ -183,7 +183,12 @@ describe("a game", () => {
 		const workspace = game({ side: "black" });
 		const [opening] = await chess.start(workspace);
 		expect(opening?.observation.text).toMatch(/^The game starts\. You play black\. The opponent played \S+\.$/);
-		expect(opening?.observation.data).toMatchObject({ you: "black", status: "playing" });
+		expect(opening?.observation.data).toMatchObject({
+			you: "black",
+			status: "playing",
+			opponent: "random legal moves, seed 7",
+			start: STANDARD_START,
+		});
 		expect(menuOf(stateOf(workspace, opening === undefined ? [] : [opening]))).toHaveLength(20);
 	});
 });

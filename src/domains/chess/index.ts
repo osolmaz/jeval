@@ -14,7 +14,8 @@ function opening(game: ChessCase): Promise<readonly Entry[]> {
 	const first = board.turn() === colorOf(game.side) ? undefined : opponentMove(board, game.seed, []);
 	if (first !== undefined) board.move(first.lan);
 	const text = `The game starts. You play ${game.side}.${first === undefined ? "" : ` The opponent played ${first.san}.`}`;
-	const data = stepOf(game.side, board, first === undefined ? [] : [first]);
+	const opponent = `random legal moves, seed ${String(game.seed)}`;
+	const data = { ...stepOf(game.side, board, first === undefined ? [] : [first]), opponent, start: game.start };
 	return Promise.resolve([{ action: "start", key: "start", observation: { source: "board", text, data } }]);
 }
 
@@ -45,4 +46,3 @@ export function outcomeOf(game: ChessCase, log: readonly Entry[], resigned: bool
 }
 
 export { type ChessCase, caseSchema, STANDARD_START } from "./case.ts";
-export { boardPicture } from "./render.ts";

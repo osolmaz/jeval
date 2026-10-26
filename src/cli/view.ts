@@ -1,31 +1,28 @@
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { parseTrace } from "../core/index.ts";
-import { boardPicture } from "../domains/chess/index.ts";
-import { casePage, indexPage, type Picture, plain, storyOf } from "../view/index.ts";
+import { indexPage, pieceImages, plain, type Session, storyOf, viewerPage, viewerScript } from "../view/index.ts";
 import { caseFiles, casesFolder } from "./layout.ts";
 import { exists, resultSchema } from "./runs.ts";
 
-/** The pictures of the domains that draw one, by domain name; the other domains show only their menus. */
-const PICTURES: Readonly<Record<string, Picture>> = {
-	chess: (seen, options) => boardPicture({ position: seen?.data, options }),
-};
-
 const HTML = "text/html; charset=utf-8";
 const TEXT = "text/plain; charset=utf-8";
+const JSON_TYPE = "application/json; charset=utf-8";
 
 interface Reply {
 	readonly status: number;
 	readonly type: string;
 	readonly body: string;
+	readonly headers?: Readonly<Record<string, string>>;
 }
 
 export class ViewError extends Error {
 	override readonly name = "ViewError";
 }
 
+/** The run's cases so far; none before the run has started. */
 export async function caseIds(run: string): Promise<string[]> {
-	return (await readdir(casesFolder(run))).sort();
+	return (await readdir(casesFolder(run)).catch(() => [])).sort();
 }
 
 /** The run's only case; a run of more cases needs one named. */
@@ -54,21 +51,36 @@ export async function caseVersion(run: string, id: string): Promise<string> {
 	return `${String(size)}:${String(await exists(files.result))}`;
 }
 
-/** The page of one case. With `live`, the page asks that address for the case's version and reloads on a change. */
-export async function renderCase(run: string, id: string, live: string | null): Promise<string> {
+/** A case as the viewer reads it: its story so far, its outcome, and whether it has finished. */
+export async function caseSession(run: string, id: string): Promise<Session> {
 	const version = await caseVersion(run, id);
 	const story = storyOf(parseTrace(await readFile(caseFiles(run, id).trace, "utf8")));
-	return casePage({
-		story,
-		outcome: await outcomeOf(run, id),
-		picture: PICTURES[story.domain],
-		live: live === null ? null : { url: live, version },
-	});
+	const outcome = await outcomeOf(run, id);
+	return { story, outcome, finished: version.endsWith(":true"), version };
 }
 
-/** Writes the page of one case to `file`, as it is now, to open without a server. */
+/** A case's page with its session in it, which opens without a server. */
+export async function savedPage(run: string, id: string): Promise<string> {
+	const [session, script, pieces] = await Promise.all([caseSession(run, id), viewerScript(), pieceImages()]);
+	return viewerPage({ title: `${id} · switch`, script, config: { session, pieces } });
+}
+
+/** Writes a case's page, as it is now, to `file`. */
 export async function writeCasePage(run: string, id: string, file: string): Promise<void> {
-	await writeFile(file, await renderCase(run, id, null));
+	await writeFile(file, await savedPage(run, id));
+}
+
+/** A case's page that fetches its session from the server and follows the case while it runs. */
+async function livePage(id: string): Promise<string> {
+	const base = `/case/${encodeURIComponent(id)}`;
+	const [script, pieces] = await Promise.all([viewerScript(), pieceImages()]);
+	const config = {
+		sessionUrl: `${base}/session.json`,
+		versionUrl: `${base}/version`,
+		pageUrl: `${base}/page.html`,
+		pieces,
+	};
+	return viewerPage({ title: `${id} · switch`, script, config });
 }
 
 async function index(run: string, ids: readonly string[]): Promise<Reply> {
@@ -81,17 +93,43 @@ async function index(run: string, ids: readonly string[]): Promise<Reply> {
 	return { status: 200, type: HTML, body: indexPage(run, cases) };
 }
 
-/** The reply to a request: the index at /, a case's page at /case/<id>, and its version at /case/<id>/version. */
+const ROUTES: Readonly<Record<string, (run: string, id: string) => Promise<Reply>>> = {
+	"": async (_run, id) => ({ status: 200, type: HTML, body: await livePage(id) }),
+	"/version": async (run, id) => ({ status: 200, type: TEXT, body: await caseVersion(run, id) }),
+	"/session.json": async (run, id) => ({
+		status: 200,
+		type: JSON_TYPE,
+		body: JSON.stringify(await caseSession(run, id)),
+	}),
+	"/page.html": async (run, id) => ({
+		status: 200,
+		type: HTML,
+		body: await savedPage(run, id),
+		headers: { "content-disposition": `attachment; filename="${id.replace(/[^\w.-]/g, "_")}.html"` },
+	}),
+};
+
+const NOT_FOUND: Reply = { status: 404, type: TEXT, body: "not found" };
+
+/** The case and the part of it that a path names, such as /case/g1/version. */
+function targetOf(path: string): { id: string; part: string } | null {
+	const match = /^\/case\/([^/]+)(\/[\w.]+)?$/.exec(path);
+	if (match?.[1] === undefined) return null;
+	return { id: decodeURIComponent(match[1]), part: match[2] ?? "" };
+}
+
+/**
+ * The reply to a request: the index at /; at /case/<id> the case's page, its session, its version, and its page as one
+ * file to save. A case's page opens before the case starts, and waits for it; the rest needs the case's folder.
+ */
 export async function route(run: string, url: string): Promise<Reply> {
 	const path = new URL(url, "http://localhost").pathname;
 	const ids = await caseIds(run);
 	if (path === "/") return index(run, ids);
-	const match = /^\/case\/([^/]+)(\/version)?$/.exec(path);
-	const id = match?.[1] === undefined ? undefined : decodeURIComponent(match[1]);
-	if (id === undefined || !ids.includes(id)) return { status: 404, type: TEXT, body: "not found" };
-	if (match?.[2] !== undefined) return { status: 200, type: TEXT, body: await caseVersion(run, id) };
-	const live = `/case/${encodeURIComponent(id)}/version`;
-	return { status: 200, type: HTML, body: await renderCase(run, id, live) };
+	const target = targetOf(path);
+	const handler = target === null ? undefined : ROUTES[target.part];
+	if (target === null || handler === undefined || (target.part !== "" && !ids.includes(target.id))) return NOT_FOUND;
+	return handler(run, target.id);
 }
 
 async function answer(run: string, url: string): Promise<Reply> {
@@ -102,11 +140,26 @@ async function answer(run: string, url: string): Promise<Reply> {
 	}
 }
 
+/** Serves a run's cases on 127.0.0.1 at `port`; resolves once the server listens. */
+export function serveRun(run: string, port: number): Promise<Server> {
+	const server = viewServer(run);
+	return new Promise((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(port, "127.0.0.1", () => {
+			resolve(server);
+		});
+	});
+}
+
 /** A local server for a run's cases; it reads the run folder on every request, so pages follow running cases. */
 export function viewServer(run: string): Server {
 	return createServer((request, response) => {
 		void answer(run, request.url ?? "/").then((reply) => {
-			response.writeHead(reply.status, { "content-type": reply.type, "cache-control": "no-store" });
+			response.writeHead(reply.status, {
+				"content-type": reply.type,
+				"cache-control": "no-store",
+				...reply.headers,
+			});
 			response.end(reply.body);
 		});
 	});

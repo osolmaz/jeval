@@ -51,15 +51,19 @@ Each domain has a README that says what it does, what else it needs installed an
 - [Chess](src/domains/chess/README.md) (`chess`) plays a game of chess against an opponent that picks random legal
   moves.
 
-## View a run
+## Watch a run
 
-`view` opens a run in the browser, one step at a time: the menu of each step with the model's probability for every
-option, the chosen option and what the step found. A domain can also draw its state; chess draws the board with arrows
-for the likeliest moves. A case's page follows the case while it runs, and `--html <file>` writes it to a file instead:
+`view` opens a run in the browser and plays it back step by step: each step's options with the model's probability
+for every one, the chosen option and what the step found. A chess game gets a board with moving pieces, arrows for the
+model's likeliest moves, the move list and a PGN download. Add `--view` to `run` to watch the cases while they run; each
+case's page follows it live:
 
 ```bash
-node src/cli/main.ts view runs/chess --case white-seed-1
+node src/cli/main.ts run --domain chess examples/chess/white-seed-1 --out runs/chess --view
 ```
+
+The run folder keeps everything a later `view runs/chess` needs to play the cases back. A case's page can also be saved
+as one HTML file that opens without switch, from the page itself or with `view --html <file>`.
 
 ## Write a domain
 

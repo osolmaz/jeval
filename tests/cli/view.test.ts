@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCases } from "../../src/cli/commands.ts";
 import { DomainError, domainNamed } from "../../src/cli/domains.ts";
 import { resultSchema } from "../../src/cli/runs.ts";
-import { caseVersion, onlyCase, route, ViewError, viewServer, writeCasePage } from "../../src/cli/view.ts";
+import { caseVersion, onlyCase, route, serveRun, ViewError, writeCasePage } from "../../src/cli/view.ts";
+import type { Session } from "../../src/view/index.ts";
 import { DEFAULT_JUDGE } from "../../src/domains/legal-judge/index.ts";
 import { picking } from "../helpers/chess.ts";
 import { fakeDecider } from "../helpers/fakes.ts";
@@ -60,27 +61,47 @@ describe("domains on the command line", () => {
 });
 
 describe("the viewer", () => {
-	it("serves the index, each case's page and its version, and nothing else", async () => {
+	it("serves the index, each case's page, session, version and saved page", async () => {
 		const out = await chessRun(["g1", "g 2"]);
 		const index = await route(out, "/");
 		expect(index.body).toContain('<a href="/case/g%202">g 2</a> <span class="meta">loss, resignation</span>');
 		const page = await route(out, "/case/g1");
 		expect(page.type).toMatch(/^text\/html/);
-		expect(page.body).toContain('class="board"');
-		expect(page.body).toContain('data-live="/case/g1/version"');
+		expect(page.body).toContain(
+			'"sessionUrl":"/case/g1/session.json","versionUrl":"/case/g1/version","pageUrl":"/case/g1/page.html"',
+		);
+		expect(page.body).toContain("data:image/svg+xml;base64,");
+		const session = JSON.parse((await route(out, "/case/g%202/session.json")).body) as Session;
+		expect(session).toMatchObject({
+			finished: true,
+			outcome: { result: "loss" },
+			story: { case: "g 2", domain: "chess" },
+		});
 		expect((await route(out, "/case/g%202/version")).body).toBe(await caseVersion(out, "g 2"));
-		expect((await route(out, "/case/..%2Frun.json")).status).toBe(404);
+		const saved = await route(out, "/case/g%202/page.html");
+		expect(saved.headers).toEqual({ "content-disposition": 'attachment; filename="g_2.html"' });
+		expect(saved.body).toContain('"session":{');
+	});
+
+	it("opens a case's page before the case starts, but nothing else of it", async () => {
+		const out = join(folder, "not-yet");
+		expect((await route(out, "/")).body).toContain('<ul class="list"></ul>');
+		expect((await route(out, "/case/g1")).status).toBe(200);
+		expect((await route(out, "/case/g1/session.json")).status).toBe(404);
+		expect((await route(out, "/case/..%2Frun.json/version")).status).toBe(404);
+		expect((await route(out, "/case/g1/other")).status).toBe(404);
 		expect((await route(out, "/elsewhere")).status).toBe(404);
 	});
 
-	it("writes a page without the live check, and needs a case named when the run has more than one", async () => {
+	it("writes a page with the session in it, and needs a case named when the run has more than one", async () => {
 		const out = await chessRun(["g1", "g2"]);
 		await expect(onlyCase(out)).rejects.toThrow(ViewError);
 		const file = join(folder, "g1.html");
 		await writeCasePage(out, "g1", file);
 		const page = await readFile(file, "utf8");
-		expect(page).toContain("<h1>g1</h1>");
-		expect(page).not.toContain("data-live");
+		expect(page).toContain("<title>g1 · switch</title>");
+		expect(page).toContain('"session":{');
+		expect(page).not.toContain('"sessionUrl":"');
 		await rm(join(out, "cases", "g2"), { recursive: true });
 		expect(await onlyCase(out)).toBe("g1");
 	});
@@ -91,19 +112,22 @@ describe("the viewer", () => {
 		expect(await caseVersion(out, "missing")).toBe("0:false");
 	});
 
-	it("answers over HTTP, with an error page when the run folder cannot be read", async () => {
+	it("serves over HTTP, with an error reply when a case cannot be read", async () => {
 		const out = await chessRun(["g1"]);
-		for (const [run, status] of [
-			[out, 200],
-			[join(folder, "nothing"), 500],
-		] as const) {
-			const server = viewServer(run);
-			await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-			const { port } = server.address() as AddressInfo;
-			const response = await fetch(`http://127.0.0.1:${String(port)}/case/g1`);
-			expect(response.status).toBe(status);
-			expect(response.headers.get("cache-control")).toBe("no-store");
-			await new Promise((resolve) => server.close(resolve));
-		}
+		const server = await serveRun(out, 0);
+		const { port } = server.address() as AddressInfo;
+		const ok = await fetch(`http://127.0.0.1:${String(port)}/case/g1/version`);
+		expect(ok.status).toBe(200);
+		expect(ok.headers.get("cache-control")).toBe("no-store");
+		await writeFile(join(out, "cases", "g1", "trace.jsonl"), "not json\n");
+		const broken = await fetch(`http://127.0.0.1:${String(port)}/case/g1/session.json`);
+		expect(broken.status).toBe(500);
+		await new Promise((resolve) => server.close(resolve));
+		await expect(serveRun(out, port))
+			.resolves.toBeDefined()
+			.then(async () => {
+				const taken = await serveRun(out, port).catch((error: unknown) => error);
+				expect(taken).toBeInstanceOf(Error);
+			});
 	});
 });

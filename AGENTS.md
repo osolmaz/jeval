@@ -23,8 +23,10 @@
 `slophammer.yml` enforces these:
 
 - `src/core` imports nothing else from `src`. It holds the building blocks, the loop, the menu and the trace.
-- `src/models`, `src/eval` and `src/view` import only `src/core`. `src/view` turns a trace into a web page; a domain
-  that draws a picture of its state exports a function for it, and `src/cli` hands it to the view.
+- `src/models`, `src/eval` and `src/view` import only `src/core`. `src/view` turns a trace into a web page and draws
+  the pictures of the domains it knows, such as the chess board, from the data their steps record. The page joins the
+  browser modules in `src/view/web/` into one script, so they import each other with plain
+  `import { … } from "./name.ts"` lines, take only types from elsewhere, and keep their top-level names unique.
 - A domain under `src/domains/` imports only `src/core`. Its actions only read the workspace; file and process work
   stays in its `ingest/` folder and `load.ts`.
 - `src/cli` wires the others together.

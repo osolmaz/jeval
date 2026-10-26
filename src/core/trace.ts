@@ -8,6 +8,8 @@ export const answerSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("score"), score: z.number(), confidence: z.number() }),
 ]);
 const base = { id: z.number().int(), parent: z.number().int().nullable() };
+/** Facts for tools that read the trace, written only when there are any. */
+const data = z.record(z.string(), z.unknown()).optional();
 
 /** One line of a trace. Every entry names its parent, so a trace is a tree: a fork shares the steps before it. */
 export const traceEntrySchema = z.discriminatedUnion("type", [
@@ -29,13 +31,14 @@ export const traceEntrySchema = z.discriminatedUnion("type", [
 		source: z.string(),
 		text: z.string(),
 		images: z.array(z.string()),
+		data,
 	}),
 	z.object({
 		...base,
 		type: z.literal("menu"),
 		step: z.number().int(),
 		options: z.array(
-			z.object({ key: z.string(), action: z.string(), text: z.string(), informs: z.array(z.string()) }),
+			z.object({ key: z.string(), action: z.string(), text: z.string(), informs: z.array(z.string()), data }),
 		),
 	}),
 	z.object({
@@ -85,11 +88,19 @@ export class Trace {
 
 	observed(step: number, action: string, key: string, observation: Observation): void {
 		const images = (observation.images ?? []).map((image) => image.label);
-		this.push({ type: "observation", step, action, key, source: observation.source, text: observation.text, images });
+		const { source, text } = observation;
+		const facts = observation.data === undefined ? {} : { data: observation.data };
+		this.push({ type: "observation", step, action, key, source, text, images, ...facts });
 	}
 
 	menu(step: number, items: readonly MenuItem[], stop: string): void {
-		const options = items.map(({ key, action, text, informs }) => ({ key, action, text, informs: [...informs] }));
+		const options = items.map(({ key, action, text, informs, data }) => ({
+			key,
+			action,
+			text,
+			informs: [...informs],
+			...(data === undefined ? {} : { data }),
+		}));
 		options.push({ key: STOP_KEY, action: STOP_KEY, text: stop, informs: [] });
 		this.push({ type: "menu", step, options });
 	}

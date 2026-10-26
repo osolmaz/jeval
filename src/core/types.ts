@@ -21,6 +21,8 @@ export interface Observation {
 	readonly source: string;
 	readonly text: string;
 	readonly images?: readonly Image[];
+	/** Facts about the step for tools that read the trace, such as a viewer; the model never sees them. */
+	readonly data?: JsonObject;
 }
 
 /** One taken step in the observation log. `key` identifies the option, so a step is never offered twice. */
@@ -45,6 +47,8 @@ export interface MenuItem {
 	readonly informs: readonly string[];
 	/** Lower keeps the option when the menu must be cut; 0 by default. */
 	readonly priority: number;
+	/** Facts about the option for tools that read the trace; the model never sees them. */
+	readonly data?: JsonObject;
 	readonly run: () => Promise<Observation>;
 }
 

@@ -31,6 +31,8 @@ export interface RunResult {
 	readonly steps: number;
 	readonly error: string | null;
 	readonly trace: Trace;
+	/** Every observation the case made, the start included, in order. */
+	readonly log: readonly Entry[];
 }
 
 /** How much smaller each retry's view is after the model reported that a request did not fit its window. */
@@ -63,7 +65,7 @@ export async function run<W>(
 	const steps = await gather(domain, { workspace, log }, decider, limits, trace);
 	const questions = domain.questions(workspace);
 	const outcome = await answer(domain, { workspace, log }, decider, limits, questions, trace);
-	return { answers: outcome.answers, steps, error: outcome.error, trace };
+	return { answers: outcome.answers, steps, error: outcome.error, trace, log };
 }
 
 async function gather<W>(

@@ -1,4 +1,4 @@
-import type { Action, Observation, State } from "./types.ts";
+import type { Action, JsonObject, Observation, State } from "./types.ts";
 
 /** One concrete choice of an action: its key within the action, the text the model reads, and its argument. */
 export interface Option<A> {
@@ -7,6 +7,8 @@ export interface Option<A> {
 	readonly arg: A;
 	readonly informs?: readonly string[];
 	readonly priority?: number;
+	/** Facts about the option for tools that read the trace; the model never sees them. */
+	readonly data?: JsonObject;
 }
 
 /** An action schema with a typed argument. */
@@ -31,6 +33,7 @@ export function action<W, A>(spec: ActionSpec<W, A>): Action<W> {
 				text: option.text,
 				informs: option.informs ?? [],
 				priority: option.priority ?? 0,
+				...(option.data === undefined ? {} : { data: option.data }),
 				run: () => Promise.resolve(spec.observe(state.workspace, option.arg)),
 			}));
 		},

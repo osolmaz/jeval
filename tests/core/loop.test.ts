@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { batches, type Domain, estimateTokens, type Question, run, STOP_KEY, Trace } from "../../src/core/index.ts";
+import {
+	action,
+	batches,
+	type Domain,
+	estimateTokens,
+	parseTrace,
+	type Question,
+	run,
+	STOP_KEY,
+	Trace,
+} from "../../src/core/index.ts";
 import { answering, type Facts, factsDomain, failing, fakeDecider } from "../helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact b" } };
@@ -199,5 +209,48 @@ describe("run, in detail", () => {
 		expect(
 			notes.some((note) => /^the request did not fit the model's window; trying a view of \d+ tokens$/.test(note)),
 		).toBe(true);
+	});
+});
+
+describe("data for tools", () => {
+	const tagged = action<Facts, string>({
+		name: "tag",
+		options: (state) =>
+			Object.keys(state.workspace.facts).map((name) => ({
+				key: name,
+				text: `Tag ${name}`,
+				arg: name,
+				data: { name },
+			})),
+		observe: (workspace, name) => ({ source: name, text: workspace.facts[name] ?? "", data: { tagged: name } }),
+	});
+	const domain: Domain<Facts> = { ...factsDomain, actions: [tagged] };
+
+	it("keeps the options' and observations' data in the trace, and returns the log", async () => {
+		const result = await run(domain, facts, fakeDecider(answering(0.5, firstOption)), {
+			case: "c1",
+			limits: { steps: 1, options: 30, windowShare: 0.9 },
+		});
+		const lines = result.trace.entries.map((entry) => JSON.stringify(entry)).join("\n");
+		const entries = parseTrace(lines);
+		const menu = entries.find((entry) => entry.type === "menu");
+		expect(menu?.type === "menu" ? menu.options.map((option) => option.data) : []).toEqual([
+			{ name: "a" },
+			{ name: "b" },
+			undefined,
+		]);
+		expect(entries.find((entry) => entry.type === "observation")).toMatchObject({ data: { tagged: "a" } });
+		expect(result.log).toEqual([
+			{ action: "tag", key: "tag:a", observation: { source: "a", text: "fact a", data: { tagged: "a" } } },
+		]);
+	});
+
+	it("writes no data field when an option or observation has none", async () => {
+		const result = await run(factsDomain, facts, fakeDecider(answering(0.5, firstOption)), {
+			case: "c1",
+			limits: { steps: 1, options: 30, windowShare: 0.9 },
+		});
+		const lines = result.trace.entries.map((entry) => JSON.stringify(entry));
+		expect(lines.some((line) => line.includes('"data"'))).toBe(false);
 	});
 });

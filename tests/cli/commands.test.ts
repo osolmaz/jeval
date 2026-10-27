@@ -71,7 +71,8 @@ describe("commands", () => {
 		const run = runRecordSchema.parse(JSON.parse(await readFile(join(folder, "out", "run.json"), "utf8")));
 		expect(run).toMatchObject({
 			domain: "legal-judge",
-			judge: { name: "legal-judge", hash: legalJudge.judge.hash },
+			version: `0.3.0 legal-judge@${legalJudge.definition.hash.slice(0, 12)}`,
+			definition: { name: "legal-judge", hash: legalJudge.definition.hash, content: { domain: "legal-judge" } },
 			model: "fake/decider",
 			limits: DEFAULT_LIMITS,
 			switch: { version: expect.any(String) as unknown },
@@ -171,7 +172,7 @@ describe("commands", () => {
 		expect(second.requests.map((request) => request.questions[0]?.id)).toEqual(["S-1/meets", "S-1/meets"]);
 		const run = runRecordSchema.parse(JSON.parse(await readFile(join(out, "run.json"), "utf8")));
 		expect(run).toMatchObject({
-			judge: { name: "strict" },
+			definition: { name: "strict" },
 			evidenceFrom: join(folder, "first"),
 			totals: { calls: 2 },
 		});
@@ -193,7 +194,9 @@ describe("commands", () => {
 			JSON.stringify({ name: "s", cases: "cases", labels: "labels.jsonl", ids: ["c1", "c2", "c3"] }),
 		);
 		const compared = await compareRuns([join(folder, "first"), out], await loadSet(setFile));
-		expect(compared.runs.map((entry) => [entry.judge.split("@")[0], entry.report.itemMetrics?.accuracy])).toEqual([
+		expect(
+			compared.runs.map((entry) => [entry.definition.split("@")[0], entry.report.itemMetrics?.accuracy]),
+		).toEqual([
 			["legal-judge", 1],
 			["strict", 0],
 		]);

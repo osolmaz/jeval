@@ -1,7 +1,17 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { type Decider, type Fork, limitsOf, parseTrace, recording, replayDecider, Trace } from "../core/index.ts";
-import type { CaseRun, DomainEntry } from "./domains.ts";
+import {
+	type CaseRun,
+	type Decider,
+	type Fork,
+	limitsOf,
+	parseTrace,
+	recording,
+	type Replay,
+	replayOf,
+	type Runner,
+	Trace,
+} from "../core/index.ts";
 import { caseFiles, casesFolder, jsonLines, runFile } from "./layout.ts";
 import { type CaseResult, exists, readResults, readRunRecord, type RunRecord } from "./runs.ts";
 import { switchSource } from "./source.ts";
@@ -10,7 +20,10 @@ export interface RunOptions {
 	readonly out: string;
 	readonly concurrency: number;
 	readonly log: (line: string) => void;
-	/** A run whose evidence each case reuses: its recorded steps are repeated, and only the judging is asked again. */
+	/**
+	 * A run whose evidence each case reuses: its recorded steps and observations are repeated, and only the judging is
+	 * asked again.
+	 */
 	readonly evidenceFrom?: string;
 	/** The eval set the cases come from. */
 	readonly set?: { readonly name: string; readonly file: string };
@@ -34,7 +47,7 @@ export async function inPool<T>(items: readonly T[], limit: number, work: (item:
 	await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
 }
 
-async function runOne(domain: DomainEntry, folder: string, decider: Decider, options: RunOptions): Promise<void> {
+async function runOne(domain: Runner, folder: string, decider: Decider, options: RunOptions): Promise<void> {
 	const id = await domain.caseId(folder);
 	const files = caseFiles(options.out, id);
 	if (await exists(files.result)) {
@@ -50,9 +63,12 @@ async function runOne(domain: DomainEntry, folder: string, decider: Decider, opt
 	const recorded = recording(decider, (exchange) => {
 		requestLines.add(exchange);
 	});
-	const from = options.evidenceFrom;
-	const caseDecider = from === undefined ? recorded : await reusing(from, id, recorded);
-	const { result, categories, outcome } = await domain.run(folder, caseDecider, domain.limits, trace);
+	const { decider: caseDecider, ...replaying } = await evidence(options.evidenceFrom, id, recorded);
+	const { result, categories, outcome } = await domain.run(folder, caseDecider, {
+		limits: domain.limits,
+		trace,
+		...replaying,
+	});
 	await Promise.all([traceLines.done(), requestLines.done()]);
 	const record: CaseResult = {
 		case: id,
@@ -72,18 +88,26 @@ async function runOne(domain: DomainEntry, folder: string, decider: Decider, opt
 	options.log(`${id}: ${story}${result.error === null ? "" : ` | ERROR ${result.error}`}`);
 }
 
-/** Repeats every recorded choice of the case in `run`, so its evidence is gathered again as it was; `then` judges. */
-async function reusing(run: string, id: string, then: Decider): Promise<Decider> {
-	const entries = parseTrace(await readFile(caseFiles(run, id).trace, "utf8"));
-	return replayDecider(entries, { steps: entries.filter((entry) => entry.type === "choice").length, then });
+/**
+ * The decider of a case: `then` alone, or with the run `from`, a replay of every step that the case recorded there, so
+ * that its evidence is taken again as it was and `then` only judges.
+ */
+async function evidence(
+	from: string | undefined,
+	id: string,
+	then: Decider,
+): Promise<{ decider: Decider; replay?: Replay }> {
+	if (from === undefined) return { decider: then };
+	const entries = parseTrace(await readFile(caseFiles(from, id).trace, "utf8"));
+	return replayOf(entries, { steps: entries.filter((entry) => entry.type === "choice").length, then });
 }
 
 /** The run record to start from: a new one, or the folder's own when it holds the same run, which then goes on. */
-async function startRun(domain: DomainEntry, decider: Decider, options: RunOptions): Promise<RunRecord> {
+async function startRun(domain: Runner, decider: Decider, options: RunOptions): Promise<RunRecord> {
 	const record: RunRecord = {
 		domain: domain.name,
 		version: domain.version,
-		judge: domain.judge,
+		definition: domain.definition,
 		model: decider.model,
 		limits: { ...domain.limits },
 		switch: await switchSource(),
@@ -124,7 +148,7 @@ async function totals(out: string): Promise<NonNullable<RunRecord["totals"]>> {
  * Cases already done are skipped, so a stopped run goes on where it stopped; a folder of another run is refused.
  */
 export async function runCases(
-	domain: DomainEntry,
+	domain: Runner,
 	folders: readonly string[],
 	decider: Decider,
 	options: RunOptions,
@@ -143,13 +167,12 @@ export async function runCases(
 	await writeFile(runFile(options.out), `${JSON.stringify(finished, null, 1)}\n`);
 }
 
-/** Runs a case again from its trace: the recorded steps, then `fork.then` from step `fork.steps` when given. */
-export async function replayCase(
-	domain: DomainEntry,
-	folder: string,
-	tracePath: string,
-	fork?: Fork,
-): Promise<CaseRun> {
+/**
+ * Runs a case again from its trace: the recorded steps with their recorded observations, then `fork.then` from step
+ * `fork.steps` when given.
+ */
+export async function replayCase(domain: Runner, folder: string, tracePath: string, fork?: Fork): Promise<CaseRun> {
 	const entries = parseTrace(await readFile(tracePath, "utf8"));
-	return domain.run(folder, replayDecider(entries, fork), limitsOf(entries), new Trace());
+	const { decider, replay } = replayOf(entries, fork);
+	return domain.run(folder, decider, { limits: limitsOf(entries), trace: new Trace(), replay });
 }

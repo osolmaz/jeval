@@ -1,6 +1,6 @@
 import { Chess } from "chess.js";
 import { describe, expect, it } from "vitest";
-import { run, type State } from "../../../src/core/index.ts";
+import { replayOf, run, type State } from "../../../src/core/index.ts";
 import {
 	caseSchema,
 	chess,
@@ -273,4 +273,44 @@ describe("a game against an engine", () => {
 		const won = await run(chess, workspace, fakeDecider(picking(/checkmate/)), { case: "g", limits: LIMITS });
 		expect(outcomeOf(workspace, won.log, false)).toMatchObject({ result: "win", reason: "checkmate" });
 	});
+
+	it("replays the recorded game although the engine's replies change, and asks the engine only after a fork", async () => {
+		const engine = restlessEngine();
+		const workspace = { ...game({ opponent: "stockfish", side: "black" }), engine };
+		const first = await run(chess, workspace, firstMoves(3), { case: "g", limits: LIMITS });
+		const asked = engine.calls;
+		expect(asked).toBe(4);
+
+		const { decider, replay } = replayOf(first.trace.entries);
+		const again = await run(chess, workspace, decider, { case: "g", limits: LIMITS, replay });
+		expect(engine.calls).toBe(asked);
+		expect(movesOf(again.log)).toEqual(movesOf(first.log));
+		expect(again.ended).toBe("stop");
+
+		const fork = replayOf(first.trace.entries, { steps: 1, then: firstMoves(1) });
+		const forked = await run(chess, workspace, fork.decider, { case: "g", limits: LIMITS, replay: fork.replay });
+		expect(engine.calls).toBe(asked + 1);
+		expect(movesOf(forked.log)).toHaveLength(5);
+		expect(movesOf(forked.log).slice(0, 3)).toEqual(movesOf(first.log).slice(0, 3));
+	});
 });
+
+/** An engine whose reply in a position changes from one call to the next, as Stockfish's can. */
+function restlessEngine(): Engine & { readonly calls: number } {
+	let calls = 0;
+	return {
+		name: "Fake 2",
+		get calls() {
+			return calls;
+		},
+		move: (fen) => {
+			calls += 1;
+			const legal = new Chess(fen).moves({ verbose: true });
+			return Promise.resolve(legal[calls % legal.length]?.lan ?? "(none)");
+		},
+	};
+}
+
+/** A model that plays the first legal move `moves` times, then resigns. */
+const firstMoves = (moves: number) =>
+	fakeDecider((request, call) => (call <= moves ? picking() : picking("stop"))(request, call));

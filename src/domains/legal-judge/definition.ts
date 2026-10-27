@@ -1,8 +1,7 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { type BoolQuestion, packageRoot } from "../../core/index.ts";
+import { type BoolQuestion, hashOf, packageRoot } from "../../core/index.ts";
 import type { Item } from "./case.ts";
 
 /** One question asked about every rubric item. `{item}` in its instructions becomes the item's label and text. */
@@ -66,7 +65,7 @@ export interface Judge {
 
 export function judgeOf(value: unknown): Judge {
 	const definition = judgeSchema.parse(value);
-	return { definition, hash: createHash("sha256").update(JSON.stringify(definition)).digest("hex") };
+	return { definition, hash: hashOf(definition) };
 }
 
 export async function loadJudge(path: string): Promise<Judge> {

@@ -19,13 +19,13 @@ export const resultSchema = z.object({
 export type CaseResult = z.infer<typeof resultSchema>;
 
 /**
- * What `switch run` writes as `run.json`: what ran, with which judge and model, on which code, from which earlier run's
- * evidence if any, and at the end its totals.
+ * What `switch run` writes as `run.json`: what ran, with which definition and model, on which code, from which earlier
+ * run's evidence if any, and at the end its totals.
  */
 export const runRecordSchema = z.object({
 	domain: z.string(),
 	version: z.string(),
-	judge: z.object({ name: z.string(), hash: z.string(), definition: z.record(z.string(), z.unknown()) }),
+	definition: z.object({ name: z.string(), hash: z.string(), content: z.record(z.string(), z.unknown()) }),
 	model: z.string(),
 	limits: z.object({ steps: z.number().int(), options: z.number().int(), windowShare: z.number() }),
 	switch: z.object({ version: z.string(), commit: z.string().nullable(), changed: z.boolean().nullable() }),

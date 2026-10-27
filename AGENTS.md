@@ -22,14 +22,19 @@
 
 `slophammer.yml` enforces these:
 
-- `src/core` imports nothing else from `src`. It holds the building blocks, the loop, the menu and the trace.
+- `src/core` imports nothing else from `src`. It holds the building blocks, the loop, the menu, the trace, replay and
+  the setup type that runs a domain on case folders.
 - `src/models`, `src/eval` and `src/view` import only `src/core`. `src/view` turns a trace into a web page and draws
   the pictures of the domains it knows, such as the chess board, from the data their steps record. The page joins the
   browser modules in `src/view/web/` into one script, so they import each other with plain
   `import { … } from "./name.ts"` lines, take only types from elsewhere, and keep their top-level names unique.
 - A domain under `src/domains/` imports only `src/core`. Its actions only read the workspace; file and process work
-  stays in its `ingest/` folder and `load.ts`.
-- `src/cli` wires the others together.
+  stays in its `ingest/` folder, `load.ts` and `setup.ts`. A workspace may hold a handle to a program outside, such as
+  the chess engine that `load.ts` starts: a replay takes each step's recorded observation and runs no action again.
+- Each domain's `setup.ts` exports the function that sets the domain up from a definition file: it loads case
+  folders and reports a case. Everything a domain needs to run lives in its folder.
+- `src/cli` wires the others together. Its list of domains names each domain's setup function and nothing else
+  about the domain.
 
 ## Dependencies and docs
 

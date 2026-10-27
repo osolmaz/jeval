@@ -23,8 +23,7 @@ A case folder holds a `case.json`:
 
 `opponent` is `random`, the default; `stockfish`; or `self`, where the model plays both sides and each step is one
 move of the side to move. Against an opponent, `side` is the side the model plays, white by default. `seed` picks the
-random opponent's moves: the same seed and the same moves before it always give the same reply, so a game can be
-replayed. Stockfish keeps every UCI option at its default and thinks `movetime` milliseconds about each move, 1000 by
+random opponent's moves: the same seed and the same moves before it always give the same reply. Stockfish keeps every UCI option at its default and thinks `movetime` milliseconds about each move, 1000 by
 default; it starts afresh for each move, so it keeps no hash table between moves. An optional `start` gives the start
 position in FEN; when the opponent is to move in it, it moves first. [`examples/chess/`](../../../examples/chess) holds
 a game for each side against the random opponent and against Stockfish, and a self-play game.
@@ -46,6 +45,17 @@ The model sees the board as text with rank 8 at the top, each side's pieces, whe
 step did, and the moves so far; when the whole game does not fit the window, only the latest 20 moves. Each option is
 a legal move in algebraic notation with its meaning in words, such as `exd5 (pawn e4 to d5, takes the pawn)`. The stop
 option resigns the game.
+
+## Replay a game
+
+`replay` takes each step's observation from the game's trace, the opponent's replies included, so a game replays as it
+was played. This is true also against Stockfish, which does not always pick the same move in the same position. With
+`--fork <steps>`, the opponent replies again only after the fork. A replay against Stockfish still needs `STOCKFISH`,
+because the load of the case starts the engine to read its name:
+
+```bash
+STOCKFISH=/path/to/stockfish node src/cli/main.ts replay --domain chess examples/chess/stockfish-white runs/stockfish/cases/stockfish-white/trace.jsonl
+```
 
 ## Watch a game
 

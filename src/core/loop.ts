@@ -1,4 +1,5 @@
 import { buildMenu } from "./menu.ts";
+import { observe, type Replay, startOf } from "./replay.ts";
 import { STOP_KEY, Trace } from "./trace.ts";
 import type {
 	Answer,
@@ -23,12 +24,21 @@ export interface RunOptions {
 	readonly case: string;
 	readonly limits?: Limits;
 	readonly trace?: Trace;
+	/** A trace to repeat: the run takes its recorded observations and runs no action again, up to a fork. */
+	readonly replay?: Replay;
 }
+
+/**
+ * Why evidence gathering ended: the model chose the stop option, the menu was empty, the run took as many steps as its
+ * limits allow, or the choice failed.
+ */
+export type Ending = "stop" | "no options" | "step limit" | "no choice";
 
 export interface RunResult {
 	/** Every question's answer, or null when the answers could not be obtained. */
 	readonly answers: Readonly<Record<string, Answer>> | null;
 	readonly steps: number;
+	readonly ended: Ending;
 	readonly error: string | null;
 	readonly trace: Trace;
 	/** Every observation the case made, the start included, in order. */
@@ -58,14 +68,14 @@ export async function run<W>(
 		limits,
 	});
 	const log: Entry[] = [];
-	for (const entry of await domain.start(workspace)) {
+	for (const entry of await startOf(domain, workspace, options.replay)) {
 		log.push(entry);
 		trace.observed(0, entry.action, entry.key, entry.observation);
 	}
-	const steps = await gather(domain, { workspace, log }, decider, limits, trace);
+	const { steps, ended } = await gather(domain, { workspace, log }, decider, limits, trace, options.replay);
 	const questions = domain.questions(workspace);
 	const outcome = await answer(domain, { workspace, log }, decider, limits, questions, trace);
-	return { answers: outcome.answers, steps, error: outcome.error, trace, log };
+	return { answers: outcome.answers, steps, ended, error: outcome.error, trace, log };
 }
 
 async function gather<W>(
@@ -74,22 +84,23 @@ async function gather<W>(
 	decider: Decider,
 	limits: Limits,
 	trace: Trace,
-) {
+	replay: Replay | undefined,
+): Promise<{ steps: number; ended: Ending }> {
 	let step = 0;
 	while (step < limits.steps) {
 		const menu = buildMenu(domain.actions, state, limits.options - 1);
-		if (menu.length === 0) break;
+		if (menu.length === 0) return { steps: step, ended: "no options" };
 		step += 1;
 		trace.menu(step, menu, domain.stop);
 		const chosen = await choose(domain, state, decider, limits, menu, trace);
-		if (chosen === null) break;
+		if (chosen === null) return { steps: step, ended: "no choice" };
 		trace.chose(step, chosen.key, chosen.probabilities, chosen.usage);
-		if (chosen.item === null) break;
-		const observation = await chosen.item.run();
+		if (chosen.item === null) return { steps: step, ended: "stop" };
+		const observation = await observe(chosen.item, step, replay);
 		state.log.push({ action: chosen.item.action, key: chosen.item.key, observation });
 		trace.observed(step, chosen.item.action, chosen.item.key, observation);
 	}
-	return step;
+	return { steps: step, ended: "step limit" };
 }
 
 interface Chosen {

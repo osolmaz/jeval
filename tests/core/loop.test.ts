@@ -21,6 +21,7 @@ describe("run", () => {
 		const decider = fakeDecider(answering(0.8, (labels) => (calls++ === 0 ? firstOption(labels) : STOP_KEY)));
 		const result = await run(factsDomain, facts, decider, { case: "c1" });
 		expect(result.steps).toBe(2);
+		expect(result.ended).toBe("stop");
 		expect(result.error).toBeNull();
 		expect(result.answers).toEqual({ a: { kind: "bool", probability: 0.8 }, b: { kind: "bool", probability: 0.8 } });
 		expect(result.trace.entries.map((entry) => entry.type)).toEqual([
@@ -47,14 +48,14 @@ describe("run", () => {
 
 	it("stops gathering when the menu is empty or the step limit is reached", async () => {
 		const empty = await run(factsDomain, { facts: {} }, fakeDecider(answering(0.5, firstOption)), { case: "c" });
-		expect(empty.steps).toBe(0);
+		expect(empty).toMatchObject({ steps: 0, ended: "no options" });
 		const limited = await run(
 			factsDomain,
 			{ facts: { a: "1", b: "2", c: "3" } },
 			fakeDecider(answering(0.5, firstOption)),
 			{ case: "c", limits: { steps: 2, options: 30, windowShare: 0.9 } },
 		);
-		expect(limited.steps).toBe(2);
+		expect(limited).toMatchObject({ steps: 2, ended: "step limit" });
 	});
 
 	it("goes on to the answers when a choice fails or names no choice", async () => {
@@ -65,6 +66,7 @@ describe("run", () => {
 			{ case: "c" },
 		);
 		expect(failed.answers).not.toBeNull();
+		expect(failed.ended).toBe("no choice");
 		expect(
 			failed.trace.entries.some((entry) => entry.type === "note" && entry.message.includes("choice failed")),
 		).toBe(true);
@@ -81,6 +83,7 @@ describe("run", () => {
 		expect(silent.trace.entries.some((entry) => entry.type === "note" && entry.message.includes("no choice"))).toBe(
 			true,
 		);
+		expect(silent.ended).toBe("no choice");
 	});
 
 	it("sends a smaller view when the model reports the window was exceeded, and notes what the view left out", async () => {

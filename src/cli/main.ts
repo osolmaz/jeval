@@ -79,7 +79,7 @@ program
 	.option("--set <file>", "an eval set file; its scheduled cases are run")
 	.requiredOption("--out <folder>", "the run folder; a stopped run goes on in its own folder")
 	.option("--domain <name>", "the domain: legal-judge or chess", "legal-judge")
-	.option("--judge <file>", "the judge definition, for legal-judge; its default judge when none is given")
+	.option("--definition <file>", "the domain's definition, such as a legal judge file; the domain's own by default")
 	.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
 	.option("--api-key-env <variable>", "the environment variable that holds the API key")
 	.option("--concurrency <n>", "cases at once", positive, 4)
@@ -91,7 +91,7 @@ program
 				out: string;
 				set?: string;
 				domain: string;
-				judge?: string;
+				definition?: string;
 				model: string;
 				apiKeyEnv?: string;
 				concurrency: number;
@@ -99,7 +99,7 @@ program
 			},
 		) => {
 			const { folders, set } = await casesOf(cases, options.set);
-			const domain = await domainNamed(options.domain, options.judge);
+			const domain = await domainNamed(options.domain, options.definition);
 			const model = decider(options.model, options.apiKeyEnv);
 			if (options.view !== undefined) {
 				const port = options.view === true ? VIEW_PORT : options.view;
@@ -118,13 +118,13 @@ program
 
 program
 	.command("rejudge")
-	.description("Judge the cases of a run again with another judge or model, over the evidence that run gathered")
+	.description("Judge the cases of a run again with another definition or model, over the evidence that run gathered")
 	.argument("[cases...]", "case folders, when no --set names them")
 	.option("--set <file>", "an eval set file; its scheduled cases are judged again")
 	.requiredOption("--from <run>", "the run whose evidence to reuse")
 	.requiredOption("--out <folder>", "the new run folder")
 	.option("--domain <name>", "the domain: legal-judge or chess", "legal-judge")
-	.option("--judge <file>", "the judge definition, for legal-judge; its default judge when none is given")
+	.option("--definition <file>", "the domain's definition, such as a legal judge file; the domain's own by default")
 	.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
 	.option("--api-key-env <variable>", "the environment variable that holds the API key")
 	.option("--concurrency <n>", "cases at once", positive, 4)
@@ -136,7 +136,7 @@ program
 				out: string;
 				set?: string;
 				domain: string;
-				judge?: string;
+				definition?: string;
 				model: string;
 				apiKeyEnv?: string;
 				concurrency: number;
@@ -144,7 +144,7 @@ program
 		) => {
 			const { folders, set } = await casesOf(cases, options.set);
 			await runCases(
-				await domainNamed(options.domain, options.judge),
+				await domainNamed(options.domain, options.definition),
 				folders,
 				decider(options.model, options.apiKeyEnv),
 				{
@@ -161,12 +161,12 @@ program
 program
 	.command("replay")
 	.description(
-		"Run a case again from its trace; with --fork, take the recorded steps and let the model go on from there",
+		"Run a case again with the steps and observations of its trace; with --fork, the model goes on after the fork",
 	)
 	.argument("<case>")
 	.argument("<trace>")
 	.option("--domain <name>", "the domain the trace was made with", "legal-judge")
-	.option("--judge <file>", "the judge definition the trace was made with, for legal-judge")
+	.option("--definition <file>", "the definition the trace was made with; the domain's own by default")
 	.option("--fork <steps>", "repeat this many recorded steps, then let --model decide", positive)
 	.option("--model <provider/id>", "the model for a fork", "typesafe/jev-latest")
 	.option("--api-key-env <variable>", "the environment variable that holds the API key")
@@ -174,13 +174,14 @@ program
 		async (
 			folder: string,
 			trace: string,
-			options: { domain: string; judge?: string; fork?: number; model: string; apiKeyEnv?: string },
+			options: { domain: string; definition?: string; fork?: number; model: string; apiKeyEnv?: string },
 		) => {
 			const fork =
 				options.fork === undefined
 					? undefined
 					: { steps: options.fork, then: decider(options.model, options.apiKeyEnv) };
-			const { result } = await replayCase(await domainNamed(options.domain, options.judge), folder, trace, fork);
+			const domain = await domainNamed(options.domain, options.definition);
+			const { result } = await replayCase(domain, folder, trace, fork);
 			process.stdout.write(
 				`${JSON.stringify({ answers: result.answers, steps: result.steps, error: result.error }, null, 1)}\n`,
 			);

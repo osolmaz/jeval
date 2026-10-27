@@ -49,7 +49,7 @@ Each domain has a README that says what it does, what else it needs installed an
 - [Legal judge](src/domains/legal-judge/README.md) (`legal-judge`) grades a saved answer to a legal task against the
   task's rubric.
 - [Chess](src/domains/chess/README.md) (`chess`) plays a game of chess against an opponent that picks random legal
-  moves, or against itself.
+  moves, against Stockfish, or against itself.
 
 ## Watch a run
 
@@ -64,6 +64,18 @@ node src/cli/main.ts run --domain chess examples/chess/white-seed-1 --out runs/c
 
 The run folder keeps everything a later `view runs/chess` needs to play the cases back. `view --html <file>` saves a
 case's page as one HTML file that opens without switch.
+
+## Replay a case
+
+`replay` runs a case again from its trace. It repeats each recorded choice and takes each step's observation from the
+trace, so it runs no action again. A replay thus gives the recorded case, even when an action would find something
+else now, such as the reply of a chess engine. A step that looked at an image runs again, because a trace keeps only
+the image's label; if that step finds something else, the replay stops with an error. With `--fork <n>`, `replay`
+repeats the first n steps, and the model that `--model` names goes on from there:
+
+```bash
+node src/cli/main.ts replay --domain chess examples/chess/white-seed-1 runs/chess/cases/white-seed-1/trace.jsonl --fork 5
+```
 
 ## Write a domain
 
@@ -121,9 +133,39 @@ const result = await run(triage, ticket, decider, { case: "ticket-1" });
 ```
 
 `result.answers` holds the answers. `result.trace` holds every menu the model saw with the probability it gave each
-option, and what each step found. A domain that needs more than one round of questions, such as asking about each part
-of an item before deciding the item, adds a `judge` function that asks in stages. `src/domains/legal-judge/` is the
-complete example, and [docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) explains the design.
+option, and what each step found. `result.ended` tells why the model stopped choosing steps: it chose stop, the menu
+was empty, the steps ran out, or a choice failed. A domain that needs more than one round of questions, such as asking
+about each part of an item before deciding the item, adds a `judge` function that asks in stages.
+
+The command line runs a domain on case folders through the domain's `setup.ts`. It exports a function that takes a
+definition file, or none, and returns a runner: the domain, its definition and limits, how to read a case folder, and,
+when the domain has them, each question's category and how a case ended. The definition holds every text the model
+reads that does not come from a case, and the limits; `run.json` records it with its hash. `--definition <file>`
+passes a file to the function, such as a judge file to `legal-judge`. This setup takes no file:
+
+```ts
+import { basename } from "node:path";
+import { DEFAULT_LIMITS, definitionOf, type Runner, runnerOf, SetupError } from "../../core/index.ts";
+import { triage } from "./index.ts";
+import { loadTicket } from "./load.ts";
+
+export function triageSetup(file: string | undefined): Promise<Runner> {
+  if (file !== undefined) return Promise.reject(new SetupError("triage takes no definition file"));
+  return Promise.resolve(
+    runnerOf({
+      domain: triage,
+      definition: definitionOf("triage", { stop: triage.stop, choose: triage.choose }),
+      limits: DEFAULT_LIMITS,
+      caseId: (folder) => Promise.resolve(basename(folder)),
+      load: loadTicket,
+    }),
+  );
+}
+```
+
+The list of domains in `src/cli/domains.ts` names this function under the domain's name, and nothing else about the
+domain. `src/domains/legal-judge/` and `src/domains/chess/` are complete examples, and
+[docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) explains the design.
 
 ## License
 

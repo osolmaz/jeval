@@ -5,8 +5,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCases } from "../../src/cli/commands.ts";
 import { DomainError, domainNamed } from "../../src/cli/domains.ts";
-import { resultSchema } from "../../src/cli/runs.ts";
+import { resultSchema, runRecordSchema } from "../../src/cli/runs.ts";
 import { caseVersion, onlyCase, route, serveRun, ViewError, writeCasePage } from "../../src/cli/view.ts";
+import { hashOf, SetupError } from "../../src/core/index.ts";
+import { chess, LIMITS } from "../../src/domains/chess/index.ts";
 import type { Session } from "../../src/view/index.ts";
 import { DEFAULT_JUDGE } from "../../src/domains/legal-judge/index.ts";
 import { picking } from "../helpers/chess.ts";
@@ -43,20 +45,28 @@ async function chessRun(ids: readonly string[]): Promise<string> {
 }
 
 describe("domains on the command line", () => {
-	it("refuses an unknown domain and a judge file for chess", async () => {
+	it("refuses an unknown domain and a definition file for chess", async () => {
 		await expect(domainNamed("poker")).rejects.toThrow(DomainError);
-		await expect(domainNamed("chess", DEFAULT_JUDGE)).rejects.toThrow(/takes no judge file/);
+		await expect(domainNamed("chess", DEFAULT_JUDGE)).rejects.toThrow(SetupError);
+		await expect(domainNamed("chess", DEFAULT_JUDGE)).rejects.toThrow(/takes no definition file/);
 	});
 
-	it("records a chess game's outcome and its texts as the judge", async () => {
+	it("sets legal-judge up with its default judge when no definition file is given", async () => {
+		const named = await domainNamed("legal-judge", DEFAULT_JUDGE);
+		expect((await domainNamed("legal-judge")).definition).toEqual(named.definition);
+	});
+
+	it("records a chess game's outcome, and its texts and limits as its definition", async () => {
 		const out = await chessRun(["g1"]);
 		const result = resultSchema.parse(JSON.parse(await readFile(join(out, "cases", "g1", "result.json"), "utf8")));
 		expect(result.outcome).toMatchObject({ result: "loss", reason: "resignation", moves: 0 });
-		const record = JSON.parse(await readFile(join(out, "run.json"), "utf8")) as {
-			judge: { name: string; hash: string };
-		};
-		expect(record.judge.name).toBe("chess");
-		expect(record.judge.hash).toMatch(/^[0-9a-f]{64}$/);
+		expect(result.categories).toEqual({});
+		const { definition } = runRecordSchema.parse(JSON.parse(await readFile(join(out, "run.json"), "utf8")));
+		expect(definition).toEqual({
+			name: "chess",
+			hash: hashOf({ stop: chess.stop, choose: chess.choose, limits: LIMITS }),
+			content: { stop: "Resign the game", choose: chess.choose, limits: { ...LIMITS } },
+		});
 	});
 });
 

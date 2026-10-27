@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Answer, Limits, MenuItem, Observation, Usage } from "./types.ts";
+import type { Answer, Json, Limits, MenuItem, Observation, Usage } from "./types.ts";
 
 const usage = z.object({ inputTokens: z.number().nullable(), milliseconds: z.number() });
 export const answerSchema = z.discriminatedUnion("kind", [
@@ -8,8 +8,10 @@ export const answerSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("score"), score: z.number(), confidence: z.number() }),
 ]);
 const base = { id: z.number().int(), parent: z.number().int().nullable() };
-/** Facts for tools that read the trace, written only when there are any. */
-const data = z.record(z.string(), z.unknown()).optional();
+/** A JSON value, as the core types it. */
+const json: z.ZodType<Json> = z.json();
+/** Facts for tools that read the trace, written only when there are any; a replay gives them back to the domain. */
+const data = z.record(z.string(), json).optional();
 
 /** One line of a trace. Every entry names its parent, so a trace is a tree: a fork shares the steps before it. */
 export const traceEntrySchema = z.discriminatedUnion("type", [

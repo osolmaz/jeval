@@ -33,7 +33,8 @@ export async function scoreResults(runFolder: string, set: EvalSet): Promise<{ r
 /** One run's line in a comparison. */
 export interface ComparedRun {
 	readonly run: string;
-	readonly judge: string;
+	/** The run's definition as `name@hash`, with the first 12 characters of the hash. */
+	readonly definition: string;
 	readonly model: string;
 	readonly evidenceFrom: string | null;
 	readonly report: Report;
@@ -55,7 +56,7 @@ function formatComparison(cases: number, runs: readonly ComparedRun[]): string {
 	const lines = [`${String(cases)} cases that every run answered`];
 	for (const run of runs) {
 		const source = run.evidenceFrom === null ? "" : `, evidence of ${run.evidenceFrom}`;
-		lines.push(`${run.run}: ${run.judge}, ${run.model}${source}`, metricsLine(run));
+		lines.push(`${run.run}: ${run.definition}, ${run.model}${source}`, metricsLine(run));
 	}
 	return lines.join("\n");
 }
@@ -79,7 +80,7 @@ export async function compareRuns(
 	}
 	const runs = loaded.map(({ run, record, results }) => ({
 		run,
-		judge: `${record.judge.name}@${record.judge.hash.slice(0, 12)}`,
+		definition: `${record.definition.name}@${record.definition.hash.slice(0, 12)}`,
 		model: record.model,
 		evidenceFrom: record.evidenceFrom,
 		report: reportOn(results, labels, common),

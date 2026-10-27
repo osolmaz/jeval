@@ -209,7 +209,9 @@ Pi's session files.
 | `answers`     | The final typed answers with their probabilities                                                |
 | `usage`       | Tokens, time and cost of each model call                                                        |
 
-Because actions only read an immutable workspace, a trace can be replayed exactly. Forking a trace at step
+A replay repeats the recorded choices and takes each step's observation from the trace, so it is exact even when an
+action asks a program outside the workspace, such as a chess engine; see
+[Domain setup and exact replay](2026-10-27-domain-setup-and-replay.md). Forking a trace at step
 k with a different choice gives a counterfactual run: what would another choice have changed, or what would
 another decision model have done on the same path. Traces are also the data to compare models, to tune the
 menus and, later, to train a decision model on.
@@ -403,6 +405,10 @@ The command line, the interactive mode with overrides and label export, and the 
 
 A second domain that is not a judge, such as routing a request to a model or sorting a report. switch's core
 changes only if the second domain shows a gap; then the domains move to their own packages.
+
+The second domain is chess. It showed three gaps around the loop, which
+[Domain setup and exact replay](2026-10-27-domain-setup-and-replay.md) describes and closes: per-domain code in the
+command line, a judge record for every domain, and replays that ran the actions again.
 
 ## Prior art
 

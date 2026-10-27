@@ -1,7 +1,7 @@
 import type { Move } from "chess.js";
 import { action, type Observation } from "../../core/index.ts";
 import type { ChessCase } from "./case.ts";
-import { movesOf, opponentMove, PIECE_NAMES, replay, stepOf, statusOf } from "./game.ts";
+import { movesOf, nameOf, opponentMove, PIECE_NAMES, replay, stepOf, statusOf, youOf } from "./game.ts";
 
 interface Play {
 	/** Every move played before this one. */
@@ -32,21 +32,29 @@ const STATUS_TEXTS: Readonly<Record<string, string>> = {
 	"fifty-move rule": "Fifty moves passed without a capture or a pawn move: the game is a draw.",
 };
 
-/** Plays the model's move and, while the game goes on, the opponent's reply. */
+/** Who played a move, in the words of the step: you against the random opponent, the side's color in self-play. */
+function mover(game: ChessCase, color: "w" | "b"): string {
+	if (game.opponent === "random") return "You";
+	return nameOf(color) === "white" ? "White" : "Black";
+}
+
+/** Plays the model's move and, against the random opponent while the game goes on, the opponent's reply. */
 function play(game: ChessCase, { before, lan }: Play): Observation {
 	const board = replay(game.start, before);
+	const who = mover(game, board.turn());
 	const ours = board.move(lan);
-	const reply = statusOf(board) === "playing" ? opponentMove(board, game.seed, [...before, ours.lan]) : undefined;
+	const answers = game.opponent === "random" && statusOf(board) === "playing";
+	const reply = answers ? opponentMove(board, game.seed, [...before, ours.lan]) : undefined;
 	if (reply !== undefined) board.move(reply.lan);
 	const text = [
-		`You played ${ours.san}.`,
+		`${who} played ${ours.san}.`,
 		reply === undefined ? "" : `The opponent played ${reply.san}.`,
 		STATUS_TEXTS[statusOf(board)] ?? "",
 	];
 	return {
 		source: "board",
 		text: text.filter((part) => part !== "").join(" "),
-		data: stepOf(game.side, board, reply === undefined ? [ours] : [ours, reply]),
+		data: stepOf(youOf(game), board, reply === undefined ? [ours] : [ours, reply]),
 	};
 }
 

@@ -169,7 +169,8 @@ export class App {
 		const step = chessStep(moment.seen?.data);
 		if (step === null) return;
 		const { model, opponent } = namesOf(this.session);
-		const mine = step.you === "white" ? "w" : "b";
+		// The model's side is at the bottom; in self-play it plays both, with white at the bottom.
+		const mine = step.you === "black" ? "b" : "w";
 		const theirs = mine === "w" ? "b" : "w";
 		this.parts.top.replaceChildren(playerRow(opponent, theirs, fen, this.config.pieces));
 		this.parts.bottom.replaceChildren(playerRow(model, mine, fen, this.config.pieces));
@@ -180,9 +181,11 @@ export class App {
 		const session = this.session;
 		this.parts.result.replaceChildren(resultPanel(session, this.waiting));
 		if (moment === undefined || session === null) return;
-		this.parts.side.replaceChildren(decisionPanel(moment), confidenceChart(session, this.index));
+		this.parts.chart.replaceChildren(...confidenceChart(session, this.index));
+		this.parts.chart.hidden = this.parts.chart.childElementCount === 0;
+		this.parts.side.replaceChildren(decisionPanel(moment));
 		this.parts.moves.replaceChildren(
-			...moveList(session.story, this.index, (target) => {
+			...moveList(session.story, this.index, this.config.pieces, (target) => {
 				this.stop();
 				this.following = false;
 				void this.go(target, false);
@@ -235,11 +238,15 @@ export class App {
 			parts.play,
 			jump("next", "Next", "▶", () => this.goal + 1, true),
 			jump("latest", "Latest", "⏭", () => this.last),
+		);
+		const status = h(
+			"div",
+			{ class: "status" },
 			parts.where,
 			h("span", { class: "spacer" }),
 			h("label", { class: "speed" }, "Speed ", parts.speed),
 		);
-		parts.controls.replaceChildren(parts.scrub, buttons);
+		parts.controls.replaceChildren(parts.scrub, buttons, status);
 	}
 
 	/** Read through a method, since a click can stop the playing while the loop waits. */
@@ -332,8 +339,10 @@ export class App {
 
 /** The model's and the opponent's names. */
 function namesOf(session: Session | null): { model: string; opponent: string } {
-	const opening = chessStep(session?.story.opening.at(-1)?.data);
-	return { model: session?.story.model ?? "model", opponent: opening?.opponent ?? "opponent" };
+	const model = session?.story.model ?? "model";
+	const opponent = chessStep(session?.story.opening.at(-1)?.data)?.opponent;
+	if (opponent === "itself") return { model, opponent: model };
+	return { model, opponent: opponent ?? "opponent" };
 }
 
 /** Keys typed into a field, or held with a modifier, belong to the field or the browser. */

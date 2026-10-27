@@ -1,7 +1,7 @@
 import type { Chess } from "chess.js";
 import type { JsonObject, State, View } from "../../core/index.ts";
 import type { ChessCase } from "./case.ts";
-import { colorOf, movesOf, replay } from "./game.ts";
+import { colorOf, movesOf, nameOf, replay } from "./game.ts";
 
 const LEGEND =
 	"Capital letters are white pieces and small letters black pieces: K king, Q queen, R rook, B bishop, N knight, P pawn. A dot is an empty square.";
@@ -46,10 +46,11 @@ export function numbered(start: string, san: readonly string[]): string[] {
 export function chessView(state: State<ChessCase>, tokens: number): View {
 	const game = state.workspace;
 	const board = replay(game.start, movesOf(state.log));
-	const mine = colorOf(game.side);
+	// In self-play the model plays the side to move.
+	const mine = game.opponent === "self" ? board.turn() : colorOf(game.side);
 	const moves = numbered(game.start, board.history());
 	const base: JsonObject = {
-		you: game.side,
+		you: nameOf(mine),
 		to_move: board.turn() === "w" ? "white" : "black",
 		board: boardRows(board),
 		legend: LEGEND,

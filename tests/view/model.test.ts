@@ -14,6 +14,7 @@ import {
 	pliesOf,
 	ranked,
 	samePlaces,
+	scoreOf,
 } from "../../src/view/web/model.ts";
 import { picking } from "../helpers/chess.ts";
 import { chessSession } from "../helpers/sessions.ts";
@@ -174,6 +175,30 @@ describe("the move list and the PGN", () => {
 		expect(open).toContain('[White "random legal moves, seed 7"]');
 		expect(open).not.toContain("SetUp");
 		expect(open.trimEnd().endsWith("*")).toBe(true);
+	});
+
+	it("has the model on both sides of a self-play game, and gives the winner's score", async () => {
+		const mate = "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1";
+		const won = await chessSession({ opponent: "self", start: mate, policy: picking(/checkmate/) });
+		const pgn = pgnOf(won);
+		expect(pgn).toContain('[White "fake/decider"]');
+		expect(pgn).toContain('[Black "fake/decider"]');
+		expect(pgn).toContain('[Result "1-0"]');
+		expect(scoreOf(won)).toBe("1-0");
+		const played = await chessSession({ opponent: "self", steps: 2 });
+		expect(pliesOf(played.story).map((ply) => [ply.color, ply.byModel])).toEqual([
+			["w", true],
+			["b", true],
+		]);
+	});
+
+	it("has no score for a game that is not over or a case that is not chess", async () => {
+		const running = await chessSession({ steps: 1, finished: false });
+		expect(scoreOf(running)).toBeNull();
+		expect(scoreOf({ ...running, story: { ...running.story, opening: [] } })).toBeNull();
+		const lost = await chessSession({ side: "black", steps: 1 });
+		expect(scoreOf({ ...lost, outcome: { result: "loss" } })).toBe("1-0");
+		expect(scoreOf({ ...lost, outcome: { result: "draw" } })).toBe("1/2-1/2");
 	});
 
 	it("names the model's opponent as such when the opening says nothing about it", async () => {

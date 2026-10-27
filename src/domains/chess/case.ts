@@ -5,14 +5,15 @@ import { z } from "zod";
 export const STANDARD_START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 /**
- * A chess game: the side the model plays, the seed of the opponent that picks random legal moves, and the start
- * position in FEN, the standard one when none is given. When the start position has the opponent to move, the
- * opponent moves first.
+ * A chess game: whom the model plays against, an opponent that picks random legal moves or itself; the side it plays
+ * against the random opponent, whose seed picks its moves; and the start position in FEN, the standard one when none is
+ * given. When the start position has the random opponent to move, the opponent moves first.
  */
 export const caseSchema = z.object({
 	id: z.string().min(1),
-	side: z.enum(["white", "black"]),
-	seed: z.number().int(),
+	opponent: z.enum(["random", "self"]).default("random"),
+	side: z.enum(["white", "black"]).default("white"),
+	seed: z.number().int().default(0),
 	start: z
 		.string()
 		.default(STANDARD_START)

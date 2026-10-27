@@ -19,7 +19,8 @@ const PIECE_VALUES: Readonly<Record<PieceSymbol, number>> = { p: 1, n: 3, b: 3, 
 
 /** What each step records about the game, for the next step and for the viewer. */
 export const stepSchema = z.object({
-	you: z.enum(["white", "black"]),
+	/** The side the model plays, or both in self-play. */
+	you: z.enum(["white", "black", "both"]),
 	/** The moves of this step, in long algebraic notation such as e2e4 or a7a8q. */
 	moves: z.array(z.string()),
 	san: z.array(z.string()),
@@ -31,6 +32,10 @@ export const stepSchema = z.object({
 export type Step = z.infer<typeof stepSchema>;
 
 export const colorOf = (side: ChessCase["side"]): Color => (side === "white" ? "w" : "b");
+export const nameOf = (color: Color): "white" | "black" => (color === "w" ? "white" : "black");
+
+/** The side the model plays, as its steps record it: both sides in self-play. */
+export const youOf = (game: ChessCase): Step["you"] => (game.opponent === "self" ? "both" : game.side);
 
 /** The game after `moves`, given in long algebraic notation, from `start`. */
 export function replay(start: string, moves: readonly string[]): Chess {
@@ -73,9 +78,9 @@ export function opponentMove(game: Chess, seed: number, moves: readonly string[]
 }
 
 /** The step record of `played` moves, which leave `game` where it is now. */
-export function stepOf(side: ChessCase["side"], game: Chess, played: readonly Move[]): Step & JsonObject {
+export function stepOf(you: Step["you"], game: Chess, played: readonly Move[]): Step & JsonObject {
 	return {
-		you: side,
+		you,
 		moves: played.map((move) => move.lan),
 		san: played.map((move) => move.san),
 		fen: game.fen(),

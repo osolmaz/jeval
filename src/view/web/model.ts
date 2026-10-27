@@ -73,9 +73,9 @@ export interface Piece {
 	readonly square: string;
 }
 
-/** What the chess domain records for a step. */
+/** What the chess domain records for a step. `you` is the side the model plays, or both in self-play. */
 export interface ChessStep {
-	readonly you: "white" | "black";
+	readonly you: "white" | "black" | "both";
 	readonly moves: readonly string[];
 	readonly san: readonly string[];
 	readonly fen: string;
@@ -97,7 +97,7 @@ const strings = (value: unknown): value is string[] =>
 	Array.isArray(value) && value.every((item) => typeof item === "string");
 const SQUARE = /^[a-h][1-8]$/;
 
-const isSide = (value: unknown): boolean => value === "white" || value === "black";
+const isSide = (value: unknown): boolean => value === "white" || value === "black" || value === "both";
 const isPosition = ({ fen, status, check }: Record<string, unknown>): boolean =>
 	typeof fen === "string" && typeof status === "string" && typeof check === "boolean";
 
@@ -268,10 +268,13 @@ export function pliesOf(story: Story): Ply[] {
 export const confidence = (story: Story): (number | null)[] =>
 	story.frames.map((frame) => frame.options.find((option) => option.chosen)?.probability ?? null);
 
-const RESULTS: Readonly<Record<string, Readonly<Record<"white" | "black", string>>>> = {
-	win: { white: "1-0", black: "0-1" },
-	loss: { white: "0-1", black: "1-0" },
-	draw: { white: "1/2-1/2", black: "1/2-1/2" },
+/** The score of each result, by the side the model plays: its own result, or the winner's color in self-play. */
+const RESULTS: Readonly<Record<string, Readonly<Record<ChessStep["you"], string>>>> = {
+	win: { white: "1-0", black: "0-1", both: "*" },
+	loss: { white: "0-1", black: "1-0", both: "*" },
+	draw: { white: "1/2-1/2", black: "1/2-1/2", both: "1/2-1/2" },
+	"white wins": { white: "1-0", black: "1-0", both: "1-0" },
+	"black wins": { white: "0-1", black: "0-1", both: "0-1" },
 };
 
 const STANDARD = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w";
@@ -280,8 +283,8 @@ const STANDARD = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w";
 function players(story: Story): { white: string; black: string; start: string } {
 	const opening = chessStep(story.opening.at(-1)?.data);
 	if (opening === null) return { white: story.model, black: "opponent", start: STANDARD };
-	const opponent = opening.opponent ?? "opponent";
-	const [white, black] = opening.you === "white" ? [story.model, opponent] : [opponent, story.model];
+	const opponent = opening.opponent === "itself" ? story.model : (opening.opponent ?? "opponent");
+	const [white, black] = opening.you === "black" ? [opponent, story.model] : [story.model, opponent];
 	return { white, black, start: opening.start ?? STANDARD };
 }
 
@@ -300,6 +303,13 @@ function pgnHeaders(story: Story, result: string): [string, string][] {
 function pgnResult(session: Session): string {
 	const you = chessStep(session.story.opening.at(-1)?.data)?.you ?? "white";
 	return RESULTS[String(session.outcome?.["result"])]?.[you] ?? "*";
+}
+
+/** A chess game's score once it is over, such as 1-0; null for other domains and for games not over. */
+export function scoreOf(session: Session): string | null {
+	if (chessStep(session.story.opening.at(-1)?.data) === null) return null;
+	const score = pgnResult(session);
+	return score === "*" ? null : score;
 }
 
 /** The game in PGN, with the model and the opponent as the players. */

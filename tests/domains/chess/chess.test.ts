@@ -22,6 +22,10 @@ const stateOf = (workspace: ChessCase, log: State<ChessCase>["log"] = []): State
 const menuOf = (state: State<ChessCase>) => move.items(state);
 
 describe("chess cases", () => {
+	it("play white against the random opponent with seed 0 unless the case says otherwise", () => {
+		expect(caseSchema.parse({ id: "g" })).toMatchObject({ opponent: "random", side: "white", seed: 0 });
+	});
+
 	it("start from the standard position unless the case gives one", () => {
 		expect(game().start).toBe(STANDARD_START);
 		expect(game({ start: MATE_IN_ONE }).start).toBe(MATE_IN_ONE);
@@ -177,6 +181,37 @@ describe("a game", () => {
 	it("counts a checkmate against the model as a loss", () => {
 		const log = logOf("white", ["f2f3", "e7e5", "g2g4", "d8h4"]);
 		expect(outcomeOf(game(), log, false)).toMatchObject({ result: "loss", reason: "checkmate" });
+	});
+
+	it("lets the model play both sides in self-play, one move a step, from the side to move", async () => {
+		const workspace = game({ opponent: "self" });
+		const [opening] = await chess.start(workspace);
+		expect(opening?.observation).toMatchObject({
+			text: "The game starts. You play both sides.",
+			data: { you: "both", opponent: "itself", moves: [] },
+		});
+		const log = opening === undefined ? [] : [opening];
+		const first = await menuOf(stateOf(workspace, log))
+			.find((item) => item.key === "move:0:e2e4")
+			?.run();
+		expect(first).toMatchObject({ text: "White played e4.", data: { you: "both", moves: ["e2e4"] } });
+		const after = [...log, { action: "move", key: "move:0:e2e4", observation: first ?? { source: "", text: "" } }];
+		expect(chessView(stateOf(workspace, after), 10_000).state).toMatchObject({ you: "black", to_move: "black" });
+		expect(menuOf(stateOf(workspace, after)).map((item) => item.key)).toContain("move:1:e7e5");
+	});
+
+	it("names the winner in self-play: checkmate, resignation, a draw or the move limit", async () => {
+		const mate = game({ opponent: "self", start: MATE_IN_ONE });
+		const won = await run(chess, mate, fakeDecider(picking(/checkmate/)), { case: "g", limits: LIMITS });
+		expect(outcomeOf(mate, won.log, false)).toMatchObject({ result: "white wins", reason: "checkmate", moves: 1 });
+		const open = game({ opponent: "self" });
+		const resigned = await run(chess, open, fakeDecider(picking("stop")), { case: "g", limits: LIMITS });
+		expect(outcomeOf(open, resigned.log, true)).toMatchObject({ result: "black wins", reason: "resignation" });
+		const stale = game({ opponent: "self", start: STALEMATE_IN_ONE });
+		const drawn = await run(chess, stale, fakeDecider(picking(/^Qb6/)), { case: "g", limits: LIMITS });
+		expect(outcomeOf(stale, drawn.log, false)).toMatchObject({ result: "draw", reason: "stalemate" });
+		const short = await run(chess, open, fakeDecider(picking()), { case: "g", limits: { ...LIMITS, steps: 3 } });
+		expect(outcomeOf(open, short.log, false)).toMatchObject({ result: "unfinished", moves: 3 });
 	});
 
 	it("lets the opponent move first when the model plays black", async () => {

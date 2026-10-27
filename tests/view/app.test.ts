@@ -5,6 +5,7 @@ import { storyOf } from "../../src/view/frames.ts";
 import { type AppConfig, start } from "../../src/view/web/app.ts";
 import type { Session } from "../../src/view/web/model.ts";
 import { answering, factsDomain, fakeDecider } from "../helpers/fakes.ts";
+import { picking } from "../helpers/chess.ts";
 import { chessSession } from "../helpers/sessions.ts";
 
 const QUICK = { pieces: {}, motion: 0, dwell: 0, poll: 5 } as const;
@@ -48,6 +49,30 @@ describe("the viewer", () => {
 			"fake/decider",
 		]);
 		expect(text(root, ".result-slot")).toContain("unfinished · move limit");
+		expect(Array.from(root.querySelectorAll(".clock")).map((clock) => clock.className)).toEqual([
+			"clock b",
+			"clock w active",
+		]);
+	});
+
+	it("names the model on both sides in self-play, and shows the score of a finished game", async () => {
+		const { root } = mount({
+			...QUICK,
+			session: await chessSession({
+				opponent: "self",
+				steps: 1,
+				policy: picking(/checkmate/),
+				start: "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+			}),
+		});
+		await vi.waitFor(() => {
+			expect(Array.from(root.querySelectorAll(".player .name")).map((name) => name.textContent)).toEqual([
+				"fake/decider",
+				"fake/decider",
+			]);
+		});
+		expect(text(root, ".banner")).toBe("1-0white wins · checkmate");
+		expect(root.querySelector(".ply .figure")?.getAttribute("alt")).toBe("R");
 	});
 
 	it("steps through the moments with the buttons, the slider and the keys", async () => {
@@ -57,7 +82,8 @@ describe("the viewer", () => {
 			expect(label(root)).toBe("Step 1 of 2");
 		});
 		expect(root.querySelectorAll("polygon.arrow")).toHaveLength(5);
-		expect(text(root, ".decision h2")).toBe("Step 1 of 2: the model's options");
+		expect(text(root, ".decision h2")).toBe("The model's options");
+		expect(text(root, ".decision .step")).toBe("Step 1 of 2 · white to move");
 		expect(root.querySelector(".menu .chosen")?.textContent).toContain("(chosen)");
 		click(root, "button.latest");
 		await vi.waitFor(() => {
@@ -212,7 +238,7 @@ describe("a running case", () => {
 		const { root } = mount({ ...QUICK, session: { ...session, story } });
 		click(root, "button.latest");
 		await vi.waitFor(() => {
-			expect(text(root, ".decision h2")).toBe("Step 1: the model is choosing");
+			expect(text(root, ".decision h2")).toBe("The model is choosing…");
 		});
 		expect(root.querySelectorAll("polygon")).toHaveLength(0);
 	});

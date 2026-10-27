@@ -49,7 +49,7 @@ Each domain has a README that says what it does, what else it needs installed an
 - [Legal judge](src/domains/legal-judge/README.md) (`legal-judge`) grades a saved answer to a legal task against the
   task's rubric.
 - [Chess](src/domains/chess/README.md) (`chess`) plays a game of chess against an opponent that picks random legal
-  moves.
+  moves, or against itself.
 
 ## Watch a run
 

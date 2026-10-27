@@ -1,13 +1,17 @@
 # Chess
 
 The `chess` domain has the model play a game of chess, against an opponent that picks random legal moves, the setup
-of [LLM Chess](https://github.com/maxim-saplin/llm_chess), or against itself. At each step the model sees the board
-and picks one of the legal moves; against the random opponent, the opponent then replies. The game ends at checkmate,
+of [LLM Chess](https://github.com/maxim-saplin/llm_chess), against the [Stockfish](https://stockfishchess.org/) engine,
+or against itself. At each step the model sees the board and picks one of the legal moves; against an opponent, the
+opponent then replies. The game ends at checkmate,
 at a draw, when the side to move resigns, or after 200 steps.
 
 ## Install
 
-Chess needs nothing beyond switch itself; install it as the [main README](../../../README.md#install) says.
+Chess needs nothing beyond switch itself; install it as the [main README](../../../README.md#install) says. Games
+against Stockfish also need a Stockfish binary, such as one from its
+[releases](https://github.com/official-stockfish/Stockfish/releases), and the `STOCKFISH` environment variable set to
+its path.
 
 ## Cases
 
@@ -17,11 +21,13 @@ A case folder holds a `case.json`:
 { "id": "white-seed-1", "opponent": "random", "side": "white", "seed": 1 }
 ```
 
-`opponent` is `random`, the default, or `self`, where the model plays both sides and each step is one move of the
-side to move. Against the random opponent, `side` is the side the model plays, white by default, and `seed` picks the
-opponent's moves: the same seed and the same moves before it always give the same reply, so a game can be replayed. An
-optional `start` gives the start position in FEN; when the random opponent is to move in it, it moves first.
-[`examples/chess/`](../../../examples/chess) holds a game for each side and a self-play game.
+`opponent` is `random`, the default; `stockfish`; or `self`, where the model plays both sides and each step is one
+move of the side to move. Against an opponent, `side` is the side the model plays, white by default. `seed` picks the
+random opponent's moves: the same seed and the same moves before it always give the same reply, so a game can be
+replayed. Stockfish keeps every UCI option at its default and thinks `movetime` milliseconds about each move, 1000 by
+default; it starts afresh for each move, so it keeps no hash table between moves. An optional `start` gives the start
+position in FEN; when the opponent is to move in it, it moves first. [`examples/chess/`](../../../examples/chess) holds
+a game for each side against the random opponent and against Stockfish, and a self-play game.
 
 ## Play a game
 
@@ -29,10 +35,11 @@ Run the commands from the repository root:
 
 ```bash
 node src/cli/main.ts run --domain chess examples/chess/white-seed-1 --out runs/chess --model typesafe/jev-latest
+STOCKFISH=/path/to/stockfish node src/cli/main.ts run --domain chess examples/chess/stockfish-white --out runs/stockfish
 ```
 
 Each case's `result.json` gets an `outcome`: the `result`, its `reason`, the number of `moves` both sides made, each side's `material` (pawn 1, knight and bishop 3, rook 5, queen 9)
-and the final position as `fen`. Against the random opponent the result is the model's: win, loss or draw. In
+and the final position as `fen`. Against an opponent the result is the model's: win, loss or draw. In
 self-play it names the winner: white wins or black wins, or a draw. A game the step limit cut is unfinished.
 
 The model sees the board as text with rank 8 at the top, each side's pieces, whether it is in check, what the last

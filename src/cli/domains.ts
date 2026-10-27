@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Decider, JsonObject, Limits, RunResult, Trace } from "../core/index.ts";
 import { run, STOP_KEY } from "../core/index.ts";
 import { chess, LIMITS as CHESS_LIMITS, outcomeOf } from "../domains/chess/index.ts";
-import { loadCase as loadChessCase } from "../domains/chess/load.ts";
+import { loadCase as loadChessCase, loadGame } from "../domains/chess/load.ts";
 import { DEFAULT_JUDGE, legalJudge, loadJudge } from "../domains/legal-judge/index.ts";
 import { ingestCase } from "../domains/legal-judge/ingest/ingest.ts";
 import { loadCase } from "../domains/legal-judge/load.ts";
@@ -78,7 +78,7 @@ function chessEntry(judgeFile: string | undefined): Promise<DomainEntry> {
 		limits: CHESS_LIMITS,
 		caseId: async (folder) => (await loadChessCase(folder)).id,
 		async run(folder, decider, limits, trace) {
-			const game = await loadChessCase(folder);
+			const game = await loadGame(folder);
 			const result = await run(chess, game, decider, { case: game.id, limits, trace });
 			const last = result.trace.entries.findLast((entry) => entry.type === "choice");
 			const resigned = last?.type === "choice" && last.key === STOP_KEY;

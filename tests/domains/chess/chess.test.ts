@@ -5,6 +5,8 @@ import {
 	caseSchema,
 	chess,
 	type ChessCase,
+	type Engine,
+	EngineError,
 	LIMITS,
 	outcomeOf,
 	STANDARD_START,
@@ -18,12 +20,23 @@ import { fakeDecider } from "../../helpers/fakes.ts";
 const MATE_IN_ONE = "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1";
 const STALEMATE_IN_ONE = "k7/8/2Q5/8/8/8/8/7K w - - 0 1";
 
+/** An engine that plays the first legal move, named Fake 1. */
+const FIRST_MOVE: Engine = {
+	name: "Fake 1",
+	move: (fen) => Promise.resolve(new Chess(fen).moves({ verbose: true })[0]?.lan ?? "(none)"),
+};
+
 const stateOf = (workspace: ChessCase, log: State<ChessCase>["log"] = []): State<ChessCase> => ({ workspace, log });
 const menuOf = (state: State<ChessCase>) => move.items(state);
 
 describe("chess cases", () => {
 	it("play white against the random opponent with seed 0 unless the case says otherwise", () => {
-		expect(caseSchema.parse({ id: "g" })).toMatchObject({ opponent: "random", side: "white", seed: 0 });
+		expect(caseSchema.parse({ id: "g" })).toMatchObject({
+			opponent: "random",
+			side: "white",
+			seed: 0,
+			movetime: 1000,
+		});
 	});
 
 	it("start from the standard position unless the case gives one", () => {
@@ -225,5 +238,39 @@ describe("a game", () => {
 			start: STANDARD_START,
 		});
 		expect(menuOf(stateOf(workspace, opening === undefined ? [] : [opening]))).toHaveLength(20);
+	});
+});
+
+describe("a game against an engine", () => {
+	it("plays the engine's reply, and names the engine and its time a move", async () => {
+		const workspace = { ...game({ opponent: "stockfish", movetime: 500 }), engine: FIRST_MOVE };
+		const [opening] = await chess.start(workspace);
+		expect(opening?.observation).toMatchObject({
+			text: "The game starts. You play white.",
+			data: { you: "white", opponent: "Fake 1, 0.5 s a move", moves: [] },
+		});
+		const item = menuOf(stateOf(workspace)).find((option) => option.key === "move:0:e2e4");
+		const reply = await FIRST_MOVE.move(replay(workspace.start, ["e2e4"]).fen());
+		const played = new Chess();
+		played.move("e2e4");
+		const san = played.move(reply).san;
+		expect(await item?.run()).toMatchObject({
+			text: `You played e4. The opponent played ${san}.`,
+			data: { you: "white", moves: ["e2e4", reply] },
+		});
+	});
+
+	it("lets the engine move first when the model plays black, and needs an engine", async () => {
+		const black = game({ opponent: "stockfish", side: "black" });
+		const [opening] = await chess.start({ ...black, engine: FIRST_MOVE });
+		expect(opening?.observation.text).toMatch(/^The game starts\. You play black\. The opponent played \S+\.$/);
+		expect(opening?.observation.data).toMatchObject({ opponent: "Fake 1, 1 s a move", moves: ["a2a3"] });
+		await expect(chess.start(black)).rejects.toThrow(EngineError);
+	});
+
+	it("counts the result for the model, as against the random opponent", async () => {
+		const workspace = { ...game({ opponent: "stockfish", start: MATE_IN_ONE }), engine: FIRST_MOVE };
+		const won = await run(chess, workspace, fakeDecider(picking(/checkmate/)), { case: "g", limits: LIMITS });
+		expect(outcomeOf(workspace, won.log, false)).toMatchObject({ result: "win", reason: "checkmate" });
 	});
 });

@@ -10,10 +10,11 @@ date: 2026-10-28
 
 switch's two domains, legal-judge and chess, should show how a project outside switch builds a harness on it. Today
 switch holds them, their data, the legal-judge scoring and the chess viewer, and the core still uses legal-judge words
-such as workspace, judge and evidence. Three PRs fix this: the first renames the core's legal-judge words and removes
-two legal-judge fields, the second splits the viewer so that chess gives its own part of the page, and the third
-moves each domain into `examples/<name>/` as a package that imports `@osolmaz/switch` the way an outside project
-would. Traces and `result.json` files from before stay readable, an old `run.json` needs one field renamed, and the
+such as workspace, judge and evidence, plus two words, option and action, for one idea. Three PRs fix this: the first
+renames the core's words to world, history, action and answer and removes two legal-judge fields, the second splits
+the viewer so that chess gives its own part of the page, and the third moves each domain into `examples/<name>/` as a
+package that imports `@osolmaz/switch` the way an outside project would. `result.json` files from before stay
+readable, old traces and `run.json` files need some fields renamed with the `jq` commands in this doc, and the
 commands move to each example's entry point.
 
 ## Background
@@ -47,6 +48,11 @@ do not fit chess.
 | `informs`                 | `Option.informs`, `MenuItem.informs` and the trace's menu options                                         | Only the legal-judge `search` action sets it, and nothing in switch reads it.                                                            |
 | `source`                  | `Observation.source`, which every observation must have                                                   | Chess writes `"board"` on every observation. Only the legal-judge view reads it.                                                         |
 | `rejudge`, `evidenceFrom` | the `rejudge` command and `run.json`                                                                      | The command repeats each case's recorded steps and asks the questions again. It has the options of `run`, plus `--from`, minus `--view`. |
+| `log`                     | `State.log` and `RunResult.log`                                                                           | Most readers take a log for debug output, and `src/cli` already has a `log` that prints progress lines.                                  |
+| "option" and "action"     | `Option`, `MenuItem` and `Action` in `src/core`, the trace's `menu.options`, and `Limits.options`         | Two words for one idea: a step that the model can take is an "option", and the code that lists such steps is an "action".                |
+
+The model's API has its own words for the question and the pick. The section on the model's words below lists them
+next to switch's words.
 
 ### switch holds the domains
 
@@ -90,8 +96,9 @@ the type checker cannot catch a change on one side.
 
 Three PRs, in this order. Each one passes `pnpm check` and leaves switch working.
 
-1. **Names in the core.** Rename the legal-judge words, drop `informs`, make `source` optional, and fold `rejudge`
-   into `run`. Small changes in many files, and no files move.
+1. **Names in the core.** Rename the legal-judge words, call the log the history, use one word, action, for a step
+   that the model can take, drop `informs`, make `source` optional, and fold `rejudge` into `run`. Small changes in
+   many files, and no files move.
 2. **Viewer split.** switch's viewer shows any domain, and chess gives its board, sounds, move list and PGN as its own
    part of the page.
 3. **Domains as packages.** Each domain becomes a package in `examples/<name>/` with its code, data, tests and entry
@@ -105,10 +112,10 @@ moves folders and wires entry points, and changes no viewer code.
 ### World
 
 `workspace` becomes `world` everywhere in the core. The world is what one case gives, loaded once and fixed for the
-run. Everything that changes goes into the log, so the state of a run is the world plus the log.
+run. Everything that changes goes into the history, so the state of a run is the world plus the history.
 
-- `State<W>` is `{ world, log }`.
-- `ActionSpec.observe(world, arg)`, and its comment says "Actions only read the world."
+- `State<W>` is `{ world, history }`.
+- An action's `run(world, arg)`, and its comment says "Actions only read the world."
 - `Domain.questions(world)` and `Domain.start(world)`.
 - `run(domain, world, decider, options)` and `startOf(domain, world, replay)`.
 - `Setup.load(folder)` returns "the world of a case folder", and `Setup.outcome(world, result)`.
@@ -123,7 +130,114 @@ Names considered:
 - `environment` already means environment variables in this code (`STOCKFISH`, `--api-key-env`). In reinforcement
   learning an environment also changes at each step, and the world does not.
 - `world` can make a reader expect it to change. The docs say that it does not, and that the chess board comes from
-  the log.
+  the history.
+
+### History
+
+`log` becomes `history`. The history is the list of steps taken so far in a run, in order. Each entry records which
+kind of action ran, its key, and its observation. The domain's `start` adds the opening entries, the core adds one
+entry after each step, and nothing else changes the history.
+
+- `State<W>` is `{ world, history }`, and `RunResult.log` becomes `RunResult.history`.
+- The domains' helpers take `history`, such as `movesOf(history)` in chess and `readParts(history)` in legal-judge.
+- No file on disk has a `log` field, so this rename changes no file.
+
+Names considered:
+
+- `steps` already means the number of steps, in `RunResult.steps` and `Limits.steps`.
+- `trajectory` is jargon, and it sounds like a finished run.
+
+### Actions
+
+switch uses one word, action, for a step that the model can take now: "Nc6 (knight b8 to c6)", "Read contract.pdf,
+part 2", or stop. The word "option" leaves the code and the docs. "Read", "search" and "move" become each action's
+`kind`, a label that the trace and the viewer can group by.
+
+A domain gives one function that returns the available actions:
+
+```ts
+interface Action {
+  /** A label such as "move" or "read". */
+  readonly kind: string;
+  /** Unique in a run, such as "move:0:e2e4"; an action whose key is in the history is not offered again. */
+  readonly key: string;
+  /** What the model reads. */
+  readonly text: string;
+  /** Lower keeps the action when the menu must be cut; 0 by default. */
+  readonly priority: number;
+  readonly data?: JsonObject;
+  run(): Promise<Observation>;
+}
+
+interface Domain<W> {
+  actions(state: State<W>): readonly Action[];
+  // the rest stays as it is
+}
+```
+
+The helper `actionKind` keeps today's typed argument. It turns a kind's spec into a function from the state to that
+kind's actions, and a domain joins its kinds in the order it wants them on the menu:
+
+```ts
+// chess: one kind
+const move = actionKind<ChessGame, Play>({
+  name: "move",
+  list(state) {
+    const before = movesOf(state.history);
+    const board = replay(state.world.start, before);
+    if (statusOf(board) !== "playing") return [];
+    return board.moves({ verbose: true }).map((legal) => ({
+      key: `${String(before.length)}:${legal.lan}`,
+      text: describe(legal),
+      arg: { before, lan: legal.lan },
+    }));
+  },
+  run: play,
+});
+// in the domain: actions: move
+
+// legal-judge: six kinds, in menu order
+// in the domain: actions: (state) => [read, look, search, count, changes, compare].flatMap((kind) => kind(state))
+```
+
+What changes:
+
+- `MenuItem` and `Option<A>` become `Action`. Today's `Action<W>`, the code that lists one kind, becomes a function
+  that `actionKind` returns. `action()` becomes `actionKind()`, and its spec's `options` and `observe` become `list` and
+  `run`.
+- `Domain.actions` is a function in place of a list. The core keeps doing what `buildMenu` does today with the actions
+  that it returns: it removes the actions whose key is in the history, refuses two actions with the same key or text,
+  cuts the list to the limit by priority, and adds stop.
+- `Entry.action` becomes `Entry.kind`. Stop is an action with the kind and the key `stop`.
+- `Limits.options` becomes `Limits.actions`: the most actions on one menu, stop included.
+- The menu keeps its name: it is the list of available actions at one step.
+- The trace's menu entries list `actions` in place of `options`, each with `kind` in place of `action`. Observation
+  entries have `kind` in place of `action`. The `case` entry and `run.json` have `limits.actions` in place of
+  `limits.options`.
+- The legal-judge files in `judges/` and the chess definition have `limits.actions`, so both definition hashes change,
+  and so does the legal-judge version, which includes the judge's hash. The menus and the requests to the model do not
+  change.
+
+### Words on the model's side
+
+The core sends the available actions to the model as one question. With Jev, TypeSafe's classifier model and
+switch's default, the request goes through pi-ai's classifier API. pi-ai sends each question to TypeSafe's
+`/systemone` endpoint as it is, except that it renames `bool` to `noul` (`dist/api/system-one-shared.js` in pi-ai
+1.4.0). These are the words on each side; TypeSafe's own documentation was not checked.
+
+| switch                                                                          | pi-ai and TypeSafe                                                                |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| the JSON that the model reads, `View.state`                                     | `state`                                                                           |
+| `ChoiceQuestion`, with `kind: "choice"`                                         | a question with `type: "choice"`                                                  |
+| each available action, as a label `o1`…`oN` or `stop`, with the action's `text` | a key of the question's `criteria`, with its text                                 |
+| `choices`, `levels`, and `yes` and `no`                                         | `criteria` for each of the three question types                                   |
+| `bool`                                                                          | `bool` in pi-ai, and `noul` on TypeSafe's wire                                    |
+| the model's pick: `ChoiceAnswer.choice` and `probabilities`                     | `choice` and `probabilities`, plus a `confidence` that switch does not keep today |
+| `Decider` and `decide`                                                          | a classifier model and `classify`                                                 |
+
+So "choice" has one meaning in switch, as on the model's side: the model's pick in a choice question. What the model
+picks is an action. On the model's side an action is only a label with a text, and `choose` in `src/core/loop.ts`
+turns the actions into labels and the picked label back into its action.
 
 ### Answer
 
@@ -134,14 +248,14 @@ the trace's `asked` entries keep their stage names.
 
 ### Steps
 
-The word "evidence" leaves the core. `gather` becomes `takeSteps`, `Domain.stop` is "the text of the option that ends
-the steps", and the comments on `AskOptions` say "the view" for "the evidence view". This changes comments and one
-function name, and no behavior.
+The word "evidence" leaves the core. `gather` becomes `takeSteps`, `Domain.stop` is "the text of the stop action", and
+the comments on `AskOptions` say "the view" for "the evidence view". This changes comments and one function name, and
+no behavior.
 
 ### Informs into data
 
-`Option.informs` and `MenuItem.informs` go, and so does `informs` on the trace's menu options. legal-judge's `search`
-puts the rubric items of a term into the option's data: `data: { informs: term.items }`. PR #24 added `data` for facts
+`Option.informs` and `MenuItem.informs` go, and so does `informs` on the trace's menu entries. legal-judge's `search`
+puts the rubric items of a term into the action's data: `data: { informs: term.items }`. PR #24 added `data` for facts
 like this, which tools read and the model never sees.
 
 ### Optional source
@@ -163,16 +277,25 @@ the other run recorded for it, and then the model answers the questions. This is
 ### What stays the same
 
 - The requests that both domains send to the model stay byte for byte the same. The legal-judge view still lists
-  each observation's source, and the chess view never showed it.
-- The domain versions, the definition hashes, and the question and answer types stay the same.
-- The trace keeps its entry types. An old trace still loads in the viewer and in replay: the reader ignores fields
-  that it does not know, such as `informs`, and accepts a `source`.
+  each observation's source, and the chess view never showed it. The menus have the same actions in the same order.
+- The chess version and the question and answer types stay the same.
+- The trace keeps its entry types and the keys of every step. Only the field names above change, and the migration
+  section gives the `jq` commands that rename them in an old trace and an old `run.json`. The reader does not accept
+  the old names.
+
+What changes besides the names: both definition hashes and the legal-judge version, because `limits.options` is
+renamed in both definitions.
 
 ### Tests
 
 - The existing tests, with the new names.
-- A legal-judge search option carries `informs` in its `data`, and the trace's menu options have no `informs` field.
+- A domain's `actions` function is the menu's only source: the core keeps its order, removes the actions already
+  taken, and cuts by priority.
+- The trace's menu entries list `actions` with a `kind`, observation entries have a `kind`, and `limits` has
+  `actions`.
+- A legal-judge search action carries `informs` in its `data`, and the trace's menu entries have no `informs` field.
 - An observation without a source is written without one, and a replay of it passes.
+- A trace that the migration's `jq` command renamed loads in the viewer and replays.
 - `run --steps-from` tests replace the `rejudge` tests: the recorded steps come back, and only the answers go to the
   model.
 - A check before the merge: the requests for a test case of each domain are byte for byte the same as on `main`.
@@ -187,7 +310,7 @@ own way. Chess gives the board and its other chess parts.
 - The server side: `frames.ts`, which turns a trace into a story, `page.ts`, the index page, `serveRun` and the live
   updates.
 - On the page: the header, playback at four speeds and with the arrow keys, the step label, the menu with each
-  option's probability, "What happened", the notes, the confidence chart, and the result panel with the outcome and
+  action's probability, "What happened", the notes, the confidence chart, and the result panel with the outcome and
   the answers.
 - When a domain gives no part, the stage shows the observation text, as the page does today for a step without chess
   data.
@@ -302,7 +425,7 @@ switch's `package.json` gets `exports`:
 
 | Import                    | What it gives                                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `@osolmaz/switch`         | the core: the types, `action`, `run`, the trace, replay, `Setup`, `runnerOf` and `definitionOf`        |
+| `@osolmaz/switch`         | the core: the types, `actionKind`, `run`, the trace, replay, `Setup`, `runnerOf` and `definitionOf`    |
 | `@osolmaz/switch/cli`     | `commandLine`, and the readers of run folders and eval sets: `readRunRecord`, `readResults`, `loadSet` |
 | `@osolmaz/switch/viewer`  | `DomainViewer`, and the page's types and helpers for a domain's part                                   |
 | `@osolmaz/switch/testing` | the fake decider for tests, which moves from `tests/helpers/fakes.ts` to `src/testing/`                |
@@ -405,8 +528,8 @@ switch keeps no `bin`. A `switch` command without domains could only show runs, 
 
 - The README describes switch, links each example, and shows an entry point in "Write a domain".
 - Each example's README moves with it and gets the new commands.
-- `AGENTS.md` gets the boundaries for `src/` and `examples/`, `world` for `workspace`, and the `switch-source`
-  condition.
+- `AGENTS.md` gets the boundaries for `src/` and `examples/`, the words world, history and action, and the
+  `switch-source` condition.
 - `docs/2026-10-25-switch-plan.md` links this doc.
 - Dated docs stay as they are, because they describe the repository on their date.
 
@@ -414,19 +537,35 @@ switch keeps no `bin`. A `switch` command without domains could only show runs, 
 
 Each change replaces the old contract in place. No old name, command or reader stays.
 
-| Before                                     | After the PR    | What to do                                                                                                                                                                                              |
-| ------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A trace or a `result.json`                 | any             | Nothing. They still load in the viewer and in replay.                                                                                                                                                   |
-| A `run.json`                               | names           | Rename `evidenceFrom` to `stepsFrom`. A `run.json` from before PR #24 also needs `judge` renamed to `definition`, and its inner `definition` to `content`. Only run continuation and `compare` read it. |
-| `switch rejudge --from <run> …`            | names           | `run --steps-from <run> …`                                                                                                                                                                              |
-| `switch run --domain chess …`              | packages        | `examples/chess/src/main.ts run …`                                                                                                                                                                      |
-| `switch run …` for legal-judge             | packages        | `examples/legal-judge/src/main.ts run …`                                                                                                                                                                |
-| `switch ingest`, `score` or `compare`      | packages        | The same command on `examples/legal-judge/src/main.ts`.                                                                                                                                                 |
-| `switch view <run>`                        | packages        | `view <run>` on the entry point of the example that made the run.                                                                                                                                       |
-| `switch replay …`                          | packages        | `replay …` on that entry point.                                                                                                                                                                         |
-| An eval set file                           | packages        | Nothing.                                                                                                                                                                                                |
-| A path into `judges/` or `examples/chess/` | packages        | `examples/legal-judge/judges/` and `examples/chess/cases/`.                                                                                                                                             |
-| A domain written outside this repository   | names, packages | Rename `workspace` to `world` and `judge` to `answer`, move `informs` into `data`, import `@osolmaz/switch`, and write an entry point with `commandLine`.                                               |
+| Before                                     | After the PR    | What to do                                                                                                                                                                                                                                                                             |
+| ------------------------------------------ | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A `result.json`                            | any             | Nothing.                                                                                                                                                                                                                                                                               |
+| A trace                                    | names           | Rename its fields with the first `jq` command below. The viewer, `replay` and `run --steps-from` read traces.                                                                                                                                                                          |
+| A `run.json`                               | names           | Rename its fields with the second `jq` command below. A `run.json` from before PR #24 also needs `judge` renamed to `definition`, and its inner `definition` to `content`. Only run continuation and `compare` read it.                                                                |
+| A definition file of your own              | names           | Rename `limits.options` to `limits.actions`. Its hash changes.                                                                                                                                                                                                                         |
+| `switch rejudge --from <run> …`            | names           | `run --steps-from <run> …`                                                                                                                                                                                                                                                             |
+| `switch run --domain chess …`              | packages        | `examples/chess/src/main.ts run …`                                                                                                                                                                                                                                                     |
+| `switch run …` for legal-judge             | packages        | `examples/legal-judge/src/main.ts run …`                                                                                                                                                                                                                                               |
+| `switch ingest`, `score` or `compare`      | packages        | The same command on `examples/legal-judge/src/main.ts`.                                                                                                                                                                                                                                |
+| `switch view <run>`                        | packages        | `view <run>` on the entry point of the example that made the run.                                                                                                                                                                                                                      |
+| `switch replay …`                          | packages        | `replay …` on that entry point.                                                                                                                                                                                                                                                        |
+| An eval set file                           | packages        | Nothing.                                                                                                                                                                                                                                                                               |
+| A path into `judges/` or `examples/chess/` | packages        | `examples/legal-judge/judges/` and `examples/chess/cases/`.                                                                                                                                                                                                                            |
+| A domain written outside this repository   | names, packages | Rename `workspace` to `world`, `log` to `history` and `judge` to `answer`. Turn the list of actions into one `actions` function with `actionKind`, whose spec has `list` and `run`. Move `informs` into `data`, import `@osolmaz/switch`, and write an entry point with `commandLine`. |
+
+The two `jq` commands rename the fields of one case's trace and of a run's `run.json`. They write new files, and you
+replace the old files after a check. They drop `informs`, which nothing reads. The trace command was tried on a copy
+of a chess run: it kept all 22 entries and left no `options` or `action` field.
+
+```bash
+jq -c '
+  if .type == "case" then .limits |= (.actions = .options | del(.options))
+  elif .type == "menu" then .actions = [.options[] | {key, kind: .action, text} + (if .data == null then {} else {data} end)] | del(.options)
+  elif .type == "observation" then .kind = .action | del(.action)
+  else . end' trace.jsonl > trace.renamed.jsonl
+
+jq '.limits |= (.actions = .options | del(.options)) | .stepsFrom = .evidenceFrom | del(.evidenceFrom)' run.json > run.renamed.json
+```
 
 ## Out of scope
 
@@ -434,5 +573,5 @@ Each change replaces the old contract in place. No old name, command or reader s
 - A scorer for every domain. switch gets one when a second domain needs labels.
 - A repository for each example.
 - The word `state` for two things: the JSON that the model reads (`View.state` and the request's `state`), and the
-  world plus the log (`State`). The JSON key is in every request, so a rename would change what the model reads.
-- Changes to the trace other than `informs` and `source`.
+  world plus the history (`State`). The JSON key is in every request, so a rename would change what the model reads.
+- Changes to the trace other than the renames above, `informs` and `source`.

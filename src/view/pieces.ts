@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { packageRoot } from "../core/index.ts";
 
-/** The chess pieces the viewer draws: Chessnut by Alexis Luengas, under the Apache License 2.0. */
-const FOLDER = join(packageRoot(import.meta.url), "assets", "pieces", "chessnut");
+/** The chess pieces the viewer draws: cburnett by Colin M.L. Burnett, the set lichess shows by default, under the BSD license. */
+const FOLDER = join(packageRoot(import.meta.url), "assets", "pieces", "cburnett");
 const NAMES = ["wK", "wQ", "wR", "wB", "wN", "wP", "bK", "bQ", "bR", "bB", "bN", "bP"] as const;
 
 let read: Promise<Record<string, string>> | undefined;

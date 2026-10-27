@@ -56,5 +56,6 @@ the board are the model's confidence in each move it chose, the step's options w
 history in numbered rows with piece icons, where a move opens its step. The page plays the game back at four speeds,
 the arrow keys step through it, and it downloads the game as PGN and saves itself as one HTML file.
 
-The pieces are [Chessnut](https://github.com/LexLuengas/chessnut-pieces) by Alexis Luengas, under the Apache License
-2.0; `assets/pieces/chessnut/` holds them unchanged with their license.
+The pieces are cburnett by Colin M.L. Burnett, the set lichess shows by default, under the BSD license;
+`assets/pieces/cburnett/` holds them unchanged from
+[Wikimedia Commons](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces) with their license.

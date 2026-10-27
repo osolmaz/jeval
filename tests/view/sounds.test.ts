@@ -5,14 +5,15 @@ import { SOUND_SET, soundSet } from "../../src/view/index.ts";
 const PREFIX = "data:audio/wav;base64,";
 
 describe("the sound set", () => {
-	it("gives every event clips from assets/sounds, and carries each clip once as a WAV data URL", async () => {
-		expect(Object.keys(SOUND_SET).sort()).toEqual(["capture", "castle", "check", "end", "move"]);
-		const files = await readdir(new URL("../../assets/sounds/", import.meta.url));
-		const used = [...new Set(Object.values(SOUND_SET).flat())].sort();
-		expect(files).toEqual(expect.arrayContaining(used));
+	it("maps each event to the file named after it in assets/sounds, and carries each as a WAV data URL", async () => {
+		for (const [event, file] of Object.entries(SOUND_SET)) expect(file).toBe(`${event}.wav`);
+		const files = (await readdir(new URL("../../assets/sounds/", import.meta.url))).filter((file) =>
+			file.endsWith(".wav"),
+		);
+		expect(files.sort()).toEqual(Object.values(SOUND_SET).sort());
 		const set = await soundSet();
 		expect(set.events).toBe(SOUND_SET);
-		expect(Object.keys(set.clips).sort()).toEqual(used);
+		expect(Object.keys(set.clips).sort()).toEqual(files);
 		for (const url of Object.values(set.clips)) {
 			expect(url.startsWith(PREFIX)).toBe(true);
 			const wav = Buffer.from(url.slice(PREFIX.length), "base64");

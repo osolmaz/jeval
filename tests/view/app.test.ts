@@ -261,12 +261,18 @@ function soundButton(root: HTMLElement): (string | boolean | null)[] {
 }
 
 const SOUNDS: SoundSet = {
-	clips: { "m.wav": clipUrl("move"), "x.wav": clipUrl("capture"), "c.wav": clipUrl("check"), "e.wav": clipUrl("end") },
-	events: { move: ["m.wav"], capture: ["x.wav"], castle: ["m.wav", "m.wav"], check: ["c.wav"], end: ["e.wav"] },
+	clips: {
+		"start.wav": clipUrl("game-start"),
+		"m.wav": clipUrl("move"),
+		"x.wav": clipUrl("capture"),
+		"c.wav": clipUrl("check"),
+		"o.wav": clipUrl("game-over"),
+	},
+	events: { "game-start": "start.wav", move: "m.wav", capture: "x.wav", check: "c.wav", "game-over": "o.wav" },
 };
 
 describe("the viewer's sounds", () => {
-	it("play each move's clip as it lands and the end's clip at the end, once a click lets them, unless off", async () => {
+	it("play each move's clip as it lands and the ending's clip at the end, once a click lets them, unless off", async () => {
 		const made = stubAudio();
 		const { root } = mount({ ...QUICK, sounds: SOUNDS, session: await chessSession({ steps: 2 }) });
 		const next = async (to: string): Promise<void> => {
@@ -282,12 +288,26 @@ describe("the viewer's sounds", () => {
 		// The model's move and the reply: a clip each.
 		expect(heard(made)).toHaveLength(2);
 		await next("End");
-		expect(heard(made).at(-1)).toBe("end");
+		// The move limit ended this game, which sounds as a plain game over, a moment after the last move.
+		expect(made[0]?.started.at(-1)).toEqual({ clip: "game-over", at: 0.25 });
+		heard(made);
 		expect(soundButton(root)).toEqual([false, "Sound on", "true"]);
 		click(root, "button.sound");
 		expect(soundButton(root)).toEqual([false, "Sound off", "false"]);
 		click(root, "button.previous");
 		await next("End");
 		expect(heard(made)).toEqual([]);
+	});
+
+	it("plays the game-start clip when the game plays from its start", async () => {
+		const made = stubAudio();
+		const { root } = mount({ ...QUICK, sounds: SOUNDS, session: await chessSession({ steps: 1 }) });
+		await vi.waitFor(() => {
+			expect(label(root)).toBe("Start");
+		});
+		document.dispatchEvent(new Event("pointerdown"));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		click(root, "button.play");
+		expect(heard(made)[0]).toBe("game-start");
 	});
 });

@@ -12,7 +12,7 @@ import {
 	positionOf,
 	resultPanel,
 } from "./panels.ts";
-import { type SoundSet, soundOf, Sounds } from "./sound.ts";
+import { endingOf, type SoundSet, soundOf, Sounds } from "./sound.ts";
 
 /** How a page starts: with its session in it, or with the addresses to fetch it from while the case runs. */
 export interface AppConfig {
@@ -30,6 +30,9 @@ export interface AppConfig {
 	readonly dwell?: number;
 	readonly poll?: number;
 }
+
+/** Seconds between the last move's sound and the end's. */
+const ENDING_DELAY = 0.25;
 
 const pause = (milliseconds: number): Promise<void> =>
 	new Promise((resolve) => {
@@ -140,7 +143,12 @@ export class App {
 		const moves = glide ? movesAfter(this.moments[this.index]) : null;
 		this.index = target;
 		await this.draw(moves);
-		if (glide && this.board !== null && this.moments[target]?.kind === "end") this.sounds.play("end");
+		if (glide && this.board !== null && this.moments[target]?.kind === "end") this.ended();
+	}
+
+	/** The end's sound, a moment after the last move's, so that the two do not run together. */
+	private ended(): void {
+		this.sounds.play(endingOf(this.session?.outcome?.["reason"]), ENDING_DELAY);
 	}
 
 	/** Steps to `target` one moment at a time, each with its animation. */
@@ -328,6 +336,7 @@ export class App {
 		this.playing = true;
 		this.following = false;
 		if (this.goal >= this.last) void this.go(0, false);
+		if (this.goal === 0 && this.board !== null) this.sounds.play("game-start");
 		void this.play();
 	}
 

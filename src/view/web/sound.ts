@@ -1,22 +1,25 @@
 /// <reference lib="dom" />
 /** The board's sounds: recorded clips that the page carries, played with the Web Audio API. */
 
-export type SoundKind = "move" | "capture" | "castle" | "check" | "end";
+export type SoundKind =
+	"game-start" | "move" | "castling" | "capture" | "check" | "checkmate" | "stalemate" | "game-over";
 
-/** The clips by file name as data URLs, and the clips each event plays, one after another. */
+/** The clips by file name as data URLs, and the clip each event plays. */
 export interface SoundSet {
 	readonly clips: Readonly<Record<string, string>>;
-	readonly events: Readonly<Partial<Record<SoundKind, readonly string[]>>>;
+	readonly events: Readonly<Partial<Record<SoundKind, string>>>;
 }
-
-/** How far apart the clips of one event start, in seconds: the king's and the rook's when castling. */
-const STAGGER = 0.11;
 
 /** The sound of a move by its SAN, as chess.com plays them: a check sounds as a check, even when it takes a piece. */
 export function soundOf(san: string): SoundKind {
 	if (/[+#]/.test(san)) return "check";
-	if (san.startsWith("O-O")) return "castle";
+	if (san.startsWith("O-O")) return "castling";
 	return san.includes("x") ? "capture" : "move";
+}
+
+/** The sound of a game's end by the reason its outcome gives: checkmate and stalemate have their own. */
+export function endingOf(reason: unknown): SoundKind {
+	return reason === "checkmate" || reason === "stalemate" ? reason : "game-over";
 }
 
 /** The bytes of a base64 data URL. */
@@ -79,17 +82,16 @@ export class Sounds {
 		this.wake();
 	}
 
-	play(kind: SoundKind): void {
+	/** Plays the event's clip `delay` seconds from now. */
+	play(kind: SoundKind, delay = 0): void {
 		const context = this.context;
-		if (!this.on || context?.state !== "running") return;
-		(this.set.events[kind] ?? []).forEach((file, index) => {
-			const buffer = this.buffers.get(file);
-			if (buffer === undefined) return;
-			const source = context.createBufferSource();
-			source.buffer = buffer;
-			source.connect(context.destination);
-			source.start(context.currentTime + index * STAGGER);
-		});
+		const file = this.set.events[kind];
+		const buffer = file === undefined ? undefined : this.buffers.get(file);
+		if (!this.on || context?.state !== "running" || buffer === undefined) return;
+		const source = context.createBufferSource();
+		source.buffer = buffer;
+		source.connect(context.destination);
+		source.start(context.currentTime + delay);
 	}
 
 	private decode(context: AudioContext): void {

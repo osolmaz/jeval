@@ -62,9 +62,10 @@ arrows for its five likeliest moves, as wide as their probabilities, the chosen 
 the board are the model's confidence in each move it chose, the step's menu with the model's probability for each
 option, and the move
 history in numbered rows with piece icons, where a move opens its step. The page plays the game back at four speeds,
-the arrow keys step through it, and it downloads the game as PGN. Each move plays a short recorded clip as it lands,
-another for a capture, castling, a check and the end of the game; the table `SOUND_SET` in `src/view/sounds.ts` picks
-them from [`assets/sounds/`](../../../assets/sounds), and the Sound button turns them off.
+the arrow keys step through it, and it downloads the game as PGN. The start of the game, each move, a capture,
+castling, a check and the end (checkmate, stalemate, or another game over) each play their own short recorded clip
+from [`assets/sounds/`](../../../assets/sounds), which the table `SOUND_SET` in `src/view/sounds.ts` maps by event;
+the Sound button turns them off.
 
 The pieces are cburnett by Colin M.L. Burnett, the set lichess shows by default, under the BSD license;
 `assets/pieces/cburnett/` holds them unchanged from

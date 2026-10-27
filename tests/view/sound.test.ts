@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type SoundKind, soundOf, Sounds, type SoundSet } from "../../src/view/web/sound.ts";
+import { endingOf, type SoundKind, soundOf, Sounds, type SoundSet } from "../../src/view/web/sound.ts";
 import { clipUrl, stubAudio } from "../helpers/audio.ts";
 
 const SET: SoundSet = {
 	clips: { "a.wav": clipUrl("a"), "b.wav": clipUrl("b"), "bad.wav": clipUrl("bad") },
-	events: { move: ["a.wav"], castle: ["a.wav", "b.wav"], check: ["bad.wav"], end: ["missing.wav"] },
+	events: { move: "a.wav", castling: "b.wav", check: "bad.wav", "game-over": "missing.wav" },
 };
 
 afterEach(() => {
@@ -23,14 +23,24 @@ describe("the sounds", () => {
 			"capture",
 			"check",
 			"check",
-			"castle",
-			"castle",
+			"castling",
+			"castling",
 			"move",
 			"capture",
 		]);
 	});
 
-	it("wait for a click or a key, decode the clips, and play each event's clips one after another", async () => {
+	it("name the end by the outcome's reason: checkmate, stalemate, or any other game over", () => {
+		expect(["checkmate", "stalemate", "resignation", "threefold repetition", undefined].map(endingOf)).toEqual([
+			"checkmate",
+			"stalemate",
+			"game-over",
+			"game-over",
+			"game-over",
+		]);
+	});
+
+	it("wait for a click or a key, decode the clips, and play each event's clip, now or later", async () => {
 		const made = stubAudio();
 		const sounds = new Sounds(SET);
 		sounds.play("move");
@@ -40,15 +50,15 @@ describe("the sounds", () => {
 		expect(made).toHaveLength(1);
 		// The clips decode in the background.
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		const heard = (kind: SoundKind): string[] => {
-			sounds.play(kind);
+		const heard = (kind: SoundKind, delay?: number): string[] => {
+			sounds.play(kind, delay);
 			return (made[0]?.started.splice(0) ?? []).map((sound) => `${sound.clip} ${String(sound.at)}`);
 		};
 		expect(heard("move")).toEqual(["a 0"]);
-		expect(heard("castle")).toEqual(["a 0", "b 0.11"]);
-		// A clip that does not decode, a clip the page lacks, and an event without clips stay silent.
+		expect(heard("castling", 0.25)).toEqual(["b 0.25"]);
+		// A clip that does not decode, a clip the page lacks, and an event without a clip stay silent.
 		expect(heard("check")).toEqual([]);
-		expect(heard("end")).toEqual([]);
+		expect(heard("game-over")).toEqual([]);
 		expect(heard("capture")).toEqual([]);
 	});
 

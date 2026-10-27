@@ -1,7 +1,7 @@
 import { Chess, type Color, type Move, type PieceSymbol } from "chess.js";
-import { z } from "zod";
 import type { JsonObject, Step } from "../../core/index.ts";
 import type { ChessCase, ChessGame } from "./case.ts";
+import { type ChessStepData, chessStep } from "./web/data.ts";
 
 export type Status =
 	"playing" | "checkmate" | "stalemate" | "threefold repetition" | "insufficient material" | "fifty-move rule";
@@ -17,25 +17,11 @@ export const PIECE_NAMES: Readonly<Record<PieceSymbol, string>> = {
 
 const PIECE_VALUES: Readonly<Record<PieceSymbol, number>> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
-/** What each step records about the game in its data, for the next step and for the viewer. */
-export const stepDataSchema = z.object({
-	/** The side the model plays, or both in self-play. */
-	you: z.enum(["white", "black", "both"]),
-	/** The moves of this step, in long algebraic notation such as e2e4 or a7a8q. */
-	moves: z.array(z.string()),
-	san: z.array(z.string()),
-	/** The position after the step. */
-	fen: z.string(),
-	status: z.string(),
-	check: z.boolean(),
-});
-export type StepData = z.infer<typeof stepDataSchema>;
-
 export const colorOf = (side: ChessCase["side"]): Color => (side === "white" ? "w" : "b");
 export const nameOf = (color: Color): "white" | "black" => (color === "w" ? "white" : "black");
 
 /** The side the model plays, as its steps record it: both sides in self-play. */
-export const youOf = (game: ChessCase): StepData["you"] => (game.opponent === "self" ? "both" : game.side);
+export const youOf = (game: ChessCase): ChessStepData["you"] => (game.opponent === "self" ? "both" : game.side);
 
 /** The game after `moves`, given in long algebraic notation, from `start`. */
 export function replay(start: string, moves: readonly string[]): Chess {
@@ -44,9 +30,9 @@ export function replay(start: string, moves: readonly string[]): Chess {
 	return game;
 }
 
-/** Every move played so far, from the steps in the history. */
+/** Every move played so far, from the data of the steps in the history. */
 export function movesOf(history: readonly Step[]): string[] {
-	return history.flatMap((step) => stepDataSchema.safeParse(step.observation.data).data?.moves ?? []);
+	return history.flatMap((step) => chessStep(step.observation.data)?.moves ?? []);
 }
 
 export function statusOf(game: Chess): Status {
@@ -98,7 +84,11 @@ export function opponentName(game: ChessGame): string {
 }
 
 /** The step data of `played` moves, which leave `game` where it is now. */
-export function stepDataOf(you: StepData["you"], game: Chess, played: readonly Move[]): StepData & JsonObject {
+export function stepDataOf(
+	you: ChessStepData["you"],
+	game: Chess,
+	played: readonly Move[],
+): ChessStepData & JsonObject {
 	return {
 		you,
 		moves: played.map((move) => move.lan),

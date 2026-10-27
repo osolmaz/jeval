@@ -33,17 +33,20 @@
 
 - `src/core` imports nothing else from `src`. It holds the building blocks, the loop, the menu, the trace, replay and
   the setup type that runs a domain on case folders.
-- `src/models`, `src/eval` and `src/view` import only `src/core`. `src/view` turns a trace into a web page and draws
-  the pictures of the domains it knows, such as the chess board, from the data their steps record. The page joins the
-  browser modules in `src/view/web/` into one script, so they import each other with plain
-  `import { … } from "./name.ts"` lines, take only types from elsewhere, and keep their top-level names unique.
-- A domain under `src/domains/` imports only `src/core`. Its choices only read the world; file and process work stays
-  in its `ingest/` folder, `load.ts` and `setup.ts`. A world may hold a handle to a program outside, such as the chess
-  engine that `load.ts` starts: a replay takes each step's recorded observation and runs no choice again.
+- `src/models`, `src/eval` and `src/view` import only `src/core`. `src/view` turns a trace into a web page that shows
+  any domain's run, and knows no domain. A domain may give its own part of the page, such as the chess board: browser
+  modules in the domain's `web/` folder that register hooks with `registerPart`, and a `DomainViewer` that names them.
+- The page joins switch's browser modules in `src/view/web/` and then each part's modules into one script. They import
+  each other with plain relative `import { … } from "…/name.ts"` lines, which the script drops, take only types from
+  other code, and keep their top-level names unique across the whole script.
+- A domain under `src/domains/` imports only `src/core`, and `src/view` for its part of the page. Its choices only read
+  the world; file and process work stays in its `ingest/` folder, `load.ts`, `setup.ts` and `viewer.ts`. A world may
+  hold a handle to a program outside, such as the chess engine that `load.ts` starts: a replay takes each step's
+  recorded observation and runs no choice again.
 - Each domain's `setup.ts` exports the function that sets the domain up from a definition file: it loads case
   folders and reports a case. Everything a domain needs to run lives in its folder.
-- `src/cli` wires the others together. Its list of domains names each domain's setup function and nothing else
-  about the domain.
+- `src/cli` wires the others together. Its list of domains names each domain's setup function and, when the domain has
+  one, its part of the viewer, and nothing else about the domain.
 
 ## Dependencies and docs
 

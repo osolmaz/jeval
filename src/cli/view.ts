@@ -2,11 +2,11 @@ import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { parseTrace } from "../core/index.ts";
 import {
+	type DomainViewer,
 	indexPage,
-	pieceImages,
+	partConfigs,
 	plain,
 	type Session,
-	soundSet,
 	storyOf,
 	viewerPage,
 	viewerScript,
@@ -17,6 +17,9 @@ import { exists, resultSchema } from "./runs.ts";
 const HTML = "text/html; charset=utf-8";
 const TEXT = "text/plain; charset=utf-8";
 const JSON_TYPE = "application/json; charset=utf-8";
+
+/** The parts of the viewer that a page can show, by the domain's name. */
+export type Viewers = Readonly<Record<string, DomainViewer>>;
 
 interface Reply {
 	readonly status: number;
@@ -67,32 +70,35 @@ export async function caseSession(run: string, id: string): Promise<Session> {
 	return { story, outcome, finished: version.endsWith(":true"), version };
 }
 
-/** A case's page with its session in it, which opens without a server. */
-export async function savedPage(run: string, id: string): Promise<string> {
-	const [session, script, pieces, sounds] = await Promise.all([
-		caseSession(run, id),
-		viewerScript(),
-		pieceImages(),
-		soundSet(),
+/** The viewer's script with every part's modules, and every part's config. */
+async function pageParts(viewers: Viewers): Promise<{ script: string; parts: Record<string, unknown> }> {
+	const [script, parts] = await Promise.all([
+		viewerScript(Object.values(viewers).flatMap((viewer) => viewer.modules)),
+		partConfigs(viewers),
 	]);
-	return viewerPage({ title: `${id} · switch`, script, config: { session, pieces, sounds } });
+	return { script, parts };
+}
+
+/** A case's page with its session in it, which opens without a server. */
+export async function savedPage(run: string, id: string, viewers: Viewers = {}): Promise<string> {
+	const [session, { script, parts }] = await Promise.all([caseSession(run, id), pageParts(viewers)]);
+	return viewerPage({ title: `${id} · switch`, script, config: { session, parts } });
 }
 
 /** Writes a case's page, as it is now, to `file`. */
-export async function writeCasePage(run: string, id: string, file: string): Promise<void> {
-	await writeFile(file, await savedPage(run, id));
+export async function writeCasePage(run: string, id: string, file: string, viewers: Viewers = {}): Promise<void> {
+	await writeFile(file, await savedPage(run, id, viewers));
 }
 
 /** A case's page that fetches its session from the server and follows the case while it runs. */
-async function livePage(id: string): Promise<string> {
+async function livePage(id: string, viewers: Viewers): Promise<string> {
 	const base = `/case/${encodeURIComponent(id)}`;
-	const [script, pieces, sounds] = await Promise.all([viewerScript(), pieceImages(), soundSet()]);
+	const { script, parts } = await pageParts(viewers);
 	const config = {
 		sessionUrl: `${base}/session.json`,
 		versionUrl: `${base}/version`,
 		indexUrl: "/",
-		pieces,
-		sounds,
+		parts,
 	};
 	return viewerPage({ title: `${id} · switch`, script, config });
 }
@@ -107,8 +113,8 @@ async function index(run: string, ids: readonly string[]): Promise<Reply> {
 	return { status: 200, type: HTML, body: indexPage(run, cases) };
 }
 
-const ROUTES: Readonly<Record<string, (run: string, id: string) => Promise<Reply>>> = {
-	"": async (_run, id) => ({ status: 200, type: HTML, body: await livePage(id) }),
+const ROUTES: Readonly<Record<string, (run: string, id: string, viewers: Viewers) => Promise<Reply>>> = {
+	"": async (_run, id, viewers) => ({ status: 200, type: HTML, body: await livePage(id, viewers) }),
 	"/version": async (run, id) => ({ status: 200, type: TEXT, body: await caseVersion(run, id) }),
 	"/session.json": async (run, id) => ({
 		status: 200,
@@ -130,27 +136,27 @@ function targetOf(path: string): { id: string; part: string } | null {
  * The reply to a request: the index at /; at /case/<id> the case's page, its session and its version. A case's page
  * opens before the case starts, and waits for it; the rest needs the case's folder.
  */
-export async function route(run: string, url: string): Promise<Reply> {
+export async function route(run: string, url: string, viewers: Viewers = {}): Promise<Reply> {
 	const path = new URL(url, "http://localhost").pathname;
 	const ids = await caseIds(run);
 	if (path === "/") return index(run, ids);
 	const target = targetOf(path);
 	const handler = target === null ? undefined : ROUTES[target.part];
 	if (target === null || handler === undefined || (target.part !== "" && !ids.includes(target.id))) return NOT_FOUND;
-	return handler(run, target.id);
+	return handler(run, target.id, viewers);
 }
 
-async function answer(run: string, url: string): Promise<Reply> {
+async function answer(run: string, url: string, viewers: Viewers): Promise<Reply> {
 	try {
-		return await route(run, url);
+		return await route(run, url, viewers);
 	} catch (error: unknown) {
 		return { status: 500, type: TEXT, body: error instanceof Error ? error.message : String(error) };
 	}
 }
 
 /** Serves a run's cases on 127.0.0.1 at `port`; resolves once the server listens. */
-export function serveRun(run: string, port: number): Promise<Server> {
-	const server = viewServer(run);
+export function serveRun(run: string, port: number, viewers: Viewers = {}): Promise<Server> {
+	const server = viewServer(run, viewers);
 	return new Promise((resolve, reject) => {
 		server.once("error", reject);
 		server.listen(port, "127.0.0.1", () => {
@@ -160,9 +166,9 @@ export function serveRun(run: string, port: number): Promise<Server> {
 }
 
 /** A local server for a run's cases; it reads the run folder on every request, so pages follow running cases. */
-export function viewServer(run: string): Server {
+export function viewServer(run: string, viewers: Viewers = {}): Server {
 	return createServer((request, response) => {
-		void answer(run, request.url ?? "/").then((reply) => {
+		void answer(run, request.url ?? "/", viewers).then((reply) => {
 			response.writeHead(reply.status, {
 				"content-type": reply.type,
 				"cache-control": "no-store",

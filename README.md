@@ -74,9 +74,9 @@ Each domain has a README that says what it does, what else it needs installed an
 ## Watch a run
 
 `view` opens a run in the browser and plays it back step by step: each step's menu with the model's probability for
-every choice, the model's choice and what it found. A chess game gets a board with moving pieces, arrows for the
-model's likeliest moves, the move list and a PGN download. Add `--view` to `run` to watch the cases while they run; each
-case's page follows it live:
+every choice, the model's choice and what it found. A domain can give its own part of the page, which draws its steps
+in its own way: a chess game gets a board with moving pieces, arrows for the model's likeliest moves, the move list
+and a PGN download. Add `--view` to `run` to watch the cases while they run; each case's page follows it live:
 
 ```bash
 node src/cli/main.ts run --domain chess examples/chess/white-seed-1 --out runs/chess --view
@@ -191,8 +191,10 @@ export function triageSetup(file: string | undefined): Promise<Runner> {
 }
 ```
 
-The list of domains in `src/cli/domains.ts` names this function under the domain's name, and nothing else about the
-domain. `src/domains/legal-judge/` and `src/domains/chess/` are complete examples, and
+The list of domains in `src/cli/domains.ts` names this function under the domain's name, and, when the domain has one,
+its part of the viewer. That part is a `DomainViewer`: browser modules that call `registerPart` with hooks for the
+stage, the bars beside it, a list of the steps, the result's score, a download and sounds, and the config they start
+with. Every hook is optional. `src/domains/legal-judge/` and `src/domains/chess/` are complete examples, and
 [docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) explains the design.
 
 ## License

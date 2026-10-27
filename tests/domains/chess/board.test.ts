@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { Chess } from "chess.js";
 import { describe, expect, it, vi } from "vitest";
-import { arrowPoints, createBoard, type Position } from "../../src/view/web/board.ts";
-import { piecesOf } from "../../src/view/web/model.ts";
+import { arrowPoints, createBoard, type Position } from "../../../src/domains/chess/web/board.ts";
+import { piecesOf } from "../../../src/domains/chess/web/model.ts";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const at = (fen: string, fields: Partial<Position> = {}): Position => ({

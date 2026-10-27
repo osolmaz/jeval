@@ -1,6 +1,4 @@
-export { buildScript, viewerScript } from "./bundle.ts";
+export { buildScript, type DomainViewer, modulesNear, partConfigs, viewerModules, viewerScript } from "./bundle.ts";
 export { type Frame, type FrameChoice, type Seen, type Story, storyOf } from "./frames.ts";
 export { escape, indexPage, scriptJson, viewerPage, type ViewerPage } from "./page.ts";
-export { pieceImages } from "./pieces.ts";
-export { SOUND_SET, soundSet } from "./sounds.ts";
 export { plain, type Session } from "./web/model.ts";

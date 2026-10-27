@@ -5,7 +5,17 @@ import { pathToFileURL } from "node:url";
 import { Script } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { run, STOP_KEY, type TraceEntry } from "../../src/core/index.ts";
-import { buildScript, escape, indexPage, scriptJson, storyOf, viewerPage } from "../../src/view/index.ts";
+import {
+	buildScript,
+	escape,
+	indexPage,
+	partConfigs,
+	scriptJson,
+	storyOf,
+	viewerModules,
+	viewerPage,
+	viewerScript,
+} from "../../src/view/index.ts";
 import { answering, type Facts, factsDomain, failing, fakeDecider } from "../helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact <b>" } };
@@ -91,31 +101,36 @@ describe("the page", () => {
 
 describe("the viewer's script", () => {
 	it("joins the browser modules into one script without types, imports or exports", async () => {
-		const script = await buildScript();
+		const script = await viewerScript();
+		expect(await viewerScript()).toBe(script);
 		expect(script).not.toMatch(/^\s*(import|export)\s/m);
 		expect(script).not.toMatch(/:\s*(string|number|boolean)\b[^"'`]*[,)=;]/);
 		expect(() => new Script(`(() => {\n${script}\n})();`)).not.toThrow();
 		const names = [...script.matchAll(/^(?:async )?(?:function|const|let|class) (\w+)/gm)].map((match) => match[1]);
 		expect(new Set(names).size).toBe(names.length);
-		expect(names).toContain("start");
+		expect(names).toEqual(expect.arrayContaining(["start", "registerPart", "partOf"]));
 	});
 
-	it("reads the built JavaScript next to a module that is JavaScript", async () => {
+	it("reads the built JavaScript next to a module that is JavaScript, and drops imports from any module", async () => {
 		const folder = await mkdtemp(join(tmpdir(), "switch-script-"));
+		const names = ["model", "panels", "part", "app"];
 		try {
 			await mkdir(join(folder, "web"));
-			for (const name of ["model", "board", "sound", "panels", "app"]) {
+			for (const name of names) {
 				await writeFile(
 					join(folder, "web", `${name}.js`),
-					`import { a } from "./other.js";\nexport function ${name}() {}\n`,
+					`import { a } from "./other.js";\nimport { b } from "../../up/other.js";\nexport function ${name}() {}\n`,
 				);
 			}
-			const script = await buildScript(pathToFileURL(join(folder, "bundle.js")).href);
-			expect(script).toBe(
-				"\nfunction model() {}\n\n\nfunction board() {}\n\n\nfunction sound() {}\n\n\nfunction panels() {}\n\n\nfunction app() {}\n",
-			);
+			const script = await buildScript(viewerModules(pathToFileURL(join(folder, "bundle.js")).href));
+			expect(script).toBe(names.map((name) => `\n\nfunction ${name}() {}\n`).join("\n"));
 		} finally {
 			await rm(folder, { recursive: true, force: true });
 		}
+	});
+
+	it("gathers each part's config by its domain's name", async () => {
+		const viewer = { modules: [], config: () => Promise.resolve({ size: 1 }) };
+		await expect(partConfigs({ a: viewer, b: viewer })).resolves.toEqual({ a: { size: 1 }, b: { size: 1 } });
 	});
 });

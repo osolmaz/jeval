@@ -15,8 +15,7 @@
 	"files": [
 		"dist",
 		"judges",
-		"assets/pieces",
-		"assets/sounds"
+		"src/domains/chess/assets"
 	],
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",

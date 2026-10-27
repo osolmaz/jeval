@@ -14,7 +14,7 @@ export interface ViewerPage {
 	readonly title: string;
 	/** The viewer's script, from `viewerScript`. */
 	readonly script: string;
-	/** What the viewer starts with: its session or where to fetch it, and the piece images. */
+	/** What the viewer starts with: its session or where to fetch it, and the config of each domain's part. */
 	readonly config: Readonly<Record<string, unknown>>;
 }
 

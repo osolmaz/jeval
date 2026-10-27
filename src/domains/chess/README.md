@@ -73,8 +73,13 @@ the board are the model's confidence in each move it chose, the step's menu with
 choice, and the move history in numbered rows with piece icons, where a move opens its step. The page plays the game back at four speeds,
 the arrow keys step through it, and it downloads the game as PGN. The start of the game, each move, a capture,
 castling, a check and the end (checkmate, stalemate, or another game over) each play their own short recorded clip
-from [`assets/sounds/`](../../../assets/sounds), which the table `SOUND_SET` in `src/view/sounds.ts` maps by event;
-the Sound button turns them off.
+from [`assets/sounds/`](assets/sounds), which the table `SOUND_SET` in `viewer.ts` maps by event; the Sound button
+turns them off.
+
+All of this is the chess part of the page. switch's viewer shows every domain's steps, menus and results, and the
+chess domain adds the rest: the browser modules in [`web/`](web) register it with `registerPart`, and `viewer.ts`
+names those modules and gives them the pieces and the clips. The domain writes each step's data, and the page reads
+it, with the one type in `web/data.ts`.
 
 The pieces are cburnett by Colin M.L. Burnett, the set lichess shows by default, under the BSD license;
 `assets/pieces/cburnett/` holds them unchanged from

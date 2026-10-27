@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCases } from "../../src/cli/commands.ts";
-import { DomainError, domainNamed } from "../../src/cli/domains.ts";
+import { DomainError, domainNamed, VIEWERS } from "../../src/cli/domains.ts";
 import { resultSchema, runRecordSchema } from "../../src/cli/runs.ts";
 import { caseVersion, onlyCase, route, serveRun, ViewError, writeCasePage } from "../../src/cli/view.ts";
 import { hashOf, SetupError } from "../../src/core/index.ts";
@@ -75,7 +75,10 @@ describe("the viewer", () => {
 		const out = await chessRun(["g1", "g 2"]);
 		const index = await route(out, "/");
 		expect(index.body).toContain('<a href="/case/g%202">g 2</a> <span class="meta">loss, resignation</span>');
-		const page = await route(out, "/case/g1");
+		const page = await route(out, "/case/g1", VIEWERS);
+		expect(Object.keys(VIEWERS)).toEqual(["chess"]);
+		expect(page.body).toContain('registerPart("chess", chessPart)');
+		expect((await route(out, "/case/g1")).body).not.toContain("data:image/svg+xml;base64,");
 		expect(page.type).toMatch(/^text\/html/);
 		expect(page.body).toContain(
 			'"sessionUrl":"/case/g1/session.json","versionUrl":"/case/g1/version","indexUrl":"/"',
@@ -104,7 +107,7 @@ describe("the viewer", () => {
 		const out = await chessRun(["g1", "g2"]);
 		await expect(onlyCase(out)).rejects.toThrow(ViewError);
 		const file = join(folder, "g1.html");
-		await writeCasePage(out, "g1", file);
+		await writeCasePage(out, "g1", file, VIEWERS);
 		const page = await readFile(file, "utf8");
 		expect(page).toContain("<title>g1 · switch</title>");
 		expect(page).toContain('"session":{');

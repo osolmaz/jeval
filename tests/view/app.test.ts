@@ -1,16 +1,12 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { run } from "../../src/core/index.ts";
-import { storyOf } from "../../src/view/frames.ts";
 import { type AppConfig, start } from "../../src/view/web/app.ts";
-import type { Session } from "../../src/view/web/model.ts";
-import type { SoundSet } from "../../src/view/web/sound.ts";
-import { clipUrl, type FakeAudioContext, stubAudio } from "../helpers/audio.ts";
-import { answering, factsDomain, fakeDecider } from "../helpers/fakes.ts";
-import { picking } from "../helpers/chess.ts";
-import { chessSession } from "../helpers/sessions.ts";
+import type { Moment, Session } from "../../src/view/web/model.ts";
+import { button, h } from "../../src/view/web/panels.ts";
+import { type PartContext, partOf, registerPart } from "../../src/view/web/part.ts";
+import { factsSession } from "../helpers/sessions.ts";
 
-const QUICK = { pieces: {}, motion: 0, dwell: 0, poll: 5 } as const;
+const QUICK = { motion: 0, dwell: 0, poll: 5 } as const;
 
 const mounted: ReturnType<typeof start>[] = [];
 
@@ -27,75 +23,58 @@ const click = (root: HTMLElement, selector: string): void => {
 	root.querySelector<HTMLElement>(selector)?.click();
 };
 const label = (root: HTMLElement): string => text(root, "output");
+const hidden = (root: HTMLElement, selector: string): boolean =>
+	root.querySelector<HTMLElement>(selector)?.hidden === true;
 
 afterEach(() => {
 	for (const app of mounted.splice(0)) app.close();
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
-	localStorage.clear();
 });
 
-describe("the viewer", () => {
-	it("opens a saved chess game at its start, with the players and the PGN download", async () => {
-		const { root } = mount({ ...QUICK, session: await chessSession({ steps: 2 }) });
+describe("the viewer, for a domain without a part", () => {
+	it("opens a saved case at its start, with the plain text of what the model saw and the result", async () => {
+		const { root } = mount({ ...QUICK, session: await factsSession() });
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("Start");
 		});
-		expect(text(root, "h1")).toBe("g1");
-		expect(text(root, ".meta")).toBe("chess · fake/decider");
-		expect(root.querySelector<HTMLElement>(".live")?.hidden).toBe(true);
-		expect(root.querySelector<HTMLElement>("button.download")?.hidden).toBe(false);
+		expect(text(root, "h1")).toBe("f1");
+		expect(text(root, ".meta")).toBe("facts · fake/decider");
+		expect([hidden(root, ".live"), hidden(root, "button.download"), hidden(root, "button.sound")]).toEqual([
+			true,
+			true,
+			true,
+		]);
 		// A saved page has no server, so its header links nowhere.
 		expect(root.querySelector("a.home")?.hasAttribute("href")).toBe(false);
-		expect(root.querySelectorAll(".piece")).toHaveLength(32);
-		expect(Array.from(root.querySelectorAll(".player .name")).map((name) => name.textContent)).toEqual([
-			"random legal moves, seed 7",
-			"fake/decider",
-		]);
-		expect(text(root, ".result-slot")).toContain("unfinished · move limit");
-		expect(Array.from(root.querySelectorAll(".clock")).map((clock) => clock.className)).toEqual([
-			"clock b",
-			"clock w active",
-		]);
-	});
-
-	it("names the model on both sides in self-play, and shows the score of a finished game", async () => {
-		const { root } = mount({
-			...QUICK,
-			session: await chessSession({
-				opponent: "self",
-				steps: 1,
-				policy: picking(/checkmate/),
-				start: "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
-			}),
-		});
-		await vi.waitFor(() => {
-			expect(Array.from(root.querySelectorAll(".player .name")).map((name) => name.textContent)).toEqual([
-				"fake/decider",
-				"fake/decider",
-			]);
-		});
-		expect(text(root, ".banner")).toBe("1-0white wins · checkmate");
-		expect(root.querySelector(".ply .figure")?.getAttribute("alt")).toBe("R");
+		expect(text(root, ".found-card")).toBe("Nothing seen yet.");
+		expect(text(root, ".history h2")).toBe("Result");
+		expect(text(root, ".banner")).toBe("answered · the model stopped");
+		expect(text(root, ".facts")).toContain("looked2");
+		expect(text(root, ".facts")).toContain("ayes 70.0%");
 	});
 
 	it("steps through the moments with the buttons, the slider and the keys", async () => {
-		const { root } = mount({ ...QUICK, session: await chessSession({ steps: 2 }) });
+		const { root } = mount({ ...QUICK, session: await factsSession() });
 		click(root, "button.next");
 		await vi.waitFor(() => {
-			expect(label(root)).toBe("Step 1 of 2");
+			expect(label(root)).toBe("Step 1 of 3");
 		});
-		expect(root.querySelectorAll("polygon.arrow")).toHaveLength(5);
 		expect(text(root, ".decision h2")).toBe("The menu");
-		expect(text(root, ".decision .step")).toBe("Step 1 of 2 · white to move");
+		expect(text(root, ".decision .step")).toBe("Step 1 of 3");
 		expect(root.querySelector(".menu .chosen")?.textContent).toContain("(chosen)");
+		expect(text(root, ".found")).toBe("fact a");
+		click(root, "button.next");
+		await vi.waitFor(() => {
+			expect(text(root, ".found-card")).toBe("fact a");
+		});
 		click(root, "button.latest");
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("End");
 		});
 		click(root, "button.previous");
 		await vi.waitFor(() => {
-			expect(label(root)).toBe("Step 2 of 2");
+			expect(label(root)).toBe("Step 3 of 3");
 		});
 		click(root, "button.first");
 		await vi.waitFor(() => {
@@ -109,20 +88,20 @@ describe("the viewer", () => {
 		document.dispatchEvent(new KeyboardEvent("keydown", { key: "Home" }));
 		document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
 		await vi.waitFor(() => {
-			expect(label(root)).toBe("Step 1 of 2");
+			expect(label(root)).toBe("Step 1 of 3");
 		});
 		document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", ctrlKey: true }));
 		const scrub = root.querySelector<HTMLInputElement>('input[type="range"]');
 		if (scrub === null) throw new Error("no slider");
-		scrub.value = "3";
+		scrub.value = "4";
 		scrub.dispatchEvent(new Event("input"));
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("End");
 		});
 	});
 
-	it("plays the game to its end and stops", async () => {
-		const { root } = mount({ ...QUICK, session: await chessSession({ steps: 3 }) });
+	it("plays the case to its end and stops", async () => {
+		const { root } = mount({ ...QUICK, session: await factsSession() });
 		click(root, "button.play");
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("End");
@@ -132,52 +111,6 @@ describe("the viewer", () => {
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("End");
 		});
-	});
-
-	it("opens a move from the move list, and marks the latest move on the board", async () => {
-		const { root } = mount({ ...QUICK, session: await chessSession({ steps: 2 }) });
-		await vi.waitFor(() => {
-			expect(root.querySelectorAll(".plies li")).toHaveLength(2);
-		});
-		const replies = Array.from(root.querySelectorAll<HTMLElement>(".ply:not(.model)"));
-		replies[0]?.click();
-		await vi.waitFor(() => {
-			expect(label(root)).toBe("Step 2 of 2");
-		});
-		expect(root.querySelector(".ply.current")?.getAttribute("aria-current")).toBe("step");
-		expect(root.querySelector(".ply.model small")?.textContent).toBe("60.0%");
-	});
-
-	it("downloads the game as PGN", async () => {
-		const made: Blob[] = [];
-		vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
-			if (blob instanceof Blob) made.push(blob);
-			return "blob:pgn";
-		});
-		vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
-		const { root } = mount({ ...QUICK, session: await chessSession({ steps: 1 }) });
-		click(root, "button.download");
-		expect(await made[0]?.text()).toContain('[Event "switch: g1"]');
-	});
-
-	it("shows what a case without a board saw", async () => {
-		const result = await run(
-			factsDomain,
-			{ facts: { a: "fact a" } },
-			fakeDecider(answering(0.6, (labels) => labels[0] ?? "stop")),
-			{
-				case: "facts-1",
-			},
-		);
-		const session: Session = { story: storyOf(result.trace.entries), outcome: null, finished: true, version: "1" };
-		const { root } = mount({ ...QUICK, session });
-		click(root, "button.latest");
-		await vi.waitFor(() => {
-			expect(text(root, ".found-card")).toBe("fact a");
-		});
-		expect(root.querySelector<HTMLElement>("button.download")?.hidden).toBe(true);
-		expect(root.querySelector<HTMLElement>("button.sound")?.hidden).toBe(true);
-		expect(text(root, ".result-slot")).toBe("The case ended without an outcome.");
 	});
 });
 
@@ -192,25 +125,26 @@ describe("a running case", () => {
 		await vi.waitFor(() => {
 			expect(text(root, ".result-slot")).toBe("Waiting for the case to start…");
 		});
-		current = await chessSession({ steps: 1, finished: false });
+		current = await factsSession({ steps: 0, finished: false });
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("Step 1");
-			expect(root.querySelector<HTMLElement>(".live")?.hidden).toBe(false);
+			expect(hidden(root, ".live")).toBe(false);
 		});
+		expect(text(root, ".result-slot")).toBe("The case is running.");
 		expect(root.querySelector("a.home")?.getAttribute("href")).toBe("/");
-		current = await chessSession({ steps: 2, finished: false });
+		current = await factsSession({ steps: 1, finished: false });
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("Step 2");
 		});
-		current = await chessSession({ steps: 2 });
+		current = await factsSession({ steps: 1 });
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("End");
-			expect(root.querySelector<HTMLElement>(".live")?.hidden).toBe(true);
+			expect(hidden(root, ".live")).toBe(true);
 		});
 	});
 
 	it("stays where the viewer went back to while the case goes on", async () => {
-		let current: Session = await chessSession({ steps: 2, finished: false });
+		let current: Session = await factsSession({ steps: 1, finished: false });
 		vi.stubGlobal("fetch", (url: string) =>
 			Promise.resolve(url.endsWith("/version") ? new Response(current.version) : Response.json(current)),
 		);
@@ -222,15 +156,15 @@ describe("a running case", () => {
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("Start");
 		});
-		current = await chessSession({ steps: 3, finished: false });
+		current = await factsSession({ steps: 2, finished: false });
 		await vi.waitFor(() => {
 			expect(root.querySelector<HTMLInputElement>('input[type="range"]')?.max).toBe("3");
 		});
 		expect(label(root)).toBe("Start");
 	});
 
-	it("shows the choices without probabilities or arrows while the model is choosing", async () => {
-		const session = await chessSession({ steps: 1, finished: false });
+	it("shows the choices without probabilities while the model is choosing, and a case without an outcome", async () => {
+		const session = await factsSession({ steps: 1, finished: false });
 		const frame = session.story.frames[0];
 		if (frame === undefined) throw new Error("no step");
 		const thinking = {
@@ -240,74 +174,139 @@ describe("a running case", () => {
 			choices: frame.choices.map((choice) => ({ ...choice, probability: null, chosen: false })),
 		};
 		const story = { ...session.story, frames: [thinking] };
-		const { root } = mount({ ...QUICK, session: { ...session, story } });
-		click(root, "button.latest");
+		const { root } = mount({ ...QUICK, session: { ...session, finished: true, story } });
+		click(root, "button.next");
 		await vi.waitFor(() => {
 			expect(text(root, ".decision h2")).toBe("The model is choosing from the menu…");
 		});
-		expect(root.querySelectorAll("polygon")).toHaveLength(0);
+		expect(Array.from(root.querySelectorAll(".menu .p")).map((p) => p.textContent)).toEqual(["–", "–", "–", "–"]);
+		expect(text(root, ".result-slot")).toBe("The case ended without an outcome.");
 	});
 });
 
-/** The clips that the first fake audio context started since the last call. */
-const heard = (made: readonly FakeAudioContext[]): string[] =>
-	(made[0]?.started.splice(0) ?? []).map((sound) => sound.clip);
+/** What the fake part was asked, in order. */
+const asked: string[] = [];
+let context: PartContext | null = null;
 
-/** The sound button's state: hidden, its text, and whether it is pressed. */
-function soundButton(root: HTMLElement): (string | boolean | null)[] {
-	const node = root.querySelector<HTMLElement>("button.sound");
-	if (node === null) return [];
-	return [node.hidden, node.textContent, node.getAttribute("aria-pressed")];
-}
+registerPart("fake", (given) => {
+	context = given;
+	return {
+		stage: (moment: Moment, from: Moment | null) => {
+			asked.push(`stage ${moment.label}${from === null ? "" : ` from ${from.label}`}`);
+			return Promise.resolve(moment.kind === "end" ? null : h("div", { class: "drawn" }, moment.label));
+		},
+		bars: (moment: Moment) => ({ top: h("p", { class: "top" }, `above ${moment.label}`), bottom: null }),
+		stepNote: () => " · a note",
+		steps: {
+			title: "Facts",
+			list: (_session, index, open) =>
+				[
+					h(
+						"ol",
+						{},
+						...[1, 2].map((at) =>
+							h(
+								"li",
+								at === index ? { class: "current" } : {},
+								button(`fact ${String(at)}`, `jump${String(at)}`, ""),
+							),
+						),
+					),
+				].map((list) => {
+					list.querySelector(".jump2")?.addEventListener("click", () => {
+						open(2);
+					});
+					return list;
+				}),
+		},
+		score: () => "9-9",
+		hidden: ["looked"],
+		download: {
+			label: "Download the facts",
+			text: "Facts",
+			file: (session) => ({ name: "facts.txt", type: "text/plain", text: session.story.case }),
+		},
+		sound: {
+			enabled: true,
+			toggle: () => asked.push("toggle"),
+			wake: () => asked.push("wake"),
+			started: () => asked.push("started"),
+			ended: () => asked.push("ended"),
+		},
+	};
+});
 
-const SOUNDS: SoundSet = {
-	clips: {
-		"start.wav": clipUrl("game-start"),
-		"m.wav": clipUrl("move"),
-		"x.wav": clipUrl("capture"),
-		"c.wav": clipUrl("check"),
-		"o.wav": clipUrl("game-over"),
-	},
-	events: { "game-start": "start.wav", move: "m.wav", capture: "x.wav", check: "c.wav", "game-over": "o.wav" },
-};
-
-describe("the viewer's sounds", () => {
-	it("play each move's clip as it lands and the ending's clip at the end, once a click lets them, unless off", async () => {
-		const made = stubAudio();
-		const { root } = mount({ ...QUICK, sounds: SOUNDS, session: await chessSession({ steps: 2 }) });
-		const next = async (to: string): Promise<void> => {
-			click(root, "button.next");
-			await vi.waitFor(() => {
-				expect(label(root)).toBe(to);
-			});
-		};
-		await next("Step 1 of 2");
-		expect(made).toHaveLength(0);
-		document.dispatchEvent(new Event("pointerdown"));
-		await next("Step 2 of 2");
-		// The model's move and the reply: a clip each.
-		expect(heard(made)).toHaveLength(2);
-		await next("End");
-		// The move limit ended this game, which sounds as a plain game over, a moment after the last move.
-		expect(made[0]?.started.at(-1)).toEqual({ clip: "game-over", at: 0.25 });
-		heard(made);
-		expect(soundButton(root)).toEqual([false, "Sound on", "true"]);
-		click(root, "button.sound");
-		expect(soundButton(root)).toEqual([false, "Sound off", "false"]);
-		click(root, "button.previous");
-		await next("End");
-		expect(heard(made)).toEqual([]);
+describe("a domain's part of the page", () => {
+	it("draws the stage, the bars, the note, the steps list, the score and the buttons that the part gives", async () => {
+		asked.length = 0;
+		const session = await factsSession();
+		const { root } = mount({
+			...QUICK,
+			parts: { fake: { color: "blue" } },
+			session: { ...session, story: { ...session.story, domain: "fake" } },
+		});
+		await vi.waitFor(() => {
+			expect(text(root, ".drawn")).toBe("Start");
+		});
+		expect(context?.config).toEqual({ color: "blue" });
+		expect([context?.motion(), context?.gap()]).toEqual([0, 0]);
+		expect(text(root, ".top")).toBe("above Start");
+		expect(text(root, ".history h2")).toBe("Facts");
+		expect(text(root, ".banner")).toBe("9-9answered · the model stopped");
+		expect(text(root, ".facts")).not.toContain("looked");
+		expect([hidden(root, "button.download"), text(root, "button.download")]).toEqual([false, "Facts"]);
+		expect([hidden(root, "button.sound"), text(root, "button.sound")]).toEqual([false, "Sound on"]);
+		click(root, "button.next");
+		await vi.waitFor(() => {
+			expect(text(root, ".decision .step")).toBe("Step 1 of 3 · a note");
+		});
+		expect(asked).toContain("stage Step 1 of 3 from Start");
+		click(root, "button.jump2");
+		await vi.waitFor(() => {
+			expect(text(root, ".drawn")).toBe("Step 2 of 3");
+		});
+		expect(root.querySelector(".current .jump2")).not.toBeNull();
+		click(root, "button.latest");
+		await vi.waitFor(() => {
+			expect(text(root, ".found-card")).toBe("fact b");
+		});
 	});
 
-	it("plays the game-start clip when the game plays from its start", async () => {
-		const made = stubAudio();
-		const { root } = mount({ ...QUICK, sounds: SOUNDS, session: await chessSession({ steps: 1 }) });
+	it("passes clicks, keys, playing and the end to the part's sound, and downloads the part's file", async () => {
+		asked.length = 0;
+		const made: Blob[] = [];
+		vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+			if (blob instanceof Blob) made.push(blob);
+			return "blob:facts";
+		});
+		vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+		const session = await factsSession({ steps: 0 });
+		const { root } = mount({ ...QUICK, session: { ...session, story: { ...session.story, domain: "fake" } } });
 		await vi.waitFor(() => {
-			expect(label(root)).toBe("Start");
+			expect(text(root, ".drawn")).toBe("Start");
 		});
 		document.dispatchEvent(new Event("pointerdown"));
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		click(root, "button.sound");
+		click(root, "button.download");
+		expect(await made[0]?.text()).toBe("f1");
 		click(root, "button.play");
-		expect(heard(made)[0]).toBe("game-start");
+		await vi.waitFor(() => {
+			expect(label(root)).toBe("End");
+		});
+		expect(asked.filter((call) => !call.startsWith("stage"))).toEqual(["wake", "toggle", "started"]);
+		click(root, "button.previous");
+		await vi.waitFor(() => {
+			expect(label(root)).toBe("Step 1 of 1");
+		});
+		click(root, "button.next");
+		await vi.waitFor(() => {
+			expect(label(root)).toBe("End");
+		});
+		// The fake part draws no end, so the page shows the plain text there and plays no end sound.
+		expect(asked).not.toContain("ended");
+	});
+
+	it("is no part at all for a domain that registered none", () => {
+		expect(partOf("unknown", { config: {}, motion: () => 0, gap: () => 0 })).toEqual({});
 	});
 });

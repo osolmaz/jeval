@@ -5,7 +5,7 @@ import { Command, InvalidArgumentError } from "commander";
 import type { Decider } from "../core/index.ts";
 import { piAiDecider } from "../models/pi-ai.ts";
 import { replayCase, runCases } from "./commands.ts";
-import { domainNamed, INGESTERS } from "./domains.ts";
+import { domainNamed, INGESTERS, VIEWERS } from "./domains.ts";
 import { compareRuns, scoreResults } from "./scores.ts";
 import { loadSet } from "./sets.ts";
 import { onlyCase, serveRun, writeCasePage } from "./view.ts";
@@ -108,7 +108,7 @@ program
 			const model = decider(options.model, options.apiKeyEnv);
 			if (options.view !== undefined) {
 				const port = options.view === true ? VIEW_PORT : options.view;
-				await serveRun(options.out, port);
+				await serveRun(options.out, port, VIEWERS);
 				for (const folder of folders) log(caseUrl(port, await domain.caseId(folder)));
 			}
 			await runCases(domain, folders, model, {
@@ -183,10 +183,10 @@ program
 	.option("--html <file>", "write one case's page to a file instead: --case, or the run's only case")
 	.action(async (run: string, options: { case?: string; port: number; html?: string }) => {
 		if (options.html !== undefined) {
-			await writeCasePage(run, options.case ?? (await onlyCase(run)), options.html);
+			await writeCasePage(run, options.case ?? (await onlyCase(run)), options.html, VIEWERS);
 			return;
 		}
-		await serveRun(run, options.port);
+		await serveRun(run, options.port, VIEWERS);
 		log(
 			options.case === undefined ? `http://127.0.0.1:${String(options.port)}/` : caseUrl(options.port, options.case),
 		);

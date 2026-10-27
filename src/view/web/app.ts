@@ -1,18 +1,7 @@
 /// <reference lib="dom" />
-import { type BoardView, createBoard, type Glide } from "./board.ts";
-import { chessStep, type Moment, momentsOf, pgnOf, type Session } from "./model.ts";
-import {
-	confidenceChart,
-	decisionPanel,
-	h,
-	layout,
-	moveList,
-	type Parts,
-	playerRow,
-	positionOf,
-	resultPanel,
-} from "./panels.ts";
-import { endingOf, type SoundSet, soundOf, Sounds } from "./sound.ts";
+import { type Moment, momentsOf, type Session } from "./model.ts";
+import { confidenceChart, decisionPanel, h, layout, type Parts, resultPanel } from "./panels.ts";
+import { type DomainPart, partOf } from "./part.ts";
 
 /** How a page starts: with its session in it, or with the addresses to fetch it from while the case runs. */
 export interface AppConfig {
@@ -21,18 +10,13 @@ export interface AppConfig {
 	readonly versionUrl?: string;
 	/** The page that lists the run's cases, which the header links to. */
 	readonly indexUrl?: string;
-	/** Piece images by name: wK, bQ and so on. */
-	readonly pieces: Readonly<Record<string, string>>;
-	/** The sound clips and the clips each event plays; a page without them is silent. */
-	readonly sounds?: SoundSet;
+	/** Each domain part's config by the domain's name, such as the chess pieces' images and the sound clips. */
+	readonly parts?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 	/** Milliseconds one move glides, a decision stays on screen while playing, and between checks for news, at speed 1. */
 	readonly motion?: number;
 	readonly dwell?: number;
 	readonly poll?: number;
 }
-
-/** Seconds between the last move's sound and the end's. */
-const ENDING_DELAY = 0.25;
 
 const pause = (milliseconds: number): Promise<void> =>
 	new Promise((resolve) => {
@@ -46,7 +30,10 @@ const isSession = (value: unknown): value is Session =>
 export class App {
 	private readonly config: AppConfig;
 	private readonly parts: Parts;
-	private board: BoardView | null = null;
+	/** The domain's part of the page, known once the first session names the domain. */
+	private part: DomainPart = {};
+	/** Whether the stage shows the part's own drawing, not the plain text of what the model saw. */
+	private drawn = false;
 	private session: Session | null = null;
 	private moments: Moment[] = [];
 	private index = 0;
@@ -58,18 +45,16 @@ export class App {
 	private waiting = false;
 	private queue: Promise<void> = Promise.resolve();
 	private readonly timer: ReturnType<typeof setInterval> | undefined;
-	private readonly sounds: Sounds;
 	private readonly onKey = (event: KeyboardEvent): void => {
-		this.sounds.wake();
+		this.part.sound?.wake();
 		this.key(event);
 	};
 	private readonly onPointer = (): void => {
-		this.sounds.wake();
+		this.part.sound?.wake();
 	};
 
 	constructor(root: HTMLElement, config: AppConfig) {
 		this.config = config;
-		this.sounds = new Sounds(config.sounds);
 		this.parts = layout(root);
 		this.controls();
 		document.addEventListener("keydown", this.onKey);
@@ -102,7 +87,7 @@ export class App {
 		return reduced ? 0 : (this.config.motion ?? 320) / this.speed;
 	}
 
-	/** How long a move stays on the board before the next one while the game plays. */
+	/** How long a step stays on screen before the next one while the case plays. */
 	private get dwell(): number {
 		return (this.config.dwell ?? 1100) / this.speed;
 	}
@@ -117,6 +102,7 @@ export class App {
 		this.session = session;
 		this.waiting = false;
 		this.moments = momentsOf(session.story, session.finished);
+		if (first) this.meet(session.story.domain);
 		this.header(session);
 		if (first) {
 			this.following = !session.finished && this.config.versionUrl !== undefined;
@@ -129,7 +115,26 @@ export class App {
 		else void this.go(this.last, false);
 	}
 
-	/** Shows moment `target`, gliding the pieces when it is the next one. */
+	/** Takes the part of the case's domain, and shows the buttons that the part has. */
+	private meet(domain: string): void {
+		this.part = partOf(domain, {
+			config: this.config.parts?.[domain] ?? {},
+			motion: () => this.motion,
+			gap: () => (this.playing ? this.dwell : 0),
+		});
+		const { download, sound, steps } = this.part;
+		this.parts.download.hidden = download === undefined;
+		if (download !== undefined) {
+			this.parts.download.textContent = download.text;
+			this.parts.download.setAttribute("aria-label", download.label);
+			this.parts.download.title = download.label;
+		}
+		this.parts.sound.hidden = sound === undefined;
+		this.soundButton();
+		if (steps !== undefined) this.parts.stepsTitle.textContent = steps.title;
+	}
+
+	/** Shows moment `target`, moving the stage when it is the next one. */
 	go(target: number, animate: boolean): Promise<void> {
 		const next = Math.max(0, Math.min(this.last, target));
 		this.goal = next;
@@ -138,17 +143,18 @@ export class App {
 	}
 
 	private async move(target: number, animate: boolean): Promise<void> {
-		// Moments passed on the way to a later goal are drawn at once, so the board keeps up with the clicks.
+		// Moments passed on the way to a later goal are drawn at once, so the stage keeps up with the clicks.
 		const glide = animate && target === this.index + 1 && target === this.goal;
-		const moves = glide ? movesAfter(this.moments[this.index]) : null;
+		const from = glide ? (this.moments[this.index] ?? null) : null;
 		this.index = target;
-		await this.draw(moves);
-		if (glide && this.board !== null && this.moments[target]?.kind === "end") this.ended();
+		await this.draw(from);
+		if (glide) this.reached(target);
 	}
 
-	/** The end's sound, a moment after the last move's, so that the two do not run together. */
-	private ended(): void {
-		this.sounds.play(endingOf(this.session?.outcome?.["reason"]), ENDING_DELAY);
+	/** Gives the part's end sound when the page moved onto the end of the case with the part's drawing. */
+	private reached(target: number): void {
+		if (!this.drawn || this.session === null || this.moments[target]?.kind !== "end") return;
+		this.part.sound?.ended(this.session);
 	}
 
 	/** Steps to `target` one moment at a time, each with its animation. */
@@ -161,74 +167,45 @@ export class App {
 		this.parts.title.textContent = story.case;
 		this.parts.meta.textContent = `${story.domain} · ${story.model}`;
 		this.parts.live.hidden = session.finished || this.config.versionUrl === undefined;
-		this.parts.pgn.hidden = chessStep(story.opening.at(-1)?.data) === null;
-		this.parts.sound.hidden = this.parts.pgn.hidden;
 		if (this.config.indexUrl !== undefined) {
 			this.parts.home.setAttribute("href", this.config.indexUrl);
 			this.parts.home.title = "All cases of the run";
 		}
 	}
 
-	private async draw(moves: Played | null): Promise<void> {
+	/** Draws the current moment: the part's stage, moved there from `from`, or the plain text of what the model saw. */
+	private async draw(from: Moment | null): Promise<void> {
 		const moment = this.moments[this.index];
-		if (moment === undefined) return;
-		const position = positionOf(moment);
+		const session = this.session;
+		if (moment === undefined || session === null) return;
 		this.panels();
-		if (position === null) {
-			this.board = null;
+		const bars = this.part.bars?.(moment, session);
+		this.parts.top.replaceChildren(...slotOf(bars?.top));
+		this.parts.bottom.replaceChildren(...slotOf(bars?.bottom));
+		const drawing = (await this.part.stage?.(moment, from)) ?? null;
+		this.drawn = drawing !== null;
+		this.place(moment, drawing);
+	}
+
+	/** Puts the part's drawing on the stage, or the plain text of what the model saw when there is none. */
+	private place(moment: Moment, drawing: HTMLElement | null): void {
+		if (drawing === null) {
 			const text = moment.seen?.text ?? "";
 			this.parts.stage.replaceChildren(h("div", { class: "found-card" }, text === "" ? "Nothing seen yet." : text));
-			this.parts.top.replaceChildren();
-			this.parts.bottom.replaceChildren();
-			return;
+		} else if (this.parts.stage.firstElementChild !== drawing) {
+			this.parts.stage.replaceChildren(drawing);
 		}
-		this.players(moment, position.fen);
-		if (this.board === null) {
-			this.board = createBoard(document, this.config.pieces);
-			this.parts.stage.replaceChildren(this.board.element);
-			this.board.show(position);
-		} else if (moves === null) this.board.show(position);
-		else await this.board.animate(moves.uci, position, this.motion, this.glide(moves));
-	}
-
-	/** While the game plays, the reply waits as long after the model's move as the next move waits after it. */
-	private glide(moves: Played): Glide {
-		return {
-			gap: this.playing ? this.dwell : 0,
-			landed: (move) => {
-				const san = moves.san[move];
-				if (san !== undefined) this.sounds.play(soundOf(san));
-			},
-		};
-	}
-
-	private players(moment: Moment, fen: string): void {
-		const step = chessStep(moment.seen?.data);
-		if (step === null) return;
-		const { model, opponent } = namesOf(this.session);
-		// The model's side is at the bottom; in self-play it plays both, with white at the bottom.
-		const mine = step.you === "black" ? "b" : "w";
-		const theirs = mine === "w" ? "b" : "w";
-		this.parts.top.replaceChildren(playerRow(opponent, theirs, fen, this.config.pieces));
-		this.parts.bottom.replaceChildren(playerRow(model, mine, fen, this.config.pieces));
 	}
 
 	private panels(): void {
 		const moment = this.moments[this.index];
 		const session = this.session;
-		this.parts.result.replaceChildren(resultPanel(session, this.waiting));
+		this.result(session);
 		if (moment === undefined || session === null) return;
 		this.parts.chart.replaceChildren(...confidenceChart(session, this.index));
 		this.parts.chart.hidden = this.parts.chart.childElementCount === 0;
-		this.parts.side.replaceChildren(decisionPanel(moment));
-		this.parts.moves.replaceChildren(
-			...moveList(session.story, this.index, this.config.pieces, (target) => {
-				this.stop();
-				this.following = false;
-				void this.go(target, false);
-			}),
-		);
-		this.reveal();
+		this.parts.side.replaceChildren(decisionPanel(moment, this.part.stepNote?.(moment)));
+		this.steps(session);
 		this.parts.scrub.max = String(this.last);
 		this.parts.scrub.value = String(this.index);
 		this.parts.where.textContent = moment.label;
@@ -236,11 +213,28 @@ export class App {
 		this.parts.play.setAttribute("aria-label", this.playing ? "Pause" : "Play");
 	}
 
-	/** Scrolls the move list so that the latest move on the board is in view. */
+	/** The result, with the part's score and without the outcome's fields that the part leaves out. */
+	private result(session: Session | null): void {
+		const score = session === null ? null : (this.part.score?.(session) ?? null);
+		this.parts.result.replaceChildren(resultPanel(session, this.waiting, score, this.part.hidden ?? []));
+	}
+
+	/** The part's list of steps; each entry opens its moment. */
+	private steps(session: Session): void {
+		const open = (target: number) => {
+			this.stop();
+			this.following = false;
+			void this.go(target, false);
+		};
+		this.parts.moves.replaceChildren(...(this.part.steps?.list(session, this.index, open) ?? []));
+		this.reveal();
+	}
+
+	/** Scrolls the steps list so that its current entry is in view. */
 	private reveal(): void {
-		const list = this.parts.moves.querySelector<HTMLElement>(".plies");
+		const list = this.parts.moves.firstElementChild;
 		const current = list?.querySelector<HTMLElement>(".current") ?? null;
-		if (list === null || current === null) return;
+		if (!(list instanceof HTMLElement) || current === null) return;
 		list.scrollTop = Math.max(0, current.offsetTop - list.offsetTop - list.clientHeight / 2);
 	}
 
@@ -264,14 +258,13 @@ export class App {
 			this.following = this.isLive() && target >= this.last;
 			void this.go(target, false);
 		});
-		parts.pgn.addEventListener("click", () => {
-			this.downloadPgn();
+		parts.download.addEventListener("click", () => {
+			this.download();
 		});
 		parts.sound.addEventListener("click", () => {
-			this.sounds.toggle();
+			this.part.sound?.toggle();
 			this.soundButton();
 		});
-		this.soundButton();
 		const buttons = h(
 			"div",
 			{ class: "buttons" },
@@ -292,7 +285,7 @@ export class App {
 	}
 
 	private soundButton(): void {
-		const on = this.sounds.enabled;
+		const on = this.part.sound?.enabled ?? false;
 		const { sound } = this.parts;
 		sound.textContent = on ? "Sound on" : "Sound off";
 		sound.setAttribute("aria-label", on ? "Turn the sound off" : "Turn the sound on");
@@ -312,16 +305,16 @@ export class App {
 	private key(event: KeyboardEvent): void {
 		const target = event.target;
 		if (ignored(event)) return;
-		const actions: Readonly<Record<string, () => void>> = {
+		const moves: Readonly<Record<string, () => void>> = {
 			ArrowLeft: () => void this.go(this.goal - 1, false),
 			ArrowRight: () => void this.go(this.goal + 1, true),
 			Home: () => void this.go(0, false),
 			End: () => void this.go(this.last, false),
 		};
-		const action = actions[event.key];
-		if (action !== undefined) {
+		const goTo = moves[event.key];
+		if (goTo !== undefined) {
 			this.stop();
-			action();
+			goTo();
 		} else if (event.key === " " && !(target instanceof HTMLButtonElement)) {
 			event.preventDefault();
 			this.toggle();
@@ -336,7 +329,7 @@ export class App {
 		this.playing = true;
 		this.following = false;
 		if (this.goal >= this.last) void this.go(0, false);
-		if (this.goal === 0 && this.board !== null) this.sounds.play("game-start");
+		if (this.goal === 0 && this.drawn) this.part.sound?.started();
 		void this.play();
 	}
 
@@ -379,41 +372,28 @@ export class App {
 		if ((await response.text()) !== this.session?.version) await this.fetchSession();
 	}
 
-	private downloadPgn(): void {
-		if (this.session === null) return;
+	/** Gives the file that the part offers, such as a chess game as PGN. */
+	private download(): void {
+		const offer = this.part.download;
+		if (this.session === null || offer === undefined) return;
+		const file = offer.file(this.session);
 		const link = document.createElement("a");
-		link.href = URL.createObjectURL(new Blob([pgnOf(this.session)], { type: "application/x-chess-pgn" }));
-		link.download = `${this.session.story.case}.pgn`;
+		link.href = URL.createObjectURL(new Blob([file.text], { type: file.type }));
+		link.download = file.name;
 		link.click();
 		URL.revokeObjectURL(link.href);
 	}
 }
 
-/** The model's and the opponent's names. */
-function namesOf(session: Session | null): { model: string; opponent: string } {
-	const model = session?.story.model ?? "model";
-	const opponent = chessStep(session?.story.opening.at(-1)?.data)?.opponent;
-	if (opponent === "itself") return { model, opponent: model };
-	return { model, opponent: opponent ?? "opponent" };
-}
+/** The content of a bar's slot: the part's element, or nothing. */
+const slotOf = (node: HTMLElement | null | undefined): HTMLElement[] =>
+	node === null || node === undefined ? [] : [node];
 
 /** Keys typed into a field, or held with a modifier, belong to the field or the browser. */
 function ignored(event: KeyboardEvent): boolean {
 	const target = event.target;
 	if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) return true;
 	return event.altKey || event.ctrlKey || event.metaKey;
-}
-
-/** Moves as the board plays them and as the sounds name them. */
-interface Played {
-	readonly uci: readonly string[];
-	readonly san: readonly string[];
-}
-
-/** The moves that lead from a step's decision to the next moment: the model's move and the reply. */
-function movesAfter(moment: Moment | undefined): Played {
-	const step = chessStep(moment?.frame?.after?.data);
-	return { uci: step?.moves ?? [], san: step?.san ?? [] };
 }
 
 /** Starts the viewer in `root`. */

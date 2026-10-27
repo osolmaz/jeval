@@ -34,6 +34,7 @@ typescript:
       allow:
         - src/domains/chess
         - src/core
+        - src/view
     - from: src/view
       allow:
         - src/view

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { endingOf, type SoundKind, soundOf, Sounds, type SoundSet } from "../../src/view/web/sound.ts";
-import { clipUrl, stubAudio } from "../helpers/audio.ts";
+import { endingOf, type SoundKind, soundOf, Sounds, type SoundSet } from "../../../src/domains/chess/web/sound.ts";
+import { clipUrl, stubAudio } from "../../helpers/audio.ts";
 
 const SET: SoundSet = {
 	clips: { "a.wav": clipUrl("a"), "b.wav": clipUrl("b"), "bad.wav": clipUrl("bad") },

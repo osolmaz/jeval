@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { Chess } from "chess.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { arrowPoints, createBoard, type Position } from "../../src/view/web/board.ts";
 import { piecesOf } from "../../src/view/web/model.ts";
 
@@ -112,6 +112,34 @@ describe("the board", () => {
 			}
 			await board.animate(moves, at(game.fen()), 0);
 			expect(shown(board.element), `after ${moves.join(" ")}`).toEqual(place(game.fen()));
+		}
+	});
+
+	it("waits the gap before each move after the first, and marks each move as it lands", async () => {
+		vi.useFakeTimers();
+		try {
+			const board = createBoard(document, {});
+			board.show(at(START));
+			const landed: number[] = [];
+			const marked = () =>
+				Array.from(board.element.querySelectorAll<HTMLElement>(".mark.last")).map(
+					(node) => `${node.style.getPropertyValue("--x")},${node.style.getPropertyValue("--y")}`,
+				);
+			const after = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
+			const glide = { gap: 500, landed: (move: number) => landed.push(move) };
+			const done = board.animate(["e2e4", "e7e5"], at(after, { last: ["e7", "e5"] }), 100, glide);
+			await vi.advanceTimersByTimeAsync(100);
+			expect([landed, marked()]).toEqual([[0], ["4,6", "4,4"]]);
+			await vi.advanceTimersByTimeAsync(499);
+			expect(landed).toEqual([0]);
+			await vi.advanceTimersByTimeAsync(101);
+			await done;
+			expect([landed, marked()]).toEqual([
+				[0, 1],
+				["4,1", "4,3"],
+			]);
+		} finally {
+			vi.useRealTimers();
 		}
 	});
 });

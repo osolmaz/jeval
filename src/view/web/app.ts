@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { type BoardView, createBoard } from "./board.ts";
+import { type BoardView, createBoard, type Glide } from "./board.ts";
 import { chessStep, type Moment, momentsOf, pgnOf, type Session } from "./model.ts";
 import {
 	confidenceChart,
@@ -96,6 +96,11 @@ export class App {
 		return reduced ? 0 : (this.config.motion ?? 320) / this.speed;
 	}
 
+	/** How long a move stays on the board before the next one while the game plays. */
+	private get dwell(): number {
+		return (this.config.dwell ?? 1100) / this.speed;
+	}
+
 	private get last(): number {
 		return this.moments.length - 1;
 	}
@@ -172,12 +177,18 @@ export class App {
 			this.parts.stage.replaceChildren(this.board.element);
 			this.board.show(position);
 		} else if (moves === null) this.board.show(position);
-		else {
-			await this.board.animate(moves.uci, position, this.motion, (move) => {
+		else await this.board.animate(moves.uci, position, this.motion, this.glide(moves));
+	}
+
+	/** While the game plays, the reply waits as long after the model's move as the next move waits after it. */
+	private glide(moves: Played): Glide {
+		return {
+			gap: this.playing ? this.dwell : 0,
+			landed: (move) => {
 				const san = moves.san[move];
 				if (san !== undefined) this.sounds.play(soundOf(san));
-			});
-		}
+			},
+		};
 	}
 
 	private players(moment: Moment, fen: string): void {
@@ -325,7 +336,7 @@ export class App {
 	private async play(): Promise<void> {
 		this.panels();
 		while (this.isPlaying() && this.index < this.last) {
-			await pause((this.config.dwell ?? 1100) / this.speed);
+			await pause(this.dwell);
 			if (!this.isPlaying()) break;
 			await this.go(this.goal + 1, true);
 		}

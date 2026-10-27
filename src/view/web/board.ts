@@ -21,17 +21,18 @@ export interface Position {
 	readonly arrows: readonly Arrow[];
 }
 
+/** Between the moves of a glide: `gap` milliseconds before each move after the first, and `landed` as each lands. */
+export interface Glide {
+	readonly gap?: number;
+	readonly landed?: (move: number) => void;
+}
+
 export interface BoardView {
 	readonly element: HTMLElement;
 	/** Shows a position at once. */
 	show(position: Position): void;
-	/** Plays `moves` from the position shown, `milliseconds` each, then shows `position`; `landed` hears each land. */
-	animate(
-		moves: readonly string[],
-		position: Position,
-		milliseconds: number,
-		landed?: (move: number) => void,
-	): Promise<void>;
+	/** Plays `moves` from the position shown, `milliseconds` each and marked as it lands, then shows `position`. */
+	animate(moves: readonly string[], position: Position, milliseconds: number, glide?: Glide): Promise<void>;
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -143,12 +144,7 @@ class ChessBoard implements BoardView {
 		this.decorate(position);
 	}
 
-	async animate(
-		moves: readonly string[],
-		position: Position,
-		milliseconds: number,
-		landed?: (move: number) => void,
-	): Promise<void> {
+	async animate(moves: readonly string[], position: Position, milliseconds: number, glide: Glide = {}): Promise<void> {
 		this.element.style.setProperty("--motion", `${String(milliseconds)}ms`);
 		this.arrows.replaceChildren();
 		if (position.flipped !== this.flipped) {
@@ -156,8 +152,10 @@ class ChessBoard implements BoardView {
 			return;
 		}
 		for (const [index, move] of moves.entries()) {
+			if (index > 0 && glide.gap !== undefined) await wait(glide.gap);
 			await this.step(move, milliseconds);
-			landed?.(index);
+			this.marks.replaceChildren(this.mark(move.slice(0, 2), "last"), this.mark(move.slice(2, 4), "last"));
+			glide.landed?.(index);
 		}
 		if (samePlaces(this.pieces, piecesOf(position.fen))) this.decorate(position);
 		else this.show(position);

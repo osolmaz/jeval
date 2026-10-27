@@ -114,6 +114,30 @@ moves folders and wires entry points, and changes no viewer code.
 
 ## Names in the core
 
+### Terms
+
+The menu function is the center of switch: it is how a domain presents its world and its history to the model as a
+short list of choices. After the first PR, switch uses these words, and only these, in its code and its docs. The
+README introduces them in this order, with the menu first.
+
+| Term         | Meaning                                                                                                                           |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| world        | What one case gives, loaded once and fixed for the run: the task and its files, or the start position, the side and the opponent. |
+| history      | The steps taken so far in the run, in order.                                                                                      |
+| step         | One entry of the history: the kind and the key of the choice that ran, and its observation.                                       |
+| menu         | The domain's function `menu(world, history)`, and the list of choices that it returns for the current step.                       |
+| choice       | One thing that the model can do now, with the text that the model reads and the code that runs it. Stop is a choice too.          |
+| kind         | The label of a choice, such as `read` or `move`.                                                                                  |
+| observation  | What a choice found when it ran: a text for the model, and data for tools.                                                        |
+| view         | The domain's function that turns the world and the history into the JSON that the model reads.                                    |
+| state        | That JSON, as the model's API calls it.                                                                                           |
+| instructions | The text that tells the model how to pick from the menu, or how to answer a question.                                             |
+| question     | What the model answers at the end of the steps: a `bool`, a `choice` or a `score` question.                                       |
+| answer       | The model's answer to a question, with its probabilities.                                                                         |
+
+`AGENTS.md` gets a rule to use these terms and not their old names: workspace, log, entry, option and action, and
+judge outside legal-judge, which keeps the word for its own judge files.
+
 ### World
 
 `workspace` becomes `world` everywhere in the core. The world is what one case gives, loaded once and fixed for the
@@ -140,11 +164,14 @@ Names considered:
 
 ### History
 
-`log` becomes `history`. The history is the list of steps taken so far in a run, in order: the model's choices and
-what each one found. Each entry records the kind of the choice, its key, and its observation. The domain's `start`
-adds the opening entries, the core adds one entry after each step, and nothing else changes the history.
+`log` becomes `history`, and `Entry` becomes `Step`. The history is the list of steps taken so far in a run, in
+order: the model's choices and what each one found. Each step records the kind of the choice, its key, and its
+observation. The domain's `start` adds the opening steps, the core adds one step after each pick, and nothing else
+changes the history.
 
-- `RunResult.log` becomes `RunResult.history`.
+- `RunResult.log` becomes `RunResult.history`, a list of `Step`.
+- `Step` is a better name than `Entry`, which is close to `TraceEntry`, a different thing, and says nothing about
+  what it holds.
 - The domains' helpers take `history`, such as `movesOf(history)` in chess and `readParts(history)` in legal-judge.
 - No file on disk has a `log` field, so this rename changes no file.
 
@@ -178,7 +205,7 @@ interface Choice {
 }
 
 interface Domain<W> {
-  menu(world: W, history: readonly Entry[]): readonly Choice[];
+  menu(world: W, history: readonly Step[]): readonly Choice[];
   // the rest stays as it is
 }
 ```
@@ -217,7 +244,11 @@ What changes:
 - `Domain.actions`, a list, becomes `Domain.menu`, a function. The core keeps doing what `buildMenu` does today with
   the choices that `menu` returns: it removes the choices whose key is in the history, refuses two choices with the
   same key or text, cuts the list to the limit by priority, and adds stop.
-- `Entry.action` becomes `Entry.kind`. Stop is a choice with the kind and the key `stop`.
+- `Entry.action` becomes `Step.kind`. Stop is a choice with the kind and the key `stop`.
+- `Domain.choose` becomes `Domain.instructions`: the text that tells the model how to pick from the menu. It is a
+  text that reads like a function today, beside the core's function `choose()`, and the model's API calls it the
+  `instructions` of the menu's choice question. The chess definition records it as `instructions`, which also
+  changes its hash.
 - `Limits.options` becomes `Limits.choices`: the most choices on one menu, stop included.
 - The `Ending` value `"no options"` becomes `"empty menu"`, so that no one mistakes it for `"no choice"`, which means
   that the model's pick failed. No file records `ended`.

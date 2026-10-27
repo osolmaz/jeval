@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { switchSource } from "../../src/cli/source.ts";
-import { packageRoot } from "../../src/core/index.ts";
+import { packageRoot } from "../../src/cli/root.ts";
 
 describe("switchSource", () => {
 	it("names the commit of a Git checkout, and no commit outside one", async () => {

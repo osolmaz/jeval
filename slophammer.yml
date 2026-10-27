@@ -7,10 +7,16 @@ typescript:
     max_findings: 0
     paths:
       - src
+      - examples
     exclude:
       - "**/*.test.ts"
+      - "**/node_modules/**"
       - "dist/**"
       - "coverage/**"
+      - pattern: "examples/*/eslint.config.mjs"
+        reason: Each example is a project of its own, as one outside switch would be, so it keeps its own copy of switch's lint rules.
+      - pattern: "examples/*/vitest.config.ts"
+        reason: Each example is a project of its own, as one outside switch would be, so it keeps its own copy of the test settings.
     copied_blocks:
       enabled: true
       min_tokens: 100
@@ -26,32 +32,26 @@ typescript:
       allow:
         - src/models
         - src/core
-    - from: src/domains/legal-judge
-      allow:
-        - src/domains/legal-judge
-        - src/core
-    - from: src/domains/chess
-      allow:
-        - src/domains/chess
-        - src/core
-        - src/view
     - from: src/view
       allow:
         - src/view
         - src/core
-    - from: src/eval
+    - from: src/testing
       allow:
-        - src/eval
+        - src/testing
         - src/core
     - from: src/cli
       allow:
         - src/cli
         - src/core
         - src/models
-        - src/domains/legal-judge
-        - src/domains/chess
-        - src/eval
         - src/view
+    - from: examples/chess
+      allow:
+        - examples/chess
+    - from: examples/legal-judge
+      allow:
+        - examples/legal-judge
 rules:
   ts.mutation-required:
     disabled: true

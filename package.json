@@ -9,13 +9,40 @@
 		"node": ">=22.13.0"
 	},
 	"packageManager": "pnpm@10.20.0",
-	"bin": {
-		"switch": "dist/src/cli/main.js"
+	"exports": {
+		".": {
+			"switch-source": "./src/core/index.ts",
+			"types": "./dist/src/core/index.d.ts",
+			"default": "./dist/src/core/index.js"
+		},
+		"./cli": {
+			"switch-source": "./src/cli/index.ts",
+			"types": "./dist/src/cli/index.d.ts",
+			"default": "./dist/src/cli/index.js"
+		},
+		"./models": {
+			"switch-source": "./src/models/pi-ai.ts",
+			"types": "./dist/src/models/pi-ai.d.ts",
+			"default": "./dist/src/models/pi-ai.js"
+		},
+		"./viewer": {
+			"switch-source": "./src/view/index.ts",
+			"types": "./dist/src/view/index.d.ts",
+			"default": "./dist/src/view/index.js"
+		},
+		"./page": {
+			"switch-source": "./src/view/web/index.ts",
+			"types": "./dist/src/view/web/index.d.ts",
+			"default": "./dist/src/view/web/index.js"
+		},
+		"./testing": {
+			"switch-source": "./src/testing/index.ts",
+			"types": "./dist/src/testing/index.d.ts",
+			"default": "./dist/src/testing/index.js"
+		}
 	},
 	"files": [
-		"dist",
-		"judges",
-		"src/domains/chess/assets"
+		"dist"
 	],
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
@@ -29,16 +56,12 @@
 		"dry": "slophammer-ts dry .",
 		"slophammer": "slophammer-ts check .",
 		"mutate": "stryker run",
-		"check": "pnpm format && pnpm lint && pnpm typecheck && pnpm coverage && pnpm dry && pnpm slophammer"
+		"examples": "pnpm --filter './examples/*' run check",
+		"check": "pnpm format && pnpm lint && pnpm typecheck && pnpm coverage && pnpm dry && pnpm examples && pnpm slophammer"
 	},
 	"dependencies": {
 		"@earendil-works/pi-ai": "1.4.0",
-		"@xmldom/xmldom": "0.9.12",
-		"chess.js": "1.4.0",
 		"commander": "15.0.0",
-		"fflate": "0.8.3",
-		"pdfjs-dist": "6.4.299",
-		"postal-mime": "4.1.4",
 		"zod": "4.6.7"
 	},
 	"devDependencies": {

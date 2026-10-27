@@ -3,8 +3,11 @@ import { stripTypeScriptTypes } from "node:module";
 
 /** The viewer's own browser modules, each after the ones it imports. */
 const MODULES = ["model", "panels", "part", "app"] as const;
-/** An import from another module of the script: in the one script they share a scope, so the import goes. */
-const LOCAL_IMPORT = /^import\s[^;]*?\sfrom\s+"(?:\.{1,2}\/)+[\w./-]+\.(?:ts|js)";[ \t]*$/gm;
+/**
+ * An import from another module of the script, or from switch's page, which a domain's part imports by the package's
+ * name: in the one script they share a scope, so the import goes.
+ */
+const LOCAL_IMPORT = /^import\s[^;]*?\sfrom\s+"(?:(?:\.{1,2}\/)+[\w./-]+\.(?:ts|js)|@osolmaz\/switch\/page)";[ \t]*$/gm;
 const EXPORT = /^export\s+(?=(?:async\s+)?(?:function|const|let|class)\b)/gm;
 
 /** A domain's part of the viewer, as the server sees it: its browser modules and what they start with. */

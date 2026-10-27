@@ -1,43 +1,43 @@
 import type { Runner } from "../core/index.ts";
-import { chessSetup } from "../domains/chess/setup.ts";
-import { chessViewer } from "../domains/chess/viewer.ts";
-import { ingestCase } from "../domains/legal-judge/ingest/ingest.ts";
-import { legalJudgeSetup } from "../domains/legal-judge/setup.ts";
 import type { DomainViewer } from "../view/index.ts";
 
-/** Turns an input folder into a case folder, by domain name. */
-export const INGESTERS: Readonly<Record<string, (input: string, output: string, id: string) => Promise<void>>> = {
-	"legal-judge": async (input, output, id) => {
-		await ingestCase(input, output, { id });
-	},
-};
-
-/** The command line was asked for a domain it does not know. */
-export class DomainError extends Error {
-	override readonly name = "DomainError";
-}
-
-/** A domain on the command line: its setup, and its part of the viewer when it has one. */
-interface Entry {
-	/** Makes the domain's runner from a definition file, or from its own definition. */
+/** A domain of a harness: its setup, and its part of the viewer when it has one. */
+export interface HarnessDomain {
+	/** Makes the domain's runner from a definition file, or from the domain's own definition. */
 	readonly setup: (definitionFile: string | undefined) => Promise<Runner>;
 	readonly viewer?: DomainViewer;
 }
 
-/** Each domain by name. */
-const DOMAINS: Readonly<Record<string, Entry>> = {
-	"legal-judge": { setup: legalJudgeSetup },
-	chess: { setup: chessSetup, viewer: chessViewer },
-};
+/** A harness's domains, by name. */
+export type Domains = Readonly<Record<string, HarnessDomain>>;
 
-/** A domain by name, ready to run, with the definition in `definitionFile` or with the domain's own. */
-export async function domainNamed(name: string, definitionFile?: string): Promise<Runner> {
-	const entry = DOMAINS[name];
-	if (entry === undefined) throw new DomainError(`no domain ${name}; known: ${Object.keys(DOMAINS).join(", ")}`);
-	return entry.setup(definitionFile);
+/** A command named a domain that the harness does not have, or none when the harness has more than one. */
+export class DomainError extends Error {
+	override readonly name = "DomainError";
+}
+
+/** The domain that `name` names, or the harness's only domain when no name is given. */
+export function domainOf(domains: Domains, name: string | undefined): HarnessDomain {
+	const names = Object.keys(domains);
+	const picked = name ?? (names.length === 1 ? names[0] : undefined);
+	if (picked === undefined) {
+		throw new DomainError(
+			`the harness has ${String(names.length)} domains; name one with --domain: ${names.join(", ")}`,
+		);
+	}
+	const domain = domains[picked];
+	if (domain === undefined) throw new DomainError(`no domain ${picked}; known: ${names.join(", ")}`);
+	return domain;
+}
+
+/** A domain ready to run, with the definition in `definitionFile` or with the domain's own. */
+export async function domainNamed(domains: Domains, name?: string, definitionFile?: string): Promise<Runner> {
+	return domainOf(domains, name).setup(definitionFile);
 }
 
 /** The part of the viewer of each domain that has one, by the domain's name. */
-export const VIEWERS: Readonly<Record<string, DomainViewer>> = Object.fromEntries(
-	Object.entries(DOMAINS).flatMap(([name, entry]) => (entry.viewer === undefined ? [] : [[name, entry.viewer]])),
-);
+export function viewersOf(domains: Domains): Readonly<Record<string, DomainViewer>> {
+	return Object.fromEntries(
+		Object.entries(domains).flatMap(([name, domain]) => (domain.viewer === undefined ? [] : [[name, domain.viewer]])),
+	);
+}

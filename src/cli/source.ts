@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { packageRoot } from "../core/index.ts";
+import { packageRoot } from "./root.ts";
 
 const run = promisify(execFile);
 const ROOT = packageRoot(import.meta.url);

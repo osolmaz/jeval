@@ -2,11 +2,11 @@
 
 - Read [docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) before you change the design or start a
   phase.
-- Run `pnpm check` before you finish: format, lint, typecheck, tests with the 85% coverage gate, the DRY scan and
-  `slophammer-ts check .`. CI does not run mutation tests; `pnpm mutate` runs
-  them locally on request.
-- Add or update a test for every behavior change. Tests make no model calls: use the fake decider in
-  `tests/helpers/fakes.ts`.
+- Run `pnpm check` before you finish: format, lint, typecheck, tests with the 85% coverage gate, the DRY scan, the
+  same checks in each example, and `slophammer-ts check .`. CI does not run mutation tests; `pnpm mutate` runs them
+  locally on request.
+- Add or update a test for every behavior change. Tests make no model calls: use the fake decider from
+  `@osolmaz/switch/testing`.
 - Never commit task data: requests, rubrics, documents, answers, case folders, run results, traces or labels. They
   are proprietary. Tests build their own small fixtures in code.
 
@@ -31,22 +31,26 @@
 
 `slophammer.yml` enforces these:
 
-- `src/core` imports nothing else from `src`. It holds the building blocks, the loop, the menu, the trace, replay and
-  the setup type that runs a domain on case folders.
-- `src/models`, `src/eval` and `src/view` import only `src/core`. `src/view` turns a trace into a web page that shows
-  any domain's run, and knows no domain. A domain may give its own part of the page, such as the chess board: browser
-  modules in the domain's `web/` folder that register hooks with `registerPart`, and a `DomainViewer` that names them.
+- `src/` is switch, and knows no domain. `src/core` imports nothing else from `src`. It holds the building blocks, the
+  loop, the menu, the trace, replay and the setup type that runs a domain on case folders.
+- `src/models`, `src/view` and `src/testing` import only `src/core`. `src/view` turns a trace into a web page that
+  shows any domain's run. A domain may give its own part of the page, such as the chess board: browser modules that
+  register hooks with `registerPart`, and a `DomainViewer` that names them.
 - The page joins switch's browser modules in `src/view/web/` and then each part's modules into one script. They import
-  each other with plain relative `import { … } from "…/name.ts"` lines, which the script drops, take only types from
-  other code, and keep their top-level names unique across the whole script.
-- A domain under `src/domains/` imports only `src/core`, and `src/view` for its part of the page. Its choices only read
-  the world; file and process work stays in its `ingest/` folder, `load.ts`, `setup.ts` and `viewer.ts`. A world may
-  hold a handle to a program outside, such as the chess engine that `load.ts` starts: a replay takes each step's
-  recorded observation and runs no choice again.
-- Each domain's `setup.ts` exports the function that sets the domain up from a definition file: it loads case
-  folders and reports a case. Everything a domain needs to run lives in its folder.
-- `src/cli` wires the others together. Its list of domains names each domain's setup function and, when the domain has
-  one, its part of the viewer, and nothing else about the domain.
+  each other with plain relative `import { … } from "…/name.ts"` lines and switch's page with
+  `import { … } from "@osolmaz/switch/page"`, which the script drops. They take only types from other code, and keep
+  their top-level names unique across the whole script.
+- `src/cli` wires the others together into `commandLine`, the program of a harness, which takes the harness's domains
+  by name.
+- Each harness in `examples/` is a package of its own, with its own lint, typecheck, test and coverage settings. It
+  imports switch only by the package's name and entry points, such as `@osolmaz/switch/cli`, never by a path out of
+  its folder. In this repository the `switch-source` condition points those names at switch's TypeScript sources:
+  `tsconfig.json`, the Vitest configs and each example's `src/main.ts` shebang set it.
+- A domain's choices only read the world; file and process work stays in its `ingest/` folder, `load.ts`, `setup.ts`
+  and `viewer.ts`. A world may hold a handle to a program outside, such as the chess engine that `load.ts` starts: a
+  replay takes each step's recorded observation and runs no choice again.
+- Each domain's `setup.ts` exports the function that sets the domain up from a definition file: it loads case folders
+  and reports a case. The example's `src/main.ts` passes it to `commandLine`.
 
 ## Dependencies and docs
 

@@ -30,17 +30,14 @@ export interface Setup<W> {
 	caseId(folder: string): Promise<string>;
 	/** The world of a case folder. */
 	load(folder: string): Promise<W>;
-	/** Each question's category, for reports; none when it is missing. */
-	categories?(world: W): Readonly<Record<string, string>>;
 	/** How the case ended in the domain's own terms, such as a game's result; none when it is missing. */
 	outcome?(world: W, result: RunResult): JsonObject;
 }
 
-/** One case run from its folder: its id, the loop's result, each question's category and how the case ended. */
+/** One case run from its folder: its id, the loop's result and how the case ended. */
 export interface CaseRun {
 	readonly case: string;
 	readonly result: RunResult;
-	readonly categories: Readonly<Record<string, string>>;
 	/** Null when the domain reports no outcome. */
 	readonly outcome: JsonObject | null;
 }
@@ -80,12 +77,7 @@ export function runnerOf<W>(setup: Setup<W>): Runner {
 			const id = await setup.caseId(folder);
 			const world = await setup.load(folder);
 			const result = await run(domain, world, decider, { case: id, ...options });
-			return {
-				case: id,
-				result,
-				categories: setup.categories?.(world) ?? {},
-				outcome: setup.outcome?.(world, result) ?? null,
-			};
+			return { case: id, result, outcome: setup.outcome?.(world, result) ?? null };
 		},
 	};
 }

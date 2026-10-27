@@ -11,24 +11,9 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 1.4.0
         version: 1.4.0(@aws-sdk/credential-provider-node@3.972.88)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7)
-      '@xmldom/xmldom':
-        specifier: 0.9.12
-        version: 0.9.12
-      chess.js:
-        specifier: 1.4.0
-        version: 1.4.0
       commander:
         specifier: 15.0.0
         version: 15.0.0
-      fflate:
-        specifier: 0.8.3
-        version: 0.8.3
-      pdfjs-dist:
-        specifier: 6.4.299
-        version: 6.4.299
-      postal-mime:
-        specifier: 4.1.4
-        version: 4.1.4
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -57,6 +42,98 @@ importers:
       happy-dom:
         specifier: 21.0.1
         version: 21.0.1
+      prettier:
+        specifier: 3.9.10
+        version: 3.9.10
+      slophammer-ts:
+        specifier: 0.5.0
+        version: 0.5.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      typescript-eslint:
+        specifier: 8.72.0
+        version: 8.72.0(eslint@10.13.0)(typescript@6.0.3)
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@types/node@22.19.1)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.1)(vite@8.3.5(@types/node@22.19.1)(yaml@2.9.1))
+
+  examples/chess:
+    dependencies:
+      '@osolmaz/switch':
+        specifier: workspace:*
+        version: link:../..
+      chess.js:
+        specifier: 1.4.0
+        version: 1.4.0
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@eslint/js':
+        specifier: 10.0.1
+        version: 10.0.1(eslint@10.13.0)
+      '@types/node':
+        specifier: 22.19.1
+        version: 22.19.1
+      '@vitest/coverage-v8':
+        specifier: 5.0.5
+        version: 5.0.5(vitest@5.0.5)
+      eslint:
+        specifier: 10.13.0
+        version: 10.13.0
+      happy-dom:
+        specifier: 21.0.1
+        version: 21.0.1
+      prettier:
+        specifier: 3.9.10
+        version: 3.9.10
+      slophammer-ts:
+        specifier: 0.5.0
+        version: 0.5.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      typescript-eslint:
+        specifier: 8.72.0
+        version: 8.72.0(eslint@10.13.0)(typescript@6.0.3)
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@types/node@22.19.1)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.1)(vite@8.3.5(@types/node@22.19.1)(yaml@2.9.1))
+
+  examples/legal-judge:
+    dependencies:
+      '@osolmaz/switch':
+        specifier: workspace:*
+        version: link:../..
+      '@xmldom/xmldom':
+        specifier: 0.9.12
+        version: 0.9.12
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
+      pdfjs-dist:
+        specifier: 6.4.299
+        version: 6.4.299
+      postal-mime:
+        specifier: 4.1.4
+        version: 4.1.4
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@eslint/js':
+        specifier: 10.0.1
+        version: 10.0.1(eslint@10.13.0)
+      '@types/node':
+        specifier: 22.19.1
+        version: 22.19.1
+      '@vitest/coverage-v8':
+        specifier: 5.0.5
+        version: 5.0.5(vitest@5.0.5)
+      eslint:
+        specifier: 10.13.0
+        version: 10.13.0
       prettier:
         specifier: 3.9.10
         version: 3.9.10

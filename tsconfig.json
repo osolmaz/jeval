@@ -19,7 +19,8 @@
 		"rewriteRelativeImportExtensions": true,
 		"resolveJsonModule": true,
 		"skipLibCheck": true,
-		"noEmit": true
+		"noEmit": true,
+		"customConditions": ["switch-source"]
 	},
 	"include": ["src", "tests", "vitest.config.ts", "vitest.stryker.config.ts"]
 }

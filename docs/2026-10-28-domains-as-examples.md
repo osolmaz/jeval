@@ -516,7 +516,8 @@ switch/
 └── docs/
 ```
 
-`judges/`, `assets/`, `src/domains/` and `src/eval/` go. `examples/` holds only packages.
+`judges/`, `src/domains/` and `src/eval/` go, and `assets/` keeps only the README's cover. `examples/` holds only
+packages.
 
 ### switch as a package
 
@@ -528,8 +529,10 @@ switch's `package.json` gets `exports`:
 | Import                    | What it gives                                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `@osolmaz/switch`         | the core: the types, `choiceKind`, `run`, the trace, replay, `Setup`, `runnerOf` and `definitionOf`    |
+| `@osolmaz/switch/models`  | `piAiDecider`                                                                                          |
 | `@osolmaz/switch/cli`     | `commandLine`, and the readers of run folders and eval sets: `readRunRecord`, `readResults`, `loadSet` |
-| `@osolmaz/switch/viewer`  | `DomainViewer`, and the page's types and helpers for a domain's part                                   |
+| `@osolmaz/switch/viewer`  | `DomainViewer`, the server side of a domain's part of the page                                         |
+| `@osolmaz/switch/page`    | the page's types and helpers for the browser side of a domain's part, and `registerPart`               |
 | `@osolmaz/switch/testing` | the fake decider for tests, which moves from `tests/helpers/fakes.ts` to `src/testing/`                |
 
 Each entry has three conditions:
@@ -603,7 +606,8 @@ switch keeps no `bin`. A `switch` command without domains could only show runs, 
 
 ### What switch drops or changes
 
-- `src/domains/`, `src/eval/`, and `src/cli/domains.ts` with `DomainError`, `INGESTERS` and the list of domains.
+- `src/domains/`, `src/eval/`, and in `src/cli/domains.ts` `INGESTERS` and the list of domains. The file keeps the
+  type of a harness's domains, which `commandLine` takes, and `DomainError`.
 - `Setup.categories`, `CaseRun.categories`, and `categories` in `result.json`.
 - `labels` in the eval set. switch's set file holds `name`, `cases` and `ids`, and its schema allows more fields, so
   that a harness can add its own. legal-judge's scoring reads `labels` from the same file, so today's set files work
@@ -615,16 +619,23 @@ switch keeps no `bin`. A `switch` command without domains could only show runs, 
 
 ### Checks
 
-`pnpm check` checks switch and both examples, and CI runs it as it does today.
+`pnpm check` checks switch and both examples, and CI runs the same checks.
 
-- `tsconfig.json` includes `examples`, with the condition.
-- `vitest.config.ts` also runs `examples/*/tests/**/*.test.ts`. Coverage also counts `examples/*/src/**`, without the
-  entry points, and the gate stays at 85%.
-- An ESLint `no-restricted-imports` rule refuses an import by path from an example into `src/`. The examples reach
-  switch only through `@osolmaz/switch`.
-- In `slophammer.yml`, each example may import only its own folder, and switch's rules lose the domain entries. The
-  DRY scan also covers `examples`.
-- CI still installs `poppler-utils` and `netpbm`, which the legal-judge ingest tests use.
+Slophammer treats a folder with a `package.json` and TypeScript sources as a project of its own, and requires each
+project to have its own checks. So each example has them, as a project outside switch would:
+
+- Its own `tsconfig.json`, which extends switch's and so keeps strict mode and the `switch-source` condition.
+- Its own `eslint.config.mjs` with switch's rules, and a `no-restricted-imports` rule that refuses an import by path
+  out of the example's folder. The examples reach switch only through `@osolmaz/switch`.
+- Its own `vitest.config.ts`, which resolves the condition and holds the 85% coverage gate on `src/**`, without the
+  entry point.
+- Its own `format`, `lint`, `typecheck`, `test`, `coverage`, `dry` and `check` scripts. CI runs them in a step whose
+  working directory is the example, which is where Slophammer looks for them.
+
+switch's own configs leave `examples/` out, and its `pnpm check` runs each example's `check`. In `slophammer.yml`,
+each example may import only its own folder, and switch's rules lose the domain entries. The DRY scan also covers
+`examples`, without the two config files that each example keeps a copy of. CI still installs `poppler-utils` and
+`netpbm`, which the legal-judge ingest tests use.
 
 ### Docs
 

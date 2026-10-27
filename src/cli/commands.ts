@@ -16,7 +16,7 @@ import { caseFiles, casesFolder, jsonLines, runFile } from "./layout.ts";
 import { type CaseResult, exists, readResults, readRunRecord, type RunRecord } from "./runs.ts";
 import { switchSource } from "./source.ts";
 
-export interface RunOptions {
+export interface RunCasesOptions {
 	readonly out: string;
 	readonly concurrency: number;
 	readonly log: (line: string) => void;
@@ -47,7 +47,7 @@ export async function inPool<T>(items: readonly T[], limit: number, work: (item:
 	await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
 }
 
-async function runOne(domain: Runner, folder: string, decider: Decider, options: RunOptions): Promise<void> {
+async function runOne(domain: Runner, folder: string, decider: Decider, options: RunCasesOptions): Promise<void> {
 	const id = await domain.caseId(folder);
 	const files = caseFiles(options.out, id);
 	if (await exists(files.result)) {
@@ -64,7 +64,7 @@ async function runOne(domain: Runner, folder: string, decider: Decider, options:
 		requestLines.add(exchange);
 	});
 	const { decider: caseDecider, ...replaying } = await stepsOf(options.stepsFrom, id, recorded);
-	const { result, categories, outcome } = await domain.run(folder, caseDecider, {
+	const { result, outcome } = await domain.run(folder, caseDecider, {
 		limits: domain.limits,
 		trace,
 		...replaying,
@@ -78,7 +78,6 @@ async function runOne(domain: Runner, folder: string, decider: Decider, options:
 		steps: result.steps,
 		error: result.error,
 		answers: result.answers,
-		categories,
 		outcome,
 	};
 	await writeFile(files.result, `${JSON.stringify(record, null, 1)}\n`);
@@ -103,7 +102,7 @@ async function stepsOf(
 }
 
 /** The run record to start from: a new one, or the folder's own when it holds the same run, which then goes on. */
-async function startRun(domain: Runner, decider: Decider, options: RunOptions): Promise<RunRecord> {
+async function startRun(domain: Runner, decider: Decider, options: RunCasesOptions): Promise<RunRecord> {
 	const record: RunRecord = {
 		domain: domain.name,
 		version: domain.version,
@@ -151,7 +150,7 @@ export async function runCases(
 	domain: Runner,
 	folders: readonly string[],
 	decider: Decider,
-	options: RunOptions,
+	options: RunCasesOptions,
 ): Promise<void> {
 	await mkdir(casesFolder(options.out), { recursive: true });
 	const record = await startRun(domain, decider, options);

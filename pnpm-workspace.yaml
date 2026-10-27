@@ -1,3 +1,7 @@
+# The example harnesses are packages of their own, which use switch as an outside project would.
+packages:
+  - examples/*
+
 # pi-ai's provider SDKs ship install scripts that switch does not need.
 onlyBuiltDependencies: []
 ignoredBuiltDependencies:

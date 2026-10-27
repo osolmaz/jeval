@@ -27,9 +27,10 @@ function that looks at the world of one case and at the history of the run so fa
 sense now. A domain also sets the questions the model answers at the end, and the view, which shows the world and the
 history to the model. switch runs the same loop for every domain and keeps the model's probability for every choice on
 every menu. It fits the view into the model's window and writes a trace of every step, which can be replayed or
-forked. switch ships two domains: `legal-judge`, which grades answers to legal tasks against a rubric, and `chess`.
-The same loop fits any task where a model should look around before it decides, such as routing a support ticket after
-reading its logs or deciding whether a report needs a person.
+forked. Two example harnesses in [`examples/`](examples) use switch the way another project would: `legal-judge`,
+which grades answers to legal tasks against a rubric, and `chess`. The same loop fits any task where a model should
+look around before it decides, such as routing a support ticket after reading its logs or deciding whether a report
+needs a person.
 
 ## How it works
 
@@ -52,23 +53,34 @@ the world and the history alone, and a trace holds all a replay needs.
 
 ## Install
 
-switch needs Node.js 22.13 or newer and pnpm. To use it as a library or command in another project, add it pinned to a
-commit; installing builds it.
+switch needs Node.js 22.13 or newer and pnpm. To use it in another project, add it pinned to a commit; installing
+builds it.
 
 ```bash
 pnpm add github:osolmaz/switch#<commit>
 ```
 
-To work on switch itself, clone it and run `pnpm install`. A domain that needs other programs lists them in its own
-README.
+The package has these entry points:
 
-## Domains
+| Import                    | What it gives                                                                                               |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `@osolmaz/switch`         | The loop, menus, traces, replay and the types of a domain and its setup                                     |
+| `@osolmaz/switch/models`  | `piAiDecider`, which asks a classifier model that pi-ai lists                                               |
+| `@osolmaz/switch/cli`     | `commandLine`, which gives a harness the `run`, `replay` and `view` commands, and the functions behind them |
+| `@osolmaz/switch/viewer`  | The viewer's server side, and `DomainViewer` for a domain's own part of the page                            |
+| `@osolmaz/switch/page`    | The viewer's browser side, with `registerPart` for a domain's part of the page                              |
+| `@osolmaz/switch/testing` | A fake decider that answers by a rule, for tests that make no model calls                                   |
 
-Each domain has a README that says what it does, what else it needs installed and how to run it.
+To work on switch itself, clone it and run `pnpm install`.
 
-- [Legal judge](src/domains/legal-judge/README.md) (`legal-judge`) grades a saved answer to a legal task against the
+## Examples
+
+Each example is a package of its own in `examples/`, with a README that says what it does, what else it needs
+installed and how to run it. Its program is `src/main.ts`, which runs from the repository root.
+
+- [Legal judge](examples/legal-judge/README.md) (`legal-judge`) grades a saved answer to a legal task against the
   task's rubric.
-- [Chess](src/domains/chess/README.md) (`chess`) plays a game of chess against an opponent that picks random legal
+- [Chess](examples/chess/README.md) (`chess`) plays a game of chess against an opponent that picks random legal
   moves, against Stockfish, or against itself.
 
 ## Watch a run
@@ -79,7 +91,7 @@ in its own way: a chess game gets a board with moving pieces, arrows for the mod
 and a PGN download. Add `--view` to `run` to watch the cases while they run; each case's page follows it live:
 
 ```bash
-node src/cli/main.ts run --domain chess examples/chess/white-seed-1 --out runs/chess --view
+examples/chess/src/main.ts run examples/chess/cases/white-seed-1 --out runs/chess --view
 ```
 
 The run folder keeps everything a later `view runs/chess` needs to play the cases back. `view --html <file>` saves a
@@ -94,7 +106,7 @@ the image's label; if that step finds something else, the replay stops with an e
 repeats the first n steps, and the model that `--model` names goes on from there:
 
 ```bash
-node src/cli/main.ts replay --domain chess examples/chess/white-seed-1 runs/chess/cases/white-seed-1/trace.jsonl --fork 5
+examples/chess/src/main.ts replay examples/chess/cases/white-seed-1 runs/chess/cases/white-seed-1/trace.jsonl --fork 5
 ```
 
 `run --steps-from <run>` does this for every case of an earlier run: it repeats each case's steps from that run's
@@ -102,13 +114,12 @@ traces and asks only the questions again, for example with another definition or
 
 ## Write a domain
 
-A domain is a folder in `src/domains/`. Its menu lists the choices that make sense now, from the world and the
-history, and says what running one finds. `choiceKind` builds the menu of one kind of choice with a typed argument,
-and `joinMenus` puts the menus of several kinds together. This domain routes a support ticket and lets the model read
-the ticket's logs first:
+A domain's menu lists the choices that make sense now, from the world and the history, and says what running one
+finds. `choiceKind` builds the menu of one kind of choice with a typed argument, and `joinMenus` puts the menus of
+several kinds together. This domain routes a support ticket and lets the model read the ticket's logs first:
 
 ```ts
-import { choiceKind, type Domain } from "../../core/index.ts";
+import { choiceKind, type Domain } from "@osolmaz/switch";
 
 interface Ticket {
   readonly text: string;
@@ -152,8 +163,8 @@ pi-ai lists can decide, with its key from the environment:
 
 ```ts
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import { run } from "../../core/index.ts";
-import { piAiDecider } from "../../models/pi-ai.ts";
+import { run } from "@osolmaz/switch";
+import { piAiDecider } from "@osolmaz/switch/models";
 
 const decider = piAiDecider("typesafe/jev-latest", { registry: builtinModels(), apiKey: process.env.TYPESAFE_API_KEY });
 const result = await run(triage, ticket, decider, { case: "ticket-1" });
@@ -165,15 +176,17 @@ steps: it chose stop, the menu was empty, the steps ran out, or a choice failed.
 round of questions, such as asking about each part of an item before deciding the item, adds an `answer` function
 that asks in stages.
 
-The command line runs a domain on case folders through the domain's `setup.ts`. It exports a function that takes a
-definition file, or none, and returns a runner: the domain, its definition and limits, how to read a case folder, and,
-when the domain has them, each question's category and how a case ended. The definition holds every text the model
-reads that does not come from a case, and the limits; `run.json` records it with its hash. `--definition <file>`
-passes a file to the function, such as a judge file to `legal-judge`. This setup takes no file:
+## Write a harness
+
+A harness is a program that runs a domain on case folders. Its setup function takes a definition file, or none, and
+returns a runner: the domain, its definition and limits, how to read a case folder, and, when the domain has one, how
+a case ended. The definition holds every text the model reads that does not come from a case, and the limits;
+`run.json` records it with its hash. `--definition <file>` passes a file to the function, such as a judge file to
+`legal-judge`. This setup takes no file:
 
 ```ts
 import { basename } from "node:path";
-import { DEFAULT_LIMITS, definitionOf, type Runner, runnerOf, SetupError } from "../../core/index.ts";
+import { DEFAULT_LIMITS, definitionOf, type Runner, runnerOf, SetupError } from "@osolmaz/switch";
 import { triage } from "./index.ts";
 import { loadTicket } from "./load.ts";
 
@@ -191,11 +204,24 @@ export function triageSetup(file: string | undefined): Promise<Runner> {
 }
 ```
 
-The list of domains in `src/cli/domains.ts` names this function under the domain's name, and, when the domain has one,
-its part of the viewer. That part is a `DomainViewer`: browser modules that call `registerPart` with hooks for the
-stage, the bars beside it, a list of the steps, the result's score, a download and sounds, and the config they start
-with. Every hook is optional. `src/domains/legal-judge/` and `src/domains/chess/` are complete examples, and
-[docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) explains the design.
+`commandLine` turns the setup into the harness's program, with switch's `run`, `replay` and `view` commands. It is a
+[Commander](https://github.com/tj/commander.js) program, so the harness can add its own commands, as `legal-judge`
+adds `ingest`, `score` and `compare`:
+
+```ts
+import { commandLine } from "@osolmaz/switch/cli";
+import { triageSetup } from "./setup.ts";
+
+await commandLine({ triage: { setup: triageSetup } })
+  .name("triage")
+  .parseAsync();
+```
+
+Next to `setup`, a domain can name its part of the viewer. That part is a `DomainViewer`: browser modules that call
+`registerPart` with hooks for the stage, the bars beside it, a list of the steps, the result's score, a download and
+sounds, and the config they start with. Every hook is optional. A harness with more than one domain takes `--domain`
+to pick one. [`examples/legal-judge/`](examples/legal-judge) and [`examples/chess/`](examples/chess) are complete
+harnesses, and [docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) explains the design.
 
 ## License
 

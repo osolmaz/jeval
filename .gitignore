@@ -8,6 +8,8 @@ reports/
 input/
 inputs/
 cases/
+# The chess example's cases are public game setups, not task data.
+!examples/chess/cases/
 results/
 out/
 *.trace.jsonl

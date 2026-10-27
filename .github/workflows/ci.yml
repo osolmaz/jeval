@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Install the programs ingestion uses
+      - name: Install the programs the legal-judge example's ingestion uses
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils netpbm
       - run: pnpm install --frozen-lockfile
       - run: pnpm format
@@ -31,6 +31,12 @@ jobs:
       - run: pnpm coverage
       - run: pnpm dry
       - run: pnpm build
+      - name: Check the chess example
+        working-directory: examples/chess
+        run: pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm coverage && pnpm dry
+      - name: Check the legal-judge example
+        working-directory: examples/legal-judge
+        run: pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm coverage && pnpm dry
       - uses: osolmaz/slophammer@typescript/v0.5.0
         with:
           checker: ts

@@ -21,10 +21,10 @@ export interface RunOptions {
 	readonly concurrency: number;
 	readonly log: (line: string) => void;
 	/**
-	 * A run whose evidence each case reuses: its recorded steps and observations are repeated, and only the judging is
-	 * asked again.
+	 * A run whose steps each case takes again: its recorded choices and observations are repeated, and only the answers
+	 * go to the model again.
 	 */
-	readonly evidenceFrom?: string;
+	readonly stepsFrom?: string;
 	/** The eval set the cases come from. */
 	readonly set?: { readonly name: string; readonly file: string };
 }
@@ -63,7 +63,7 @@ async function runOne(domain: Runner, folder: string, decider: Decider, options:
 	const recorded = recording(decider, (exchange) => {
 		requestLines.add(exchange);
 	});
-	const { decider: caseDecider, ...replaying } = await evidence(options.evidenceFrom, id, recorded);
+	const { decider: caseDecider, ...replaying } = await stepsOf(options.stepsFrom, id, recorded);
 	const { result, categories, outcome } = await domain.run(folder, caseDecider, {
 		limits: domain.limits,
 		trace,
@@ -90,9 +90,9 @@ async function runOne(domain: Runner, folder: string, decider: Decider, options:
 
 /**
  * The decider of a case: `then` alone, or with the run `from`, a replay of every step that the case recorded there, so
- * that its evidence is taken again as it was and `then` only judges.
+ * that its steps are taken again as they were and `then` only answers.
  */
-async function evidence(
+async function stepsOf(
 	from: string | undefined,
 	id: string,
 	then: Decider,
@@ -112,7 +112,7 @@ async function startRun(domain: Runner, decider: Decider, options: RunOptions): 
 		limits: { ...domain.limits },
 		switch: await switchSource(),
 		set: options.set ?? null,
-		evidenceFrom: options.evidenceFrom ?? null,
+		stepsFrom: options.stepsFrom ?? null,
 		started: new Date().toISOString(),
 		finished: null,
 		totals: null,
@@ -120,7 +120,7 @@ async function startRun(domain: Runner, decider: Decider, options: RunOptions): 
 	if (!(await exists(runFile(options.out)))) return record;
 	const before = await readRunRecord(options.out);
 	const same = (run: RunRecord) =>
-		JSON.stringify([run.domain, run.version, run.model, run.limits, run.switch.commit, run.set, run.evidenceFrom]);
+		JSON.stringify([run.domain, run.version, run.model, run.limits, run.switch.commit, run.set, run.stepsFrom]);
 	if (same(before) !== same(record)) {
 		throw new RunMismatchError(`${options.out} holds another run (${same(before)}); use another --out`);
 	}

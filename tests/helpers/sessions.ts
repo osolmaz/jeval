@@ -14,11 +14,11 @@ export async function chessSession(
 	} = {},
 ): Promise<Session> {
 	const { steps = 3, policy = picking(), finished = true, ...fields } = options;
-	const workspace = game(fields);
-	const result = await run(chess, workspace, fakeDecider(policy), { case: "g1", limits: { ...LIMITS, steps } });
+	const world = game(fields);
+	const result = await run(chess, world, fakeDecider(policy), { case: "g1", limits: { ...LIMITS, steps } });
 	return {
 		story: storyOf(result.trace.entries),
-		outcome: finished ? outcomeOf(workspace, result.log, false) : null,
+		outcome: finished ? outcomeOf(world, result.history, false) : null,
 		finished,
 		version: `${String(result.trace.entries.length)}:${String(finished)}`,
 	};

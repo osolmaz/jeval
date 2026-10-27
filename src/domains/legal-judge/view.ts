@@ -1,7 +1,7 @@
-import type { Json, JsonObject, State, View } from "../../core/index.ts";
+import type { Json, JsonObject, Step, View } from "../../core/index.ts";
 import type { CaseFile } from "./case.ts";
 import type { JudgeDefinition } from "./definition.ts";
-import { LIMITS, readParts, type Workspace } from "./workspace.ts";
+import { LIMITS, readParts, type World } from "./world.ts";
 
 const size = (value: Json): number => Math.ceil(JSON.stringify(value).length / LIMITS.charsPerToken);
 
@@ -10,9 +10,10 @@ function readStatus(file: CaseFile, read: ReadonlySet<number> | undefined): stri
 	return read.size >= file.units.length ? "all" : `${String(read.size)} of ${String(file.units.length)} parts`;
 }
 
-function chooseState(state: State<Workspace>, texts: JudgeDefinition["texts"]): JsonObject {
-	const legalCase = state.workspace.case;
-	const read = readParts(state.log);
+/** The state for a choice from the menu: the rubric, the files and what has been read of them, and the steps so far. */
+function menuState(world: World, history: readonly Step[], texts: JudgeDefinition["texts"]): JsonObject {
+	const legalCase = world.case;
+	const read = readParts(history);
 	return {
 		process: texts.process,
 		stage: texts.gather,
@@ -25,7 +26,7 @@ function chooseState(state: State<Workspace>, texts: JudgeDefinition["texts"]): 
 			words: file.words,
 			read: readStatus(file, read.get(file.id)),
 		})),
-		steps_taken: state.log.map((entry) => entry.observation.source),
+		steps_taken: history.map((step) => step.observation.source ?? ""),
 	};
 }
 
@@ -63,16 +64,17 @@ export function fitEvidence(evidence: readonly Evidence[], room: number): { evid
 /** The state the model sees: for a choice, the rubric and the files as well; for the answers, the evidence. */
 export function view(
 	texts: JudgeDefinition["texts"],
-	state: State<Workspace>,
+	world: World,
+	history: readonly Step[],
 	purpose: "choose" | "answer",
 	tokens: number,
 ): View {
-	const base = purpose === "choose" ? chooseState(state, texts) : { request: state.workspace.case.request };
-	const evidence = state.log.map(({ observation }) => ({ source: observation.source, text: observation.text }));
+	const base = purpose === "choose" ? menuState(world, history, texts) : { request: world.case.request };
+	const evidence = history.map(({ observation }) => ({ source: observation.source ?? "", text: observation.text }));
 	const fitted = fitEvidence(evidence, tokens - size(base));
 	return {
 		state: { ...base, evidence: fitted.evidence.map(({ source, text }) => ({ source, text })) },
-		images: state.log.flatMap(({ observation }) => observation.images ?? []),
+		images: history.flatMap(({ observation }) => observation.images ?? []),
 		omitted: fitted.omitted,
 	};
 }

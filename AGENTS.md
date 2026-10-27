@@ -10,6 +10,15 @@
 - Never commit task data: requests, rubrics, documents, answers, case folders, run results, traces or labels. They
   are proprietary. Tests build their own small fixtures in code.
 
+## Terms
+
+- Use the terms of switch, as the README's "How it works" defines them, in code and docs: world, history, step, menu,
+  choice, kind, observation, view, state, instructions, question and answer. The menu is the domain's function from the
+  world and the history to the choices of the current step.
+- Do not use their old names: workspace, log, entry for a step, option and action. Use judge only inside legal-judge,
+  for its own judge files. "Entry" still means one line of a trace, and "options" still means a settings object, such
+  as `RunOptions`.
+
 ## Code
 
 - TypeScript strict, with only erasable syntax: no `enum`, `namespace` or parameter properties. Import with `.ts`
@@ -28,9 +37,9 @@
   the pictures of the domains it knows, such as the chess board, from the data their steps record. The page joins the
   browser modules in `src/view/web/` into one script, so they import each other with plain
   `import { … } from "./name.ts"` lines, take only types from elsewhere, and keep their top-level names unique.
-- A domain under `src/domains/` imports only `src/core`. Its actions only read the workspace; file and process work
-  stays in its `ingest/` folder, `load.ts` and `setup.ts`. A workspace may hold a handle to a program outside, such as
-  the chess engine that `load.ts` starts: a replay takes each step's recorded observation and runs no action again.
+- A domain under `src/domains/` imports only `src/core`. Its choices only read the world; file and process work stays
+  in its `ingest/` folder, `load.ts` and `setup.ts`. A world may hold a handle to a program outside, such as the chess
+  engine that `load.ts` starts: a replay takes each step's recorded observation and runs no choice again.
 - Each domain's `setup.ts` exports the function that sets the domain up from a definition file: it loads case
   folders and reports a case. Everything a domain needs to run lives in its folder.
 - `src/cli` wires the others together. Its list of domains names each domain's setup function and nothing else

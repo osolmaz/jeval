@@ -1,6 +1,6 @@
-import { action } from "../../../core/index.ts";
+import { choiceKind } from "../../../core/index.ts";
 import type { CaseFile } from "../case.ts";
-import type { Workspace } from "../workspace.ts";
+import type { World } from "../world.ts";
 
 const SHOWN = 60;
 const basename = (path: string): string => (path.split("/").at(-1) ?? path).toLowerCase();
@@ -31,10 +31,10 @@ interface Pair {
 }
 
 /** Compare the answer's Word file with the task's document of the same name. */
-export const compare = action<Workspace, Pair>({
+export const compare = choiceKind<World, Pair>({
 	name: "compare",
-	options(state) {
-		const files = state.workspace.case.files;
+	menu(world) {
+		const files = world.case.files;
 		return files
 			.filter((file) => file.role === "answer" && file.kind === "docx")
 			.flatMap((edited) => {
@@ -47,7 +47,7 @@ export const compare = action<Workspace, Pair>({
 				return [{ key: edited.id, text, arg: { edited, original } }];
 			});
 	},
-	observe: (_, { edited, original }) => ({
+	run: (_, { edited, original }) => ({
 		source: `${edited.path} compared with ${original.path}`,
 		text: compareFiles(edited, original),
 	}),

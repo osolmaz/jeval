@@ -4,17 +4,16 @@ import { STOP_KEY, Trace } from "./trace.ts";
 import type {
 	Answer,
 	Ask,
+	Choice,
 	ChoiceQuestion,
 	Decider,
 	DecisionRequest,
 	DecisionResult,
 	Domain,
-	Entry,
 	JsonObject,
 	Limits,
-	MenuItem,
 	Question,
-	State,
+	Step,
 	Usage,
 	View,
 } from "./types.ts";
@@ -24,15 +23,15 @@ export interface RunOptions {
 	readonly case: string;
 	readonly limits?: Limits;
 	readonly trace?: Trace;
-	/** A trace to repeat: the run takes its recorded observations and runs no action again, up to a fork. */
+	/** A trace to repeat: the run takes its recorded observations and runs no choice again, up to a fork. */
 	readonly replay?: Replay;
 }
 
 /**
- * Why evidence gathering ended: the model chose the stop option, the menu was empty, the run took as many steps as its
- * limits allow, or the choice failed.
+ * Why the steps ended: the model chose stop, the menu was empty, the run took as many steps as its limits allow, or the
+ * pick failed.
  */
-export type Ending = "stop" | "no options" | "step limit" | "no choice";
+export type Ending = "stop" | "empty menu" | "step limit" | "no choice";
 
 export interface RunResult {
 	/** Every question's answer, or null when the answers could not be obtained. */
@@ -41,8 +40,18 @@ export interface RunResult {
 	readonly ended: Ending;
 	readonly error: string | null;
 	readonly trace: Trace;
-	/** Every observation the case made, the start included, in order. */
-	readonly log: readonly Entry[];
+	/** Every step of the case, the start's included, in order. */
+	readonly history: readonly Step[];
+}
+
+/** One run of a domain on one case: what each part of the loop works with. */
+interface Loop<W> {
+	readonly domain: Domain<W>;
+	readonly world: W;
+	readonly history: Step[];
+	readonly decider: Decider;
+	readonly limits: Limits;
+	readonly trace: Trace;
 }
 
 /** How much smaller each retry's view is after the model reported that a request did not fit its window. */
@@ -51,13 +60,8 @@ const ATTEMPTS = 3;
 /** The share of a request that the questions of one answer batch may take. */
 const QUESTION_SHARE = 0.4;
 
-/** Runs a domain on one case: the model picks steps from the menu until it stops, then answers the questions. */
-export async function run<W>(
-	domain: Domain<W>,
-	workspace: W,
-	decider: Decider,
-	options: RunOptions,
-): Promise<RunResult> {
+/** Runs a domain on one case: the model picks from the menu until it stops, then answers the questions. */
+export async function run<W>(domain: Domain<W>, world: W, decider: Decider, options: RunOptions): Promise<RunResult> {
 	const limits = options.limits ?? DEFAULT_LIMITS;
 	const trace = options.trace ?? new Trace();
 	trace.caseStarted({
@@ -67,103 +71,94 @@ export async function run<W>(
 		model: decider.model,
 		limits,
 	});
-	const log: Entry[] = [];
-	for (const entry of await startOf(domain, workspace, options.replay)) {
-		log.push(entry);
-		trace.observed(0, entry.action, entry.key, entry.observation);
+	const loop: Loop<W> = { domain, world, history: [], decider, limits, trace };
+	for (const opening of await startOf(domain, world, options.replay)) {
+		loop.history.push(opening);
+		trace.observed(0, opening.kind, opening.key, opening.observation);
 	}
-	const { steps, ended } = await gather(domain, { workspace, log }, decider, limits, trace, options.replay);
-	const questions = domain.questions(workspace);
-	const outcome = await answer(domain, { workspace, log }, decider, limits, questions, trace);
-	return { answers: outcome.answers, steps, ended, error: outcome.error, trace, log };
+	const { steps, ended } = await takeSteps(loop, options.replay);
+	const outcome = await answer(loop, domain.questions(world));
+	return { answers: outcome.answers, steps, ended, error: outcome.error, trace, history: loop.history };
 }
 
-async function gather<W>(
-	domain: Domain<W>,
-	state: State<W> & { log: Entry[] },
-	decider: Decider,
-	limits: Limits,
-	trace: Trace,
-	replay: Replay | undefined,
-): Promise<{ steps: number; ended: Ending }> {
+async function takeSteps<W>(loop: Loop<W>, replay: Replay | undefined): Promise<{ steps: number; ended: Ending }> {
+	const { domain, world, history, limits, trace } = loop;
 	let step = 0;
 	while (step < limits.steps) {
-		const menu = buildMenu(domain.actions, state, limits.options - 1);
-		if (menu.length === 0) return { steps: step, ended: "no options" };
+		const menu = buildMenu(domain.menu, world, history, limits.choices - 1);
+		if (menu.length === 0) return { steps: step, ended: "empty menu" };
 		step += 1;
 		trace.menu(step, menu, domain.stop);
-		const chosen = await choose(domain, state, decider, limits, menu, trace);
+		const chosen = await choose(loop, menu);
 		if (chosen === null) return { steps: step, ended: "no choice" };
-		trace.chose(step, chosen.key, chosen.probabilities, chosen.usage);
-		if (chosen.item === null) return { steps: step, ended: "stop" };
-		const observation = await observe(chosen.item, step, replay);
-		state.log.push({ action: chosen.item.action, key: chosen.item.key, observation });
-		trace.observed(step, chosen.item.action, chosen.item.key, observation);
+		trace.chose(step, chosen);
+		if (chosen.choice === null) return { steps: step, ended: "stop" };
+		const observation = await observe(chosen.choice, step, replay);
+		history.push({ kind: chosen.choice.kind, key: chosen.choice.key, observation });
+		trace.observed(step, chosen.choice.kind, chosen.choice.key, observation);
 	}
 	return { steps: step, ended: "step limit" };
 }
 
+/** The model's choice from a menu: the choice, or null for stop, its key, and the probabilities by key. */
 interface Chosen {
-	readonly item: MenuItem | null;
+	readonly choice: Choice | null;
 	readonly key: string;
 	readonly probabilities: Readonly<Record<string, number>>;
+	readonly confidence: number | undefined;
 	readonly usage: Usage;
 }
 
-async function choose<W>(
-	domain: Domain<W>,
-	state: State<W>,
-	decider: Decider,
-	limits: Limits,
-	menu: readonly MenuItem[],
-	trace: Trace,
-): Promise<Chosen | null> {
+async function choose<W>(loop: Loop<W>, menu: readonly Choice[]): Promise<Chosen | null> {
+	const { domain, trace } = loop;
 	const labels = menu.map((_, index) => `o${String(index + 1)}`);
 	const choices: Record<string, string> = {};
-	menu.forEach((item, index) => {
-		choices[labels[index] ?? item.key] = item.text;
+	menu.forEach((choice, index) => {
+		choices[labels[index] ?? choice.key] = choice.text;
 	});
 	choices[STOP_KEY] = domain.stop;
-	const question: ChoiceQuestion = { kind: "choice", id: "next", instructions: domain.choose, choices };
-	const result = await ask(domain, state, decider, limits, [question], trace, undefined, "choose");
+	const question: ChoiceQuestion = { type: "choice", id: "next", instructions: domain.instructions, choices };
+	const result = await ask(loop, [question], undefined, "choose");
 	if (!result.ok) {
 		trace.note(`the choice failed (${result.failure}): ${result.message}; the case goes on to its answers`);
 		return null;
 	}
-	const picked = result.answers[question.id];
-	if (picked?.kind !== "choice") {
+	const answered = result.answers[question.id];
+	if (answered?.type !== "choice") {
 		trace.note("the model gave no choice; the case goes on to its answers");
 		return null;
 	}
-	// The stop label is not an option's label, so it maps to no item and keeps its own name as the key.
+	// The stop label is not a choice's label, so it maps to no choice and keeps its own name as the key.
 	const keyOf = (label: string) => menu[labels.indexOf(label)]?.key ?? label;
 	const probabilities = Object.fromEntries(
-		Object.entries(picked.probabilities).map(([label, p]) => [keyOf(label), p]),
+		Object.entries(answered.probabilities).map(([label, p]) => [keyOf(label), p]),
 	);
-	const item = menu[labels.indexOf(picked.choice)] ?? null;
-	return { item, key: keyOf(picked.choice), probabilities, usage: result.usage };
+	return {
+		choice: menu[labels.indexOf(answered.choice)] ?? null,
+		key: keyOf(answered.choice),
+		probabilities,
+		confidence: answered.confidence,
+		usage: result.usage,
+	};
 }
 
-/** A judging stage failed: the model's window was exceeded, the provider failed, or a question got no answer. */
+/** An answer stage failed: the model's window was exceeded, the provider failed, or a question got no answer. */
 export class AskError extends Error {
 	override readonly name = "AskError";
 }
 
 async function answer<W>(
-	domain: Domain<W>,
-	state: State<W>,
-	decider: Decider,
-	limits: Limits,
+	loop: Loop<W>,
 	questions: readonly Question[],
-	trace: Trace,
 ): Promise<{ answers: Record<string, Answer> | null; error: string | null }> {
+	const { domain, world, history, trace } = loop;
 	const usages: Usage[] = [];
-	const ask = asker(domain, state, decider, limits, trace, usages);
+	const ask = asker(loop, usages);
 	try {
 		const answers =
-			domain.judge === undefined
+			domain.answer === undefined
 				? await ask(questions, { stage: "answers" })
-				: await domain.judge({ state, questions, ask });
+				: await domain.answer({ world, history, questions, ask });
 		const final: Record<string, Answer> = {};
 		for (const question of questions) {
 			const found = answers[question.id];
@@ -178,15 +173,9 @@ async function answer<W>(
 	}
 }
 
-/** The `ask` a judge gets: batches that fit the window, over the evidence view or a fixed state, each stage traced. */
-function asker<W>(
-	domain: Domain<W>,
-	state: State<W>,
-	decider: Decider,
-	limits: Limits,
-	trace: Trace,
-	usages: Usage[],
-): Ask {
+/** The `ask` that answer stages get: batches that fit the window, over the view or a fixed state, each stage traced. */
+function asker<W>(loop: Loop<W>, usages: Usage[]): Ask {
+	const { decider, limits, trace } = loop;
 	const room = Math.floor(decider.window * limits.windowShare * QUESTION_SHARE);
 	return async (questions, options) => {
 		const answers: Record<string, Answer> = {};
@@ -194,7 +183,7 @@ function asker<W>(
 		for (const batch of batches(questions, room, decider.charsPerToken)) {
 			const result =
 				options.state === undefined
-					? await ask(domain, state, decider, limits, batch, trace, options.extra)
+					? await ask(loop, batch, options.extra)
 					: await decider.decide({ state: options.state, images: [], questions: batch });
 			used.push(result.usage);
 			if (!result.ok) throw new AskError(`${result.failure}: ${result.message}`);
@@ -228,19 +217,16 @@ export function batches(questions: readonly Question[], room: number, charsPerTo
 
 /** Sends one request; when the model reports that it did not fit its window, sends a smaller view, up to three times. */
 async function ask<W>(
-	domain: Domain<W>,
-	state: State<W>,
-	decider: Decider,
-	limits: Limits,
+	loop: Loop<W>,
 	questions: readonly Question[],
-	trace: Trace,
 	extra: JsonObject | undefined,
 	purpose: "choose" | "answer" = "answer",
 ): Promise<DecisionResult> {
+	const { domain, world, history, decider, limits, trace } = loop;
 	const budget = Math.floor(decider.window * limits.windowShare);
 	let room = budget - estimateTokens(extra === undefined ? questions : [questions, extra], decider.charsPerToken);
 	for (let attempt = 1; ; attempt += 1) {
-		const view = domain.view(state, purpose, room);
+		const view = domain.view(world, history, purpose, room);
 		noteOmissions(view, trace);
 		const result = await decider.decide(request(view, questions, extra));
 		if (result.ok || result.failure !== "window" || attempt === ATTEMPTS) return result;

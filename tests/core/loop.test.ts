@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-	action,
 	batches,
+	choiceKind,
 	type Domain,
 	estimateTokens,
 	parseTrace,
@@ -13,17 +13,17 @@ import {
 import { answering, type Facts, factsDomain, failing, fakeDecider } from "../helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact b" } };
-const firstOption = (labels: string[]) => labels[0] ?? STOP_KEY;
+const firstChoice = (labels: string[]) => labels[0] ?? STOP_KEY;
 
 describe("run", () => {
 	it("takes steps until the model stops, then answers every question", async () => {
 		let calls = 0;
-		const decider = fakeDecider(answering(0.8, (labels) => (calls++ === 0 ? firstOption(labels) : STOP_KEY)));
+		const decider = fakeDecider(answering(0.8, (labels) => (calls++ === 0 ? firstChoice(labels) : STOP_KEY)));
 		const result = await run(factsDomain, facts, decider, { case: "c1" });
 		expect(result.steps).toBe(2);
 		expect(result.ended).toBe("stop");
 		expect(result.error).toBeNull();
-		expect(result.answers).toEqual({ a: { kind: "bool", probability: 0.8 }, b: { kind: "bool", probability: 0.8 } });
+		expect(result.answers).toEqual({ a: { type: "bool", probability: 0.8 }, b: { type: "bool", probability: 0.8 } });
 		expect(result.trace.entries.map((entry) => entry.type)).toEqual([
 			"case",
 			"menu",
@@ -37,23 +37,38 @@ describe("run", () => {
 		expect(result.trace.entries.at(-1)?.parent).toBe(result.trace.entries.at(-2)?.id);
 	});
 
-	it("records each option's probability under its key", async () => {
-		const result = await run(factsDomain, facts, fakeDecider(answering(0.5, firstOption)), {
+	it("records each choice's probability under its key", async () => {
+		const result = await run(factsDomain, facts, fakeDecider(answering(0.5, firstChoice)), {
 			case: "c1",
-			limits: { steps: 1, options: 30, windowShare: 0.9 },
+			limits: { steps: 1, choices: 30, windowShare: 0.9 },
 		});
 		const choice = result.trace.entries.find((entry) => entry.type === "choice");
 		expect(choice).toMatchObject({ key: "look-up:a", probabilities: { "look-up:a": 0.9 } });
+		expect(choice).not.toHaveProperty("confidence");
+	});
+
+	it("records the model's confidence in its choice when the model gives one", async () => {
+		const sure = fakeDecider((request, call) => {
+			const result = answering(0.5, firstChoice)(request, call);
+			if (!result.ok || request.questions[0]?.type !== "choice") return result;
+			const answer = result.answers["next"];
+			return answer?.type === "choice" ? { ...result, answers: { next: { ...answer, confidence: 0.7 } } } : result;
+		});
+		const result = await run(factsDomain, facts, sure, {
+			case: "c1",
+			limits: { steps: 1, choices: 30, windowShare: 0.9 },
+		});
+		expect(result.trace.entries.find((entry) => entry.type === "choice")).toMatchObject({ confidence: 0.7 });
 	});
 
 	it("stops gathering when the menu is empty or the step limit is reached", async () => {
-		const empty = await run(factsDomain, { facts: {} }, fakeDecider(answering(0.5, firstOption)), { case: "c" });
-		expect(empty).toMatchObject({ steps: 0, ended: "no options" });
+		const empty = await run(factsDomain, { facts: {} }, fakeDecider(answering(0.5, firstChoice)), { case: "c" });
+		expect(empty).toMatchObject({ steps: 0, ended: "empty menu" });
 		const limited = await run(
 			factsDomain,
 			{ facts: { a: "1", b: "2", c: "3" } },
-			fakeDecider(answering(0.5, firstOption)),
-			{ case: "c", limits: { steps: 2, options: 30, windowShare: 0.9 } },
+			fakeDecider(answering(0.5, firstChoice)),
+			{ case: "c", limits: { steps: 2, choices: 30, windowShare: 0.9 } },
 		);
 		expect(limited).toMatchObject({ steps: 2, ended: "step limit" });
 	});
@@ -114,11 +129,11 @@ describe("run", () => {
 
 	it("reports a question the model did not answer", async () => {
 		const partial = fakeDecider((request) =>
-			request.questions[0]?.kind === "choice"
+			request.questions[0]?.type === "choice"
 				? answering(0.5, () => STOP_KEY)(request, 0)
 				: {
 						ok: true,
-						answers: { a: { kind: "bool", probability: 1 } },
+						answers: { a: { type: "bool", probability: 1 } },
 						usage: { inputTokens: 1, milliseconds: 1 },
 					},
 		);
@@ -130,8 +145,7 @@ describe("run", () => {
 		const seen: string[] = [];
 		const opening: Domain<Facts> = {
 			...factsDomain,
-			start: () =>
-				Promise.resolve([{ action: "open", key: "open:x", observation: { source: "x", text: "opened" } }]),
+			start: () => Promise.resolve([{ kind: "open", key: "open:x", observation: { source: "x", text: "opened" } }]),
 		};
 		await run(opening, facts, fakeDecider(answering(0.5, () => STOP_KEY)), {
 			case: "c",
@@ -142,7 +156,7 @@ describe("run", () => {
 });
 
 describe("batches", () => {
-	const question = (id: string): Question => ({ kind: "bool", id, instructions: "x".repeat(30), yes: "y", no: "n" });
+	const question = (id: string): Question => ({ type: "bool", id, instructions: "x".repeat(30), yes: "y", no: "n" });
 
 	it("groups questions under the size limit and gives a large question its own group", () => {
 		const size = estimateTokens(question("a"), 3);
@@ -159,19 +173,18 @@ describe("run, in detail", () => {
 	it("shows the opening observations to the model", async () => {
 		const opening: Domain<Facts> = {
 			...factsDomain,
-			start: () =>
-				Promise.resolve([{ action: "open", key: "open:x", observation: { source: "x", text: "opened" } }]),
+			start: () => Promise.resolve([{ kind: "open", key: "open:x", observation: { source: "x", text: "opened" } }]),
 		};
 		const decider = fakeDecider(answering(0.5, () => STOP_KEY));
 		await run(opening, facts, decider, { case: "c" });
 		expect(decider.requests[0]?.state["seen"]).toEqual(["opened"]);
 	});
 
-	it("labels the options o1, o2… and keeps one place on the menu for stop", async () => {
+	it("labels the choices o1, o2… and keeps one place on the menu for stop", async () => {
 		const decider = fakeDecider(answering(0.5, () => STOP_KEY));
-		await run(factsDomain, three, decider, { case: "c", limits: { steps: 8, options: 2, windowShare: 0.9 } });
+		await run(factsDomain, three, decider, { case: "c", limits: { steps: 8, choices: 2, windowShare: 0.9 } });
 		const question = decider.requests[0]?.questions[0];
-		expect(question?.kind === "choice" ? question.choices : null).toEqual({ o1: "Look up a", stop: "Stop" });
+		expect(question?.type === "choice" ? question.choices : null).toEqual({ o1: "Look up a", stop: "Stop" });
 	});
 
 	it("gives the view the window's share less the questions' size", async () => {
@@ -189,14 +202,14 @@ describe("run, in detail", () => {
 			200,
 		);
 		const result = await run(factsDomain, three, decider, { case: "c" });
-		const answerRequests = decider.requests.filter((request) => request.questions[0]?.kind === "bool");
+		const answerRequests = decider.requests.filter((request) => request.questions[0]?.type === "bool");
 		expect(answerRequests.length).toBe(2);
 		expect(result.trace.entries.find((entry) => entry.type === "answers")).toMatchObject({ usage: [{}, {}] });
 	});
 
 	it("names every unanswered question, and notes each retry and what the view left out", async () => {
 		const silent = fakeDecider((request) =>
-			request.questions[0]?.kind === "choice"
+			request.questions[0]?.type === "choice"
 				? answering(0.5, () => STOP_KEY)(request, 0)
 				: { ok: true, answers: {}, usage: { inputTokens: 1, milliseconds: 1 } },
 		);
@@ -216,42 +229,45 @@ describe("run, in detail", () => {
 });
 
 describe("data for tools", () => {
-	const tagged = action<Facts, string>({
+	const tagged = choiceKind<Facts, string>({
 		name: "tag",
-		options: (state) =>
-			Object.keys(state.workspace.facts).map((name) => ({
+		menu: (world) =>
+			Object.keys(world.facts).map((name) => ({
 				key: name,
 				text: `Tag ${name}`,
 				arg: name,
 				data: { name },
 			})),
-		observe: (workspace, name) => ({ source: name, text: workspace.facts[name] ?? "", data: { tagged: name } }),
+		run: (world, name) => ({ text: world.facts[name] ?? "", data: { tagged: name } }),
 	});
-	const domain: Domain<Facts> = { ...factsDomain, actions: [tagged] };
+	const domain: Domain<Facts> = { ...factsDomain, menu: tagged };
 
-	it("keeps the options' and observations' data in the trace, and returns the log", async () => {
-		const result = await run(domain, facts, fakeDecider(answering(0.5, firstOption)), {
+	it("keeps the choices' and observations' data in the trace, and returns the history", async () => {
+		const result = await run(domain, facts, fakeDecider(answering(0.5, firstChoice)), {
 			case: "c1",
-			limits: { steps: 1, options: 30, windowShare: 0.9 },
+			limits: { steps: 1, choices: 30, windowShare: 0.9 },
 		});
 		const lines = result.trace.entries.map((entry) => JSON.stringify(entry)).join("\n");
 		const entries = parseTrace(lines);
 		const menu = entries.find((entry) => entry.type === "menu");
-		expect(menu?.type === "menu" ? menu.options.map((option) => option.data) : []).toEqual([
-			{ name: "a" },
-			{ name: "b" },
-			undefined,
+		expect(menu?.type === "menu" ? menu.choices.map((choice) => [choice.kind, choice.data]) : []).toEqual([
+			["tag", { name: "a" }],
+			["tag", { name: "b" }],
+			["stop", undefined],
 		]);
-		expect(entries.find((entry) => entry.type === "observation")).toMatchObject({ data: { tagged: "a" } });
-		expect(result.log).toEqual([
-			{ action: "tag", key: "tag:a", observation: { source: "a", text: "fact a", data: { tagged: "a" } } },
+		expect(entries.find((entry) => entry.type === "observation")).toEqual(
+			expect.objectContaining({ kind: "tag", data: { tagged: "a" } }),
+		);
+		expect(lines).not.toContain('"source"');
+		expect(result.history).toEqual([
+			{ kind: "tag", key: "tag:a", observation: { text: "fact a", data: { tagged: "a" } } },
 		]);
 	});
 
-	it("writes no data field when an option or observation has none", async () => {
-		const result = await run(factsDomain, facts, fakeDecider(answering(0.5, firstOption)), {
+	it("writes no data field when a choice or observation has none", async () => {
+		const result = await run(factsDomain, facts, fakeDecider(answering(0.5, firstChoice)), {
 			case: "c1",
-			limits: { steps: 1, options: 30, windowShare: 0.9 },
+			limits: { steps: 1, choices: 30, windowShare: 0.9 },
 		});
 		const lines = result.trace.entries.map((entry) => JSON.stringify(entry));
 		expect(lines.some((line) => line.includes('"data"'))).toBe(false);

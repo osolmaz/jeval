@@ -44,14 +44,14 @@ stopped run goes on in the same folder.
 ## Measure a judge
 
 To measure a judge, an eval set file names the case folders and the scheduled case ids. It also points to a labels
-file in JSON Lines (`{"id", "items": [{"id", "pass"}]}`). `score` checks a run against the set's labels. `rejudge`
-asks another judge file or model over the evidence an earlier run gathered, for about a third of the cost of a new
-run. It takes that evidence from the earlier run's traces and reads no case file again, except the images the model
-looked at. `compare` then scores runs side by side on the cases that all of them answered:
+file in JSON Lines (`{"id", "items": [{"id", "pass"}]}`). `score` checks a run against the set's labels.
+`run --steps-from <run>` asks another judge file or model over the evidence that an earlier run gathered, for about
+a third of the cost of a new run. It repeats the earlier run's steps from its traces and reads no case file again,
+except the images the model looked at. `compare` then scores runs side by side on the cases that all of them answered:
 
 ```bash
 node src/cli/main.ts run --set sets/quick.json --out results
-node src/cli/main.ts rejudge --set sets/quick.json --from results --out results-strict --definition judges/strict.json
+node src/cli/main.ts run --set sets/quick.json --steps-from results --out results-strict --definition judges/strict.json
 node src/cli/main.ts compare results results-strict --set sets/quick.json
 ```
 

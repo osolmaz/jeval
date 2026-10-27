@@ -3,7 +3,7 @@
 	"domain": "legal-judge",
 	"limits": {
 		"steps": 8,
-		"options": 30,
+		"choices": 30,
 		"windowShare": 0.9
 	},
 	"texts": {

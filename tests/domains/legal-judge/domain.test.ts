@@ -6,9 +6,9 @@ import { combine } from "../../../src/domains/legal-judge/judge.ts";
 import { openAnswer } from "../../../src/domains/legal-judge/start.ts";
 import { searchTerms, termsIn } from "../../../src/domains/legal-judge/terms.ts";
 import { fitEvidence, view } from "../../../src/domains/legal-judge/view.ts";
-import { LIMITS } from "../../../src/domains/legal-judge/workspace.ts";
+import { LIMITS } from "../../../src/domains/legal-judge/world.ts";
 import { answering, fakeDecider } from "../../helpers/fakes.ts";
-import { file, legalCase, workspaceOf } from "../../helpers/cases.ts";
+import { file, legalCase, worldOf } from "../../helpers/cases.ts";
 
 const judge = await loadJudge(DEFAULT_JUDGE);
 const texts = judge.definition.texts;
@@ -63,30 +63,30 @@ describe("openAnswer", () => {
 				file("a3", "output/broken.pdf", "answer", [], { error: "PDF error" }),
 			],
 		});
-		const entries = await openAnswer(workspaceOf(answer));
-		expect(entries.map((entry) => entry.key)).toEqual(["read:a1:0-0", "changes:a1", "look:a2:0", "unreadable:a3"]);
-		expect(entries[3]?.observation.text).toBe("[the file could not be read: PDF error]");
+		const steps = await openAnswer(worldOf(answer));
+		expect(steps.map((step) => step.key)).toEqual(["read:a1:0-0", "changes:a1", "look:a2:0", "unreadable:a3"]);
+		expect(steps[3]?.observation.text).toBe("[the file could not be read: PDF error]");
 	});
 
 	it("stops reading the answer at its budget", async () => {
 		const page = "word ".repeat(10_000);
 		const long = legalCase({ files: [file("a1", "output/long.md", "answer", [page, page, page, page])] });
-		const entries = await openAnswer(workspaceOf(long));
-		expect(entries.length).toBeLessThan(4);
+		const steps = await openAnswer(worldOf(long));
+		expect(steps.length).toBeLessThan(4);
 	});
 });
 
 describe("view", () => {
 	it("shows the rubric, the files and the steps for a choice, and only the request and evidence for the answers", () => {
-		const workspace = workspaceOf(legalCase());
-		const log = [
+		const world = worldOf(legalCase());
+		const history = [
 			{
-				action: "read",
+				kind: "read",
 				key: "read:d1:0-0",
 				observation: { source: "documents/lease.pdf, page 1", text: "Section 4.2" },
 			},
 		];
-		const chosen = view(texts, { workspace, log }, "choose", 50_000);
+		const chosen = view(texts, world, history, "choose", 50_000);
 		expect(Object.keys(chosen.state)).toEqual([
 			"process",
 			"stage",
@@ -99,7 +99,7 @@ describe("view", () => {
 		expect(chosen.state["files"]).toEqual(
 			expect.arrayContaining([expect.objectContaining({ path: "documents/lease.pdf", read: "1 of 2 parts" })]),
 		);
-		expect(Object.keys(view(texts, { workspace, log }, "answer", 50_000).state)).toEqual(["request", "evidence"]);
+		expect(Object.keys(view(texts, world, history, "answer", 50_000).state)).toEqual(["request", "evidence"]);
 	});
 
 	it("cuts the longest evidence first to fit, and says so", () => {
@@ -131,7 +131,7 @@ describe("legalJudge", () => {
 		expect(domain.version).toBe(`0.3.0 legal-judge@${judge.hash.slice(0, 12)}`);
 		let calls = 0;
 		const decider = fakeDecider(answering(0.9, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
-		const result = await run(domain, workspaceOf(legalCase()), decider, { case: "case-1" });
+		const result = await run(domain, worldOf(legalCase()), decider, { case: "case-1" });
 		expect(result.steps).toBe(2);
 		expect(decider.requests[0]?.questions[0]?.instructions).toBe(`${texts.gather} ${texts.choose}`);
 		const last = decider.requests.at(-1);
@@ -144,8 +144,8 @@ describe("legalJudge", () => {
 		expect(last?.state).toMatchObject({ process: texts.process, stage: texts.check, rules: texts.rules });
 		// Every question answered 0.9: the answer meets each item, but also misses something, so both fail.
 		expect(result.answers).toEqual({
-			"S-001": { kind: "bool", probability: expect.closeTo(0.1) as unknown },
-			"F-001": { kind: "bool", probability: expect.closeTo(0.1) as unknown },
+			"S-001": { type: "bool", probability: expect.closeTo(0.1) as unknown },
+			"F-001": { type: "bool", probability: expect.closeTo(0.1) as unknown },
 		});
 	});
 });
@@ -173,7 +173,7 @@ describe("judge definitions", () => {
 
 describe("combine", () => {
 	const item = { id: "S-1", category: null, text: "PASS if x." };
-	const bool = (probability: number): Answer => ({ kind: "bool", probability });
+	const bool = (probability: number): Answer => ({ type: "bool", probability });
 	const definition = judge.definition;
 
 	it("passes an item only when every question for it says yes and every question against it says no", () => {

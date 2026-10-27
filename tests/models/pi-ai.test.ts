@@ -38,14 +38,14 @@ const request = {
 	state: { a: 1 },
 	images: [{ label: "page", mimeType: "image/png", data: "AAAA" }],
 	questions: [
-		{ kind: "bool", id: "b", instructions: "B?", yes: "yes", no: "no" },
-		{ kind: "choice", id: "c", instructions: "C?", choices: { x: "X", y: "Y" } },
-		{ kind: "score", id: "s", instructions: "S?", levels: ["low", "high"] },
+		{ type: "bool", id: "b", instructions: "B?", yes: "yes", no: "no" },
+		{ type: "choice", id: "c", instructions: "C?", choices: { x: "X", y: "Y" } },
+		{ type: "score", id: "s", instructions: "S?", levels: ["low", "high"] },
 	],
 } as const;
 
 describe("piAiDecider", () => {
-	it("sends typed questions and images, and reads typed answers back", async () => {
+	it("sends typed questions and images, and reads typed answers back with the confidence of a choice", async () => {
 		const fake = registry({
 			answers: {
 				b: { type: "bool", probability: 0.75 },
@@ -78,9 +78,9 @@ describe("piAiDecider", () => {
 		expect(result).toEqual({
 			ok: true,
 			answers: {
-				b: { kind: "bool", probability: 0.75 },
-				c: { kind: "choice", choice: "x", probabilities: { x: 0.6, y: 0.4 } },
-				s: { kind: "score", score: 1, confidence: 0.9 },
+				b: { type: "bool", probability: 0.75 },
+				c: { type: "choice", choice: "x", probabilities: { x: 0.6, y: 0.4 }, confidence: 0.6 },
+				s: { type: "score", score: 1, confidence: 0.9 },
 			},
 			usage: { inputTokens: 120, milliseconds: 5 },
 		});

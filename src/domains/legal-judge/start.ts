@@ -1,64 +1,64 @@
-import type { Entry } from "../../core/index.ts";
+import type { Step } from "../../core/index.ts";
 import type { CaseFile } from "./case.ts";
-import { LIMITS, partKey, partSource, partText, unreadParts, type Workspace } from "./workspace.ts";
+import { LIMITS, partKey, partSource, partText, unreadParts, type World } from "./world.ts";
 
-function readAnswerFile(file: CaseFile, room: number): { entries: Entry[]; tokens: number } {
-	const entries: Entry[] = [];
+function readAnswerFile(file: CaseFile, room: number): { steps: Step[]; tokens: number } {
+	const steps: Step[] = [];
 	let tokens = 0;
 	for (const part of unreadParts(file, new Set())) {
 		if (tokens + part.tokens > room) break;
-		entries.push({
-			action: "read",
+		steps.push({
+			kind: "read",
 			key: `read:${partKey(part)}`,
 			observation: { source: partSource(part), text: partText(part) },
 		});
 		tokens += part.tokens;
 	}
-	return { entries, tokens };
+	return { steps, tokens };
 }
 
-async function lookAtAnswerImages(workspace: Workspace, file: CaseFile, room: number): Promise<Entry[]> {
-	const entries: Entry[] = [];
+async function lookAtAnswerImages(world: World, file: CaseFile, room: number): Promise<Step[]> {
+	const steps: Step[] = [];
 	for (const [index, render] of file.renders.slice(0, room).entries()) {
-		const image = await workspace.image(render);
+		const image = await world.image(render);
 		const observation = { source: file.path, text: `[image: ${file.path}]`, images: [image] };
-		entries.push({ action: "look", key: `look:${file.id}:${String(index)}`, observation });
+		steps.push({ kind: "look", key: `look:${file.id}:${String(index)}`, observation });
 	}
-	return entries;
+	return steps;
 }
 
-function unreadable(file: CaseFile): Entry {
+function unreadable(file: CaseFile): Step {
 	return {
-		action: "start",
+		kind: "start",
 		key: `unreadable:${file.id}`,
 		observation: { source: file.path, text: `[the file could not be read: ${file.error ?? "unknown error"}]` },
 	};
 }
 
-function formatting(file: CaseFile): Entry {
+function formatting(file: CaseFile): Step {
 	return {
-		action: "changes",
+		kind: "changes",
 		key: `changes:${file.id}`,
 		observation: { source: `${file.path}: formatting`, text: file.formatting ?? "" },
 	};
 }
 
 /** The answer's files, read before the first choice: its text up to a budget, its images and its Word formatting. */
-export async function openAnswer(workspace: Workspace): Promise<Entry[]> {
-	const entries: Entry[] = [];
+export async function openAnswer(world: World): Promise<Step[]> {
+	const steps: Step[] = [];
 	let room = LIMITS.answerTokens;
-	for (const file of workspace.case.files.filter((candidate) => candidate.role === "answer")) {
+	for (const file of world.case.files.filter((candidate) => candidate.role === "answer")) {
 		if (file.error !== null) {
-			entries.push(unreadable(file));
+			steps.push(unreadable(file));
 		} else if (file.kind === "image") {
-			const images = entries.filter((entry) => entry.observation.images !== undefined).length;
-			entries.push(...(await lookAtAnswerImages(workspace, file, LIMITS.images - images)));
+			const images = steps.filter((step) => step.observation.images !== undefined).length;
+			steps.push(...(await lookAtAnswerImages(world, file, LIMITS.images - images)));
 		} else {
 			const opened = readAnswerFile(file, room);
-			entries.push(...opened.entries);
+			steps.push(...opened.steps);
 			room -= opened.tokens;
-			if (file.formatting !== null) entries.push(formatting(file));
+			if (file.formatting !== null) steps.push(formatting(file));
 		}
 	}
-	return entries;
+	return steps;
 }

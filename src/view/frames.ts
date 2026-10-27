@@ -2,13 +2,14 @@ import type { Answer, TraceEntry } from "../core/index.ts";
 
 /** One observation as the viewer shows it. */
 export interface Seen {
-	readonly source: string;
+	/** Where the text came from; null when the domain names no source. */
+	readonly source: string | null;
 	readonly text: string;
 	readonly data: unknown;
 }
 
-/** One option of a menu, with the probability the model gave it; null when the model never answered. */
-export interface FrameOption {
+/** One choice on a menu, with the probability the model gave it; null when the model never answered. */
+export interface FrameChoice {
 	readonly key: string;
 	readonly text: string;
 	readonly probability: number | null;
@@ -21,10 +22,10 @@ export interface Frame {
 	readonly step: number;
 	/** The latest observation before the menu: what the model chose in. */
 	readonly before: Seen | null;
-	readonly options: readonly FrameOption[];
-	/** The chosen option's key; null when the choice failed. */
+	readonly choices: readonly FrameChoice[];
+	/** The chosen choice's key; null when the choice failed. */
 	readonly chosen: string | null;
-	/** What the chosen step found; null after the stop option or a failed choice. */
+	/** What the chosen choice found; null after stop or a failed choice. */
 	readonly after: Seen | null;
 	readonly notes: readonly string[];
 }
@@ -47,7 +48,7 @@ export interface Story {
 interface Building {
 	step: number;
 	before: Seen | null;
-	options: FrameOption[];
+	choices: FrameChoice[];
 	chosen: string | null;
 	after: Seen | null;
 	notes: string[];
@@ -57,22 +58,22 @@ type Entry<T extends TraceEntry["type"]> = Extract<TraceEntry, { type: T }>;
 
 function withChoice(frame: Building, choice: Entry<"choice">): void {
 	frame.chosen = choice.key;
-	frame.options = frame.options.map((option) => ({
-		...option,
-		probability: choice.probabilities[option.key] ?? null,
-		chosen: option.key === choice.key,
+	frame.choices = frame.choices.map((offered) => ({
+		...offered,
+		probability: choice.probabilities[offered.key] ?? null,
+		chosen: offered.key === choice.key,
 	}));
 }
 
 function menuFrame(menu: Entry<"menu">, before: Seen | null): Building {
-	const options = menu.options.map((option) => ({
-		key: option.key,
-		text: option.text,
+	const choices = menu.choices.map((choice) => ({
+		key: choice.key,
+		text: choice.text,
 		probability: null,
 		chosen: false,
-		data: option.data,
+		data: choice.data,
 	}));
-	return { step: menu.step, before, options, chosen: null, after: null, notes: [] };
+	return { step: menu.step, before, choices, chosen: null, after: null, notes: [] };
 }
 
 interface Reading {
@@ -84,7 +85,7 @@ interface Reading {
 }
 
 function observed(reading: Reading, entry: Entry<"observation">): void {
-	const seen = { source: entry.source, text: entry.text, data: entry.data };
+	const seen = { source: entry.source ?? null, text: entry.text, data: entry.data };
 	const frame = reading.frames.at(-1);
 	if (frame === undefined || entry.step === 0) reading.opening.push(seen);
 	else frame.after = seen;

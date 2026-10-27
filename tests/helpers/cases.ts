@@ -1,5 +1,5 @@
 import type { CaseFile, LegalCase } from "../../src/domains/legal-judge/case.ts";
-import { makeWorkspace, type Workspace } from "../../src/domains/legal-judge/workspace.ts";
+import { makeWorld, type World } from "../../src/domains/legal-judge/world.ts";
 
 export function file(
 	id: string,
@@ -61,7 +61,7 @@ export function legalCase(overrides: Partial<LegalCase> = {}): LegalCase {
 	};
 }
 
-export const workspaceOf = (legal: LegalCase): Workspace =>
-	makeWorkspace(legal, (render) =>
+export const worldOf = (legal: LegalCase): World =>
+	makeWorld(legal, (render) =>
 		Promise.resolve({ label: render.label, mimeType: render.mimeType, data: `data:${render.path}` }),
 	);

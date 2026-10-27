@@ -4,8 +4,8 @@ import type { Arrow, Position } from "./board.ts";
 import {
 	answerText,
 	captures,
+	chessChoice,
 	type ChessStep,
-	chessOption,
 	chessStep,
 	confidence,
 	type Moment,
@@ -20,7 +20,7 @@ import {
 } from "./model.ts";
 import type { Story } from "../frames.ts";
 
-/** How many of the likeliest options get an arrow, and how many the list shows; the chosen one always does. */
+/** How many of the likeliest choices get an arrow, and how many the list shows; the chosen one always does. */
 const ARROWS = 5;
 const LISTED = 8;
 const SPEEDS = ["0.5", "1", "2", "4"];
@@ -49,13 +49,13 @@ function checkSquare(step: ChessStep): string | null {
 
 /** The arrows of a step: the likeliest moves and the chosen one. */
 function arrowsOf(moment: Moment): Arrow[] {
-	const options = ranked(moment.frame?.options ?? []);
-	return options.flatMap((option, rank) => {
-		const move = chessOption(option.data);
-		const { probability } = option;
-		// Before the model answers, no option has a probability, and no arrow would mean anything.
-		if (move === null || probability === null || (rank >= ARROWS && !option.chosen)) return [];
-		return [{ ...move, probability, chosen: option.chosen, label: `${move.san} ${percent(probability)}` }];
+	const choices = ranked(moment.frame?.choices ?? []);
+	return choices.flatMap((choice, rank) => {
+		const move = chessChoice(choice.data);
+		const { probability } = choice;
+		// Before the model answers, no choice has a probability, and no arrow would mean anything.
+		if (move === null || probability === null || (rank >= ARROWS && !choice.chosen)) return [];
+		return [{ ...move, probability, chosen: choice.chosen, label: `${move.san} ${percent(probability)}` }];
 	});
 }
 
@@ -72,27 +72,27 @@ export function positionOf(moment: Moment): Position | null {
 	};
 }
 
-function optionList(moment: Moment): HTMLElement {
-	const options = ranked(moment.frame?.options ?? []);
-	const listed = options.filter((option, rank) => rank < LISTED || option.chosen);
-	const rows = listed.map((option) => {
-		const share = option.probability ?? 0;
+function choiceList(moment: Moment): HTMLElement {
+	const choices = ranked(moment.frame?.choices ?? []);
+	const listed = choices.filter((choice, rank) => rank < LISTED || choice.chosen);
+	const rows = listed.map((choice) => {
+		const share = choice.probability ?? 0;
 		const bar = h("span", { class: "track", "aria-hidden": "true" }, h("span", { style: `--p:${share.toFixed(4)}` }));
 		const text = h(
 			"span",
 			{ class: "text" },
-			option.text,
-			option.chosen ? h("span", { class: "hidden" }, " (chosen)") : "",
+			choice.text,
+			choice.chosen ? h("span", { class: "hidden" }, " (chosen)") : "",
 		);
 		return h(
 			"li",
-			option.chosen ? { class: "chosen" } : {},
+			choice.chosen ? { class: "chosen" } : {},
 			text,
 			bar,
-			h("span", { class: "p" }, percent(option.probability)),
+			h("span", { class: "p" }, percent(choice.probability)),
 		);
 	});
-	const rest = options.length - listed.length;
+	const rest = choices.length - listed.length;
 	return h(
 		"div",
 		{},
@@ -124,7 +124,7 @@ export function decisionPanel(moment: Moment): HTMLElement {
 		{ class: "decision" },
 		h("h2", {}, title),
 		h("p", { class: "step" }, `${moment.label}${turnOf(moment)}`),
-		optionList(moment),
+		choiceList(moment),
 		...found,
 		...notes,
 	);

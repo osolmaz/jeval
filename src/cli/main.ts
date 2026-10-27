@@ -83,6 +83,10 @@ program
 	.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
 	.option("--api-key-env <variable>", "the environment variable that holds the API key")
 	.option("--concurrency <n>", "cases at once", positive, 4)
+	.option(
+		"--steps-from <run>",
+		"take each case's steps and observations again from this run, and only ask the questions again",
+	)
 	.option("--view [port]", "watch the cases in the browser while they run, on this local port", positive)
 	.action(
 		async (
@@ -95,6 +99,7 @@ program
 				model: string;
 				apiKeyEnv?: string;
 				concurrency: number;
+				stepsFrom?: string;
 				view?: number | true;
 			},
 		) => {
@@ -111,50 +116,9 @@ program
 				concurrency: options.concurrency,
 				log,
 				...(set === undefined ? {} : { set }),
+				...(options.stepsFrom === undefined ? {} : { stepsFrom: options.stepsFrom }),
 			});
 			if (options.view !== undefined) log("The run is done. The viewer stays open until you stop it with Ctrl-C.");
-		},
-	);
-
-program
-	.command("rejudge")
-	.description("Judge the cases of a run again with another definition or model, over the evidence that run gathered")
-	.argument("[cases...]", "case folders, when no --set names them")
-	.option("--set <file>", "an eval set file; its scheduled cases are judged again")
-	.requiredOption("--from <run>", "the run whose evidence to reuse")
-	.requiredOption("--out <folder>", "the new run folder")
-	.option("--domain <name>", "the domain: legal-judge or chess", "legal-judge")
-	.option("--definition <file>", "the domain's definition, such as a legal judge file; the domain's own by default")
-	.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
-	.option("--api-key-env <variable>", "the environment variable that holds the API key")
-	.option("--concurrency <n>", "cases at once", positive, 4)
-	.action(
-		async (
-			cases: string[],
-			options: {
-				from: string;
-				out: string;
-				set?: string;
-				domain: string;
-				definition?: string;
-				model: string;
-				apiKeyEnv?: string;
-				concurrency: number;
-			},
-		) => {
-			const { folders, set } = await casesOf(cases, options.set);
-			await runCases(
-				await domainNamed(options.domain, options.definition),
-				folders,
-				decider(options.model, options.apiKeyEnv),
-				{
-					out: options.out,
-					concurrency: options.concurrency,
-					log,
-					evidenceFrom: options.from,
-					...(set === undefined ? {} : { set }),
-				},
-			);
 		},
 	);
 

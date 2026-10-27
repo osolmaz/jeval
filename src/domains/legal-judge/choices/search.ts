@@ -1,9 +1,9 @@
-import { action } from "../../../core/index.ts";
+import { choiceKind } from "../../../core/index.ts";
 import type { CaseFile } from "../case.ts";
 import type { Term } from "../terms.ts";
-import { LIMITS, type Workspace } from "../workspace.ts";
+import { LIMITS, type World } from "../world.ts";
 
-const optionText = (term: Term): string => {
+const choiceText = (term: Term): string => {
 	const from = term.items.length > 0 ? term.items.join(", ") : "the answer";
 	return `Find the passages in the answer and the documents that mention “${term.term}” (from ${from}${term.inDocuments ? "" : "; only in the answer"})`;
 };
@@ -32,23 +32,24 @@ export function searchFiles(files: readonly CaseFile[], term: string): string {
 }
 
 /** Search one term from the rubric, or a figure or clause reference the answer cites. */
-export const search = action<Workspace, Term>({
+export const search = choiceKind<World, Term>({
 	name: "search",
-	options(state) {
-		const done = new Set(state.log.map((entry) => entry.key));
-		return state.workspace.terms
+	menu(world, history) {
+		const done = new Set(history.map((step) => step.key));
+		return world.terms
 			.filter((term) => !done.has(`search:${term.term.toLowerCase()}`))
-			.slice(0, LIMITS.searchOptions)
+			.slice(0, LIMITS.searchChoices)
 			.map((term) => ({
 				key: term.term.toLowerCase(),
-				text: optionText(term),
+				text: choiceText(term),
 				arg: term,
-				informs: term.items,
 				priority: 1,
+				// The rubric items the term comes from, for tools that read the trace.
+				data: { informs: [...term.items] },
 			}));
 	},
-	observe: (workspace, term) => ({
+	run: (world, term) => ({
 		source: `search for “${term.term}”`,
-		text: searchFiles(workspace.case.files, term.term),
+		text: searchFiles(world.case.files, term.term),
 	}),
 });

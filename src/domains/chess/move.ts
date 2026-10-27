@@ -1,7 +1,7 @@
 import type { Move } from "chess.js";
-import { action, type Observation } from "../../core/index.ts";
+import { choiceKind, type Observation } from "../../core/index.ts";
 import type { ChessGame } from "./case.ts";
-import { movesOf, nameOf, PIECE_NAMES, replay, replyOf, stepOf, statusOf, youOf } from "./game.ts";
+import { movesOf, nameOf, PIECE_NAMES, replay, replyOf, stepDataOf, statusOf, youOf } from "./game.ts";
 
 interface Play {
 	/** Every move played before this one. */
@@ -51,18 +51,17 @@ async function play(game: ChessGame, { before, lan }: Play): Promise<Observation
 		STATUS_TEXTS[statusOf(board)] ?? "",
 	];
 	return {
-		source: "board",
 		text: text.filter((part) => part !== "").join(" "),
-		data: stepOf(youOf(game), board, reply === undefined ? [ours] : [ours, reply]),
+		data: stepDataOf(youOf(game), board, reply === undefined ? [ours] : [ours, reply]),
 	};
 }
 
 /** Play one of the legal moves; there are none once the game is over, which ends the case. */
-export const move = action<ChessGame, Play>({
+export const move = choiceKind<ChessGame, Play>({
 	name: "move",
-	options(state) {
-		const before = movesOf(state.log);
-		const board = replay(state.workspace.start, before);
+	menu(game, history) {
+		const before = movesOf(history);
+		const board = replay(game.start, before);
 		if (statusOf(board) !== "playing") return [];
 		return board.moves({ verbose: true }).map((legal) => ({
 			key: `${String(before.length)}:${legal.lan}`,
@@ -71,5 +70,5 @@ export const move = action<ChessGame, Play>({
 			data: { from: legal.from, to: legal.to, san: legal.san },
 		}));
 	},
-	observe: play,
+	run: play,
 });

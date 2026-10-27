@@ -1,5 +1,5 @@
 import type { Answer } from "../../core/types.ts";
-import type { Frame, FrameOption, Seen, Story } from "../frames.ts";
+import type { Frame, FrameChoice, Seen, Story } from "../frames.ts";
 
 /**
  * What the viewer works from, in the browser and in tests: no DOM here. A session is a case's story with its outcome;
@@ -41,13 +41,13 @@ export function momentsOf(story: Story, finished: boolean): Moment[] {
 export const percent = (probability: number | null): string =>
 	probability === null ? "–" : `${(probability * 100).toFixed(probability < 0.001 ? 2 : 1)}%`;
 
-/** The options of a step, likeliest first. */
-export const ranked = (options: readonly FrameOption[]): FrameOption[] =>
-	[...options].sort((a, b) => (b.probability ?? 0) - (a.probability ?? 0));
+/** The choices of a step, likeliest first. */
+export const ranked = (choices: readonly FrameChoice[]): FrameChoice[] =>
+	[...choices].sort((a, b) => (b.probability ?? 0) - (a.probability ?? 0));
 
 export function answerText(answer: Answer): string {
-	if (answer.kind === "bool") return `yes ${percent(answer.probability)}`;
-	if (answer.kind === "choice") return `${answer.choice} ${percent(answer.probabilities[answer.choice] ?? null)}`;
+	if (answer.type === "bool") return `yes ${percent(answer.probability)}`;
+	if (answer.type === "choice") return `${answer.choice} ${percent(answer.probabilities[answer.choice] ?? null)}`;
 	return `${answer.score.toFixed(2)} (confidence ${percent(answer.confidence)})`;
 }
 
@@ -86,7 +86,7 @@ export interface ChessStep {
 }
 
 /** A move on a chess menu. */
-export interface ChessOption {
+export interface ChessChoice {
 	readonly from: string;
 	readonly to: string;
 	readonly san: string;
@@ -106,7 +106,7 @@ export function chessStep(data: unknown): ChessStep | null {
 	return strings(data["moves"]) && strings(data["san"]) ? (data as unknown as ChessStep) : null;
 }
 
-export function chessOption(data: unknown): ChessOption | null {
+export function chessChoice(data: unknown): ChessChoice | null {
 	if (!isRecord(data)) return null;
 	const { from, to, san } = data;
 	if (typeof from !== "string" || typeof to !== "string" || typeof san !== "string") return null;
@@ -250,7 +250,7 @@ export function pliesOf(story: Story): Ply[] {
 	for (const san of opening.san) moves.push({ san, byModel: false, probability: null, moment: 0, shown: 0 });
 	story.frames.forEach((frame, index) => {
 		const step = chessStep(frame.after?.data);
-		const chosen = frame.options.find((option) => option.chosen)?.probability ?? null;
+		const chosen = frame.choices.find((choice) => choice.chosen)?.probability ?? null;
 		step?.san.forEach((san, ply) => {
 			const byModel = ply === 0;
 			const moment = index + (byModel ? 1 : 2);
@@ -266,7 +266,7 @@ export function pliesOf(story: Story): Ply[] {
 
 /** The model's probability for each move it chose, step by step; null where the choice failed. */
 export const confidence = (story: Story): (number | null)[] =>
-	story.frames.map((frame) => frame.options.find((option) => option.chosen)?.probability ?? null);
+	story.frames.map((frame) => frame.choices.find((choice) => choice.chosen)?.probability ?? null);
 
 /** The score of each result, by the side the model plays: its own result, or the winner's color in self-play. */
 const RESULTS: Readonly<Record<string, Readonly<Record<ChessStep["you"], string>>>> = {

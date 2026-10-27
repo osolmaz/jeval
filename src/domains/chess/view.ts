@@ -1,5 +1,5 @@
 import type { Chess } from "chess.js";
-import type { JsonObject, State, View } from "../../core/index.ts";
+import type { JsonObject, Step, View } from "../../core/index.ts";
 import type { ChessCase } from "./case.ts";
 import { colorOf, movesOf, nameOf, replay } from "./game.ts";
 
@@ -43,9 +43,8 @@ export function numbered(start: string, san: readonly string[]): string[] {
 }
 
 /** The position the model chooses a move in, with as many earlier moves as fit `tokens`. */
-export function chessView(state: State<ChessCase>, tokens: number): View {
-	const game = state.workspace;
-	const board = replay(game.start, movesOf(state.log));
+export function chessView(game: ChessCase, history: readonly Step[], tokens: number): View {
+	const board = replay(game.start, movesOf(history));
 	// In self-play the model plays the side to move.
 	const mine = game.opponent === "self" ? board.turn() : colorOf(game.side);
 	const moves = numbered(game.start, board.history());
@@ -57,7 +56,7 @@ export function chessView(state: State<ChessCase>, tokens: number): View {
 		your_pieces: pieces(board, mine),
 		opponent_pieces: pieces(board, mine === "w" ? "b" : "w"),
 		in_check: board.isCheck(),
-		last_step: state.log.at(-1)?.observation.text ?? "",
+		last_step: history.at(-1)?.observation.text ?? "",
 		fen: board.fen(),
 	};
 	const whole = { ...base, moves: moves.join(" ") };

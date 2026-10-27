@@ -1,18 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { Entry, MenuItem, State } from "../../../src/core/index.ts";
-import { changes, trackedChanges } from "../../../src/domains/legal-judge/actions/changes.ts";
-import { compare, compareFiles } from "../../../src/domains/legal-judge/actions/compare.ts";
-import { count, countWords } from "../../../src/domains/legal-judge/actions/count.ts";
-import { look } from "../../../src/domains/legal-judge/actions/look.ts";
-import { read } from "../../../src/domains/legal-judge/actions/read.ts";
-import { search, searchFiles } from "../../../src/domains/legal-judge/actions/search.ts";
-import { LIMITS, type Workspace } from "../../../src/domains/legal-judge/workspace.ts";
-import { file, legalCase, workspaceOf } from "../../helpers/cases.ts";
+import type { Choice, Step } from "../../../src/core/index.ts";
+import { changes, trackedChanges } from "../../../src/domains/legal-judge/choices/changes.ts";
+import { compare, compareFiles } from "../../../src/domains/legal-judge/choices/compare.ts";
+import { count, countWords } from "../../../src/domains/legal-judge/choices/count.ts";
+import { look } from "../../../src/domains/legal-judge/choices/look.ts";
+import { read } from "../../../src/domains/legal-judge/choices/read.ts";
+import { search, searchFiles } from "../../../src/domains/legal-judge/choices/search.ts";
+import { LIMITS } from "../../../src/domains/legal-judge/world.ts";
+import { file, legalCase, worldOf } from "../../helpers/cases.ts";
 
-const state = (workspace: Workspace, log: Entry[] = []): State<Workspace> => ({ workspace, log });
-const texts = (items: readonly MenuItem[]) => items.map((item) => item.text);
-const entry = (key: string, text = "x", images = 0): Entry => ({
-	action: key.split(":")[0] ?? "",
+const texts = (choices: readonly Choice[]) => choices.map((choice) => choice.text);
+const step = (key: string, text = "x", images = 0): Step => ({
+	kind: key.split(":")[0] ?? "",
 	key,
 	observation: {
 		source: key,
@@ -23,9 +22,9 @@ const entry = (key: string, text = "x", images = 0): Entry => ({
 
 describe("read", () => {
 	it("offers a small file whole and reads it", async () => {
-		const items = read.items(state(workspaceOf(legalCase())));
-		expect(texts(items)).toContain("Read all of documents/lease.pdf (pdf, 2 parts, ~15 words)");
-		const lease = items.find((item) => item.key === "read:d1:0-1");
+		const choices = read(worldOf(legalCase()), []);
+		expect(texts(choices)).toContain("Read all of documents/lease.pdf (pdf, 2 parts, ~15 words)");
+		const lease = choices.find((choice) => choice.key === "read:d1:0-1");
 		await expect(lease?.run()).resolves.toEqual({
 			source: "documents/lease.pdf",
 			text: "[page 1]\nSection 4.2 sets a notice period of 30 days.\n\n[page 2]\nRent is USD 2,500 a month.",
@@ -37,27 +36,27 @@ describe("read", () => {
 		const big = legalCase({
 			files: [file("d1", "documents/big.pdf", "document", [page, page, page, ""], { kind: "pdf" })],
 		});
-		const items = read.items(state(workspaceOf(big)));
-		expect(items.map((item) => [item.key, item.priority])).toEqual([
+		const choices = read(worldOf(big), []);
+		expect(choices.map((choice) => [choice.key, choice.priority])).toEqual([
 			["read:d1:0-0", 0],
 			["read:d1:1-1", 2],
 			["read:d1:2-2", 2],
 		]);
-		await expect(items[1]?.run()).resolves.toMatchObject({ source: "documents/big.pdf, page 2" });
-		const partly = read.items(state(workspaceOf(legalCase()), [entry("read:d1:0-0")]));
+		await expect(choices[1]?.run()).resolves.toMatchObject({ source: "documents/big.pdf, page 2" });
+		const partly = read(worldOf(legalCase()), [step("read:d1:0-0")]);
 		expect(texts(partly)).toContain("Read documents/lease.pdf, page 2 (6 words)");
 	});
 
 	it("offers nothing that does not fit the evidence budget, and no image or unreadable file", () => {
-		const full = [entry("read:a1:0-0", "x".repeat(LIMITS.evidenceTokens * LIMITS.charsPerToken))];
-		expect(read.items(state(workspaceOf(legalCase()), full))).toEqual([]);
+		const full = [step("read:a1:0-0", "x".repeat(LIMITS.evidenceTokens * LIMITS.charsPerToken))];
+		expect(read(worldOf(legalCase()), full)).toEqual([]);
 		const odd = legalCase({
 			files: [
 				file("d1", "documents/a.png", "document", [], { kind: "image" }),
 				file("d2", "documents/b.doc", "document", ["x"], { error: "broken" }),
 			],
 		});
-		expect(read.items(state(workspaceOf(odd)))).toEqual([]);
+		expect(read(worldOf(odd), [])).toEqual([]);
 	});
 });
 
@@ -76,36 +75,36 @@ describe("look", () => {
 	});
 
 	it("offers page images and image files, and returns the image", async () => {
-		const items = look.items(state(workspaceOf(scanned)));
-		expect(texts(items)).toEqual([
+		const choices = look(worldOf(scanned), []);
+		expect(texts(choices)).toEqual([
 			"Look at documents/scan.pdf page 1 image (the page has no text layer)",
 			"Look at documents/photo.png",
 		]);
-		await expect(items[0]?.run()).resolves.toEqual({
+		await expect(choices[0]?.run()).resolves.toEqual({
 			source: "documents/scan.pdf page 1 image",
 			text: "[image: documents/scan.pdf page 1 image]",
 			images: [{ label: "page 1 image", mimeType: "image/png", data: "data:images/d1-1.png" }],
 		});
-		await expect(items[1]?.run()).resolves.toMatchObject({ source: "documents/photo.png" });
+		await expect(choices[1]?.run()).resolves.toMatchObject({ source: "documents/photo.png" });
 	});
 
 	it("stops once the case has seen its images", () => {
-		expect(look.items(state(workspaceOf(scanned), [entry("look:x", "x", LIMITS.images)]))).toEqual([]);
+		expect(look(worldOf(scanned), [step("look:x", "x", LIMITS.images)])).toEqual([]);
 	});
 });
 
 describe("search", () => {
-	it("offers the case's terms with the items they come from, and finds every passage", async () => {
-		const items = search.items(state(workspaceOf(legalCase())));
-		const notice = items.find((item) => item.key === "search:notice period");
+	it("offers the case's terms with the items they come from in their data, and finds every passage", async () => {
+		const choices = search(worldOf(legalCase()), []);
+		const notice = choices.find((choice) => choice.key === "search:notice period");
 		expect(notice).toMatchObject({
-			informs: ["S-001"],
+			data: { informs: ["S-001"] },
 			priority: 1,
 			text: "Find the passages in the answer and the documents that mention “notice period” (from S-001)",
 		});
 		await expect(notice?.run()).resolves.toMatchObject({ source: "search for “notice period”" });
-		const searched = search.items(state(workspaceOf(legalCase()), [entry("search:notice period")]));
-		expect(searched.map((item) => item.key)).not.toContain("search:notice period");
+		const searched = search(worldOf(legalCase()), [step("search:notice period")]);
+		expect(searched.map((choice) => choice.key)).not.toContain("search:notice period");
 	});
 
 	it("labels a passage with its part, and says when nothing matches", () => {
@@ -117,14 +116,14 @@ describe("search", () => {
 
 describe("count", () => {
 	it("is offered when an item is about length, and counts words under each heading", async () => {
-		const [item] = count.items(state(workspaceOf(legalCase())));
-		expect(item?.text).toBe("Count the words of the answer, in total and for each section");
-		await expect(item?.run()).resolves.toEqual({
+		const [choice] = count(worldOf(legalCase()), []);
+		expect(choice?.text).toBe("Count the words of the answer, in total and for each section");
+		await expect(choice?.run()).resolves.toEqual({
 			source: "word counts of the answer",
 			text: "output/memo.md: 15 words in total.\n  Memo: 9 words\n  Advice: 2 words",
 		});
 		const noLength = legalCase({ items: [{ id: "S-1", category: null, text: "PASS if it names the landlord." }] });
-		expect(count.items(state(workspaceOf(noLength)))).toEqual([]);
+		expect(count(worldOf(noLength), [])).toEqual([]);
 	});
 
 	it("counts text before the first heading too", () => {
@@ -136,9 +135,9 @@ describe("count", () => {
 
 describe("changes", () => {
 	it("lists the tracked changes of a marked document without its formatted runs", async () => {
-		const [item] = changes.items(state(workspaceOf(legalCase())));
-		expect(item?.text).toBe("List the tracked changes and comments in documents/contract.docx");
-		await expect(item?.run()).resolves.toEqual({
+		const [choice] = changes(worldOf(legalCase()), []);
+		expect(choice?.text).toBe("List the tracked changes and comments in documents/contract.docx");
+		await expect(choice?.run()).resolves.toEqual({
 			source: "documents/contract.docx: tracked changes and comments",
 			text: "Tracked insertions: 1; tracked deletions: 0.\n  inserted: agree\nComments: 0.",
 		});
@@ -155,11 +154,11 @@ describe("compare", () => {
 	});
 
 	it("pairs the answer's Word file with the document of the same name, and lists added and removed paragraphs", async () => {
-		const [item] = compare.items(state(workspaceOf(legalCase({ files: [edited, original] }))));
-		expect(item?.text).toBe(
+		const [choice] = compare(worldOf(legalCase({ files: [edited, original] })), []);
+		expect(choice?.text).toBe(
 			"Compare output/Contract.docx with the original documents/contract.docx, paragraph by paragraph",
 		);
-		await expect(item?.run()).resolves.toMatchObject({
+		await expect(choice?.run()).resolves.toMatchObject({
 			source: "output/Contract.docx compared with documents/contract.docx",
 		});
 		expect(compareFiles(edited, original)).toBe(
@@ -168,6 +167,6 @@ describe("compare", () => {
 	});
 
 	it("offers nothing without a matching original", () => {
-		expect(compare.items(state(workspaceOf(legalCase({ files: [edited] }))))).toEqual([]);
+		expect(compare(worldOf(legalCase({ files: [edited] })), [])).toEqual([]);
 	});
 });

@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { type Piece, piecesOf, play, samePlaces } from "./model.ts";
 
-/** An arrow for one option of the model: as wide as its probability, dark when the model chose it. */
+/** An arrow for one choice on the menu: as wide as its probability, dark when the model chose it. */
 export interface Arrow {
 	readonly from: string;
 	readonly to: string;

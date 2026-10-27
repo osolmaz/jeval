@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	answerText,
 	captures,
-	chessOption,
+	chessChoice,
 	chessStep,
 	confidence,
 	momentsOf,
@@ -38,23 +38,23 @@ describe("moments", () => {
 describe("text", () => {
 	it("writes probabilities, answers and outcome values", () => {
 		expect([percent(null), percent(0.5), percent(0.0004)]).toEqual(["–", "50.0%", "0.04%"]);
-		expect(answerText({ kind: "bool", probability: 0.25 })).toBe("yes 25.0%");
-		expect(answerText({ kind: "choice", choice: "b", probabilities: { b: 0.6 } })).toBe("b 60.0%");
-		expect(answerText({ kind: "choice", choice: "c", probabilities: {} })).toBe("c –");
-		expect(answerText({ kind: "score", score: 1.5, confidence: 0.4 })).toBe("1.50 (confidence 40.0%)");
+		expect(answerText({ type: "bool", probability: 0.25 })).toBe("yes 25.0%");
+		expect(answerText({ type: "choice", choice: "b", probabilities: { b: 0.6 } })).toBe("b 60.0%");
+		expect(answerText({ type: "choice", choice: "c", probabilities: {} })).toBe("c –");
+		expect(answerText({ type: "score", score: 1.5, confidence: 0.4 })).toBe("1.50 (confidence 40.0%)");
 		expect(plain([1, "a", { b: true }])).toBe("1, a, b true");
 		expect(plain(null)).toBe("null");
 	});
 
-	it("ranks options by probability, with unanswered ones last", () => {
-		const option = (key: string, probability: number | null) => ({
+	it("ranks choices by probability, with unanswered ones last", () => {
+		const choice = (key: string, probability: number | null) => ({
 			key,
 			text: key,
 			probability,
 			chosen: false,
 			data: null,
 		});
-		expect(ranked([option("a", null), option("b", 0.2), option("c", 0.7)]).map((item) => item.key)).toEqual([
+		expect(ranked([choice("a", null), choice("b", 0.2), choice("c", 0.7)]).map((item) => item.key)).toEqual([
 			"c",
 			"b",
 			"a",
@@ -63,17 +63,17 @@ describe("text", () => {
 });
 
 describe("chess data", () => {
-	it("reads a step and an option only when every field is there", () => {
+	it("reads a step and a choice only when every field is there", () => {
 		const step = { you: "white", moves: [], san: [], fen: START, status: "playing", check: false };
 		expect(chessStep(step)).toEqual(step);
 		expect(chessStep({ ...step, you: "red" })).toBeNull();
 		expect(chessStep({ ...step, moves: [1] })).toBeNull();
 		expect(chessStep({ ...step, check: "no" })).toBeNull();
 		expect(chessStep(null)).toBeNull();
-		expect(chessOption({ from: "e2", to: "e4", san: "e4" })).toEqual({ from: "e2", to: "e4", san: "e4" });
-		expect(chessOption({ from: "e9", to: "e4", san: "e4" })).toBeNull();
-		expect(chessOption({ from: "e2", san: "e4" })).toBeNull();
-		expect(chessOption("e2e4")).toBeNull();
+		expect(chessChoice({ from: "e2", to: "e4", san: "e4" })).toEqual({ from: "e2", to: "e4", san: "e4" });
+		expect(chessChoice({ from: "e9", to: "e4", san: "e4" })).toBeNull();
+		expect(chessChoice({ from: "e2", san: "e4" })).toBeNull();
+		expect(chessChoice("e2e4")).toBeNull();
 	});
 });
 

@@ -36,7 +36,7 @@ export interface ComparedRun {
 	/** The run's definition as `name@hash`, with the first 12 characters of the hash. */
 	readonly definition: string;
 	readonly model: string;
-	readonly evidenceFrom: string | null;
+	readonly stepsFrom: string | null;
 	readonly report: Report;
 	readonly calls: number | null;
 	readonly inputTokens: number | null;
@@ -55,7 +55,7 @@ function metricsLine({ report, calls, inputTokens }: ComparedRun): string {
 function formatComparison(cases: number, runs: readonly ComparedRun[]): string {
 	const lines = [`${String(cases)} cases that every run answered`];
 	for (const run of runs) {
-		const source = run.evidenceFrom === null ? "" : `, evidence of ${run.evidenceFrom}`;
+		const source = run.stepsFrom === null ? "" : `, steps of ${run.stepsFrom}`;
 		lines.push(`${run.run}: ${run.definition}, ${run.model}${source}`, metricsLine(run));
 	}
 	return lines.join("\n");
@@ -82,7 +82,7 @@ export async function compareRuns(
 		run,
 		definition: `${record.definition.name}@${record.definition.hash.slice(0, 12)}`,
 		model: record.model,
-		evidenceFrom: record.evidenceFrom,
+		stepsFrom: record.stepsFrom,
 		report: reportOn(results, labels, common),
 		calls: record.totals?.calls ?? null,
 		inputTokens: record.totals?.inputTokens ?? null,

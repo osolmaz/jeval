@@ -14,7 +14,6 @@ export async function legalJudgeSetup(file: string | undefined): Promise<Runner>
 		limits: judge.definition.limits,
 		caseId: async (folder) => (await loadCase(folder)).case.id,
 		load: loadCase,
-		categories: (workspace) =>
-			Object.fromEntries(workspace.case.items.map((item) => [item.id, item.category ?? "unknown"])),
+		categories: (world) => Object.fromEntries(world.case.items.map((item) => [item.id, item.category ?? "unknown"])),
 	});
 }

@@ -229,7 +229,7 @@ describe("a running case", () => {
 		expect(label(root)).toBe("Start");
 	});
 
-	it("shows the options without probabilities or arrows while the model is choosing", async () => {
+	it("shows the choices without probabilities or arrows while the model is choosing", async () => {
 		const session = await chessSession({ steps: 1, finished: false });
 		const frame = session.story.frames[0];
 		if (frame === undefined) throw new Error("no step");
@@ -237,7 +237,7 @@ describe("a running case", () => {
 			...frame,
 			chosen: null,
 			after: null,
-			options: frame.options.map((option) => ({ ...option, probability: null, chosen: false })),
+			choices: frame.choices.map((choice) => ({ ...choice, probability: null, chosen: false })),
 		};
 		const story = { ...session.story, frames: [thinking] };
 		const { root } = mount({ ...QUICK, session: { ...session, story } });

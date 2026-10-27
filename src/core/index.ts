@@ -1,4 +1,4 @@
-export { action, type ActionSpec, type Option } from "./action.ts";
+export { type ChoiceKind, choiceKind, joinMenus, type TypedChoice } from "./choice.ts";
 export { AskError, batches, type Ending, estimateTokens, run, type RunOptions, type RunResult } from "./loop.ts";
 export { buildMenu, MenuError } from "./menu.ts";
 export { recording } from "./record.ts";

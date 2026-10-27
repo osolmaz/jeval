@@ -146,7 +146,7 @@ describe("commands", () => {
 		await expect(loadSet(setFile)).rejects.toThrow();
 	});
 
-	it("judges a run's cases again over its evidence, and compares the two runs on the cases both answered", async () => {
+	it("answers a run's cases again over its steps, and compares the two runs on the cases both answered", async () => {
 		await ingest(await inputFolder("c1"), join(folder, "cases", "c1"), "c1");
 		await ingest(await inputFolder("c2"), join(folder, "cases", "c2"), "c2");
 		const cases = [join(folder, "cases", "c1"), join(folder, "cases", "c2")];
@@ -165,15 +165,15 @@ describe("commands", () => {
 		await runCases(await domainNamed("legal-judge", strict), cases, second, {
 			...options,
 			out,
-			evidenceFrom: join(folder, "first"),
+			stepsFrom: join(folder, "first"),
 		});
 
-		// Only the judging went to the model: the steps were repeated from the first run.
+		// Only the questions went to the model: the steps were repeated from the first run.
 		expect(second.requests.map((request) => request.questions[0]?.id)).toEqual(["S-1/meets", "S-1/meets"]);
 		const run = runRecordSchema.parse(JSON.parse(await readFile(join(out, "run.json"), "utf8")));
 		expect(run).toMatchObject({
 			definition: { name: "strict" },
-			evidenceFrom: join(folder, "first"),
+			stepsFrom: join(folder, "first"),
 			totals: { calls: 2 },
 		});
 		const observations = async (run: string) =>
@@ -201,14 +201,14 @@ describe("commands", () => {
 			["strict", 0],
 		]);
 		expect(compared.text).toMatch(/^2 cases that every run answered/);
-		expect(compared.text).toContain(`evidence of ${join(folder, "first")}`);
+		expect(compared.text).toContain(`steps of ${join(folder, "first")}`);
 	});
 
 	it("records a failed case's error", async () => {
 		await ingest(await inputFolder("c1"), join(folder, "cases", "c1"), "c1");
 		const lines: string[] = [];
 		const broken = fakeDecider((request, call) =>
-			request.questions[0]?.kind === "choice"
+			request.questions[0]?.type === "choice"
 				? answering(0.5, () => STOP_KEY)(request, call)
 				: { ok: false, failure: "provider", message: "down", usage: { inputTokens: null, milliseconds: 0 } },
 		);

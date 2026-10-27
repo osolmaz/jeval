@@ -70,8 +70,9 @@ function toContext(request: DecisionRequest): ClassifierContext {
 	return { state: request.state, questions, ...(images.length > 0 ? { images } : {}) };
 }
 
+/** The API's question for switch's: the same `type` and instructions, with switch's texts as the API's `criteria`. */
 function toQuestion(question: Question): ClassifierQuestion {
-	switch (question.kind) {
+	switch (question.type) {
 		case "bool":
 			return {
 				type: "bool",
@@ -92,10 +93,15 @@ function fromAnswers(answers: Readonly<Record<string, ClassifierAnswer>>): Recor
 function fromAnswer(answer: ClassifierAnswer): Answer {
 	switch (answer.type) {
 		case "bool":
-			return { kind: "bool", probability: answer.probability };
+			return { type: "bool", probability: answer.probability };
 		case "choice":
-			return { kind: "choice", choice: answer.choice, probabilities: answer.probabilities };
+			return {
+				type: "choice",
+				choice: answer.choice,
+				probabilities: answer.probabilities,
+				confidence: answer.confidence,
+			};
 		case "score":
-			return { kind: "score", score: answer.score, confidence: answer.confidence };
+			return { type: "score", score: answer.score, confidence: answer.confidence };
 	}
 }

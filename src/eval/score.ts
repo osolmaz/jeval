@@ -38,7 +38,7 @@ export interface Report {
 
 type Pair = readonly [judge: boolean, label: boolean];
 
-const passes = (answer: Answer | undefined): boolean => answer?.kind === "bool" && answer.probability >= 0.5;
+const passes = (answer: Answer | undefined): boolean => answer?.type === "bool" && answer.probability >= 0.5;
 
 export function metrics(pairs: readonly Pair[]): Metrics | null {
 	const n = pairs.length;

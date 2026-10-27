@@ -64,8 +64,8 @@ describe("domains on the command line", () => {
 		const { definition } = runRecordSchema.parse(JSON.parse(await readFile(join(out, "run.json"), "utf8")));
 		expect(definition).toEqual({
 			name: "chess",
-			hash: hashOf({ stop: chess.stop, choose: chess.choose, limits: LIMITS }),
-			content: { stop: "Resign the game", choose: chess.choose, limits: { ...LIMITS } },
+			hash: hashOf({ stop: chess.stop, instructions: chess.instructions, limits: LIMITS }),
+			content: { stop: "Resign the game", instructions: chess.instructions, limits: { ...LIMITS } },
 		});
 	});
 });

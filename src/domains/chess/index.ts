@@ -1,5 +1,5 @@
 import { Chess } from "chess.js";
-import type { Domain, Entry, JsonObject, Limits } from "../../core/index.ts";
+import type { Domain, JsonObject, Limits, Step } from "../../core/index.ts";
 import type { ChessCase, ChessGame } from "./case.ts";
 import {
 	colorOf,
@@ -10,7 +10,7 @@ import {
 	replyOf,
 	type Status,
 	statusOf,
-	stepOf,
+	stepDataOf,
 	youOf,
 } from "./game.ts";
 import { move } from "./move.ts";
@@ -20,10 +20,10 @@ import { chessView } from "./view.ts";
  * One step is one move of the model: against an opponent a move and its reply, in self-play one move of either side.
  * A position never has more than 218 legal moves, so every one fits a menu.
  */
-export const LIMITS: Limits = { steps: 200, options: 220, windowShare: 0.9 };
+export const LIMITS: Limits = { steps: 200, choices: 220, windowShare: 0.9 };
 
-/** The first observation: the start position, after the opponent's first move when it is to move. */
-async function opening(game: ChessGame): Promise<readonly Entry[]> {
+/** The first step: the start position, after the opponent's first move when it is to move. */
+async function opening(game: ChessGame): Promise<readonly Step[]> {
 	const board = new Chess(game.start);
 	const waits = game.opponent === "self" || board.turn() === colorOf(game.side);
 	const answer = waits ? undefined : await replyOf(game, board, []);
@@ -31,23 +31,23 @@ async function opening(game: ChessGame): Promise<readonly Entry[]> {
 	const plays = game.opponent === "self" ? "You play both sides." : `You play ${game.side}.`;
 	const text = `The game starts. ${plays}${first === undefined ? "" : ` The opponent played ${first.san}.`}`;
 	const data = {
-		...stepOf(youOf(game), board, first === undefined ? [] : [first]),
+		...stepDataOf(youOf(game), board, first === undefined ? [] : [first]),
 		opponent: opponentName(game),
 		start: game.start,
 	};
-	return [{ action: "start", key: "start", observation: { source: "board", text, data } }];
+	return [{ kind: "start", key: "start", observation: { text, data } }];
 }
 
 /** Plays a game of chess against an opponent that picks random legal moves, against Stockfish, or against itself. */
 export const chess: Domain<ChessGame> = {
 	name: "chess",
 	version: "0.3.0",
-	actions: [move],
+	menu: move,
 	stop: "Resign the game",
-	choose: "Choose your next move. Win material, attack the opponent's king, and keep your own pieces safe.",
+	instructions: "Choose your next move. Win material, attack the opponent's king, and keep your own pieces safe.",
 	questions: () => [],
 	start: opening,
-	view: (state, _purpose, tokens) => chessView(state, tokens),
+	view: (game, history, _purpose, tokens) => chessView(game, history, tokens),
 };
 
 /** The result in self-play, where the side that did not have to move won a checkmate or a resignation. */
@@ -75,8 +75,8 @@ function modelResult(
  * Against an opponent the result is the model's: win, loss or draw. In self-play it names the winner: white
  * wins or black wins, or a draw. A game the move limit cut is unfinished.
  */
-export function outcomeOf(game: ChessCase, log: readonly Entry[], resigned: boolean): JsonObject {
-	const board = replay(game.start, movesOf(log));
+export function outcomeOf(game: ChessCase, history: readonly Step[], resigned: boolean): JsonObject {
+	const board = replay(game.start, movesOf(history));
 	const status = statusOf(board);
 	const ending =
 		game.opponent === "self" ? selfResult(board, status, resigned) : modelResult(game, board, status, resigned);

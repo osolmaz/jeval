@@ -19,8 +19,7 @@ async function traced(): Promise<TraceEntry[]> {
 	});
 	const domain = {
 		...factsDomain,
-		start: () =>
-			Promise.resolve([{ action: "start", key: "start", observation: { source: "intro", text: "Hello" } }]),
+		start: () => Promise.resolve([{ kind: "start", key: "start", observation: { source: "intro", text: "Hello" } }]),
 	};
 	const result = await run(domain, facts, decider, { case: "c1" });
 	expect(calls).toBeGreaterThan(2);
@@ -35,7 +34,7 @@ describe("storyOf", () => {
 		expect(story.frames).toHaveLength(2);
 	});
 
-	it("reads each step: what the model saw, every option's probability, its choice and what the step found", async () => {
+	it("reads each step: what the model saw, every choice's probability, its choice and what the step found", async () => {
 		const [first] = storyOf(await traced()).frames;
 		expect(first).toMatchObject({
 			step: 1,
@@ -43,7 +42,7 @@ describe("storyOf", () => {
 			before: { text: "Hello" },
 			after: { text: "fact a" },
 		});
-		expect(first?.options.map((option) => [option.key, option.probability, option.chosen])).toEqual([
+		expect(first?.choices.map((choice) => [choice.key, choice.probability, choice.chosen])).toEqual([
 			["look-up:a", 0.9, true],
 			["look-up:b", null, false],
 			["stop", null, false],
@@ -56,7 +55,7 @@ describe("storyOf", () => {
 		expect(second).toMatchObject({ step: 2, chosen: null, after: null, before: { text: "fact a" } });
 		expect(second?.notes[0]).toMatch(/^the choice failed \(provider\): down/);
 		expect(story.last?.text).toBe("fact a");
-		expect(story.answers).toEqual({ a: { kind: "bool", probability: 0.7 }, b: { kind: "bool", probability: 0.7 } });
+		expect(story.answers).toEqual({ a: { type: "bool", probability: 0.7 }, b: { type: "bool", probability: 0.7 } });
 	});
 
 	it("refuses a trace that does not start with its case", () => {

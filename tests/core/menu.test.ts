@@ -1,87 +1,95 @@
 import { describe, expect, it } from "vitest";
-import { action, buildMenu, MenuError, type State } from "../../src/core/index.ts";
+import { buildMenu, choiceKind, joinMenus, MenuError, type Step } from "../../src/core/index.ts";
 import { type Facts, lookUp } from "../helpers/fakes.ts";
 
-const state = (facts: Record<string, string>, taken: string[] = []): State<Facts> => ({
-	workspace: { facts },
-	log: taken.map((key) => ({ action: "look-up", key: `look-up:${key}`, observation: { source: key, text: "" } })),
-});
+const world = (facts: Record<string, string>): Facts => ({ facts });
+const history = (taken: string[] = []): Step[] =>
+	taken.map((key) => ({ kind: "look-up", key: `look-up:${key}`, observation: { source: key, text: "" } }));
 
-const prioritized = action<Facts, number>({
+const prioritized = choiceKind<Facts, number>({
 	name: "ranked",
-	options: () =>
+	menu: () =>
 		[3, 0, 2, 1].map((priority) => ({
 			key: String(priority),
 			text: `priority ${String(priority)}`,
 			arg: priority,
 			priority,
 		})),
-	observe: (_, priority) => ({ source: "ranked", text: String(priority) }),
+	run: (_, priority) => ({ source: "ranked", text: String(priority) }),
 });
 
 describe("buildMenu", () => {
-	it("lists every available option with the action's name in its key", () => {
-		const menu = buildMenu([lookUp], state({ a: "1", b: "2" }), 10);
-		expect(menu.map((item) => item.key)).toEqual(["look-up:a", "look-up:b"]);
-		expect(menu[0]).toMatchObject({ action: "look-up", text: "Look up a", informs: ["a"], priority: 0 });
+	it("lists every choice of the domain's menu with its kind's name in its key", () => {
+		const menu = buildMenu(lookUp, world({ a: "1", b: "2" }), history(), 10);
+		expect(menu.map((choice) => choice.key)).toEqual(["look-up:a", "look-up:b"]);
+		expect(menu[0]).toMatchObject({ kind: "look-up", text: "Look up a", priority: 0 });
 	});
 
-	it("leaves out the steps already taken", () => {
-		expect(buildMenu([lookUp], state({ a: "1", b: "2" }, ["a"]), 10).map((item) => item.key)).toEqual(["look-up:b"]);
+	it("leaves out the choices already taken", () => {
+		const menu = buildMenu(lookUp, world({ a: "1", b: "2" }), history(["a"]), 10);
+		expect(menu.map((choice) => choice.key)).toEqual(["look-up:b"]);
 	});
 
-	it("keeps the options of lowest priority value when it must cut, in their listed order", () => {
-		const menu = buildMenu([prioritized], state({}), 2);
-		expect(menu.map((item) => item.text)).toEqual(["priority 0", "priority 1"]);
+	it("keeps the choices of lowest priority value when it must cut, in their listed order", () => {
+		const menu = buildMenu(prioritized, world({}), history(), 2);
+		expect(menu.map((choice) => choice.text)).toEqual(["priority 0", "priority 1"]);
 	});
 
-	it("keeps the first listed options when their priorities tie", () => {
-		const tied = action<Facts, number>({
+	it("keeps the first listed choices when their priorities tie", () => {
+		const tied = choiceKind<Facts, number>({
 			name: "tied",
-			options: () => [1, 2, 3, 4].map((n) => ({ key: String(n), text: `option ${String(n)}`, arg: n })),
-			observe: () => ({ source: "", text: "" }),
+			menu: () => [1, 2, 3, 4].map((n) => ({ key: String(n), text: `choice ${String(n)}`, arg: n })),
+			run: () => ({ text: "" }),
 		});
-		expect(buildMenu([tied], state({}), 2).map((item) => item.text)).toEqual(["option 1", "option 2"]);
+		expect(buildMenu(tied, world({}), history(), 2).map((choice) => choice.text)).toEqual(["choice 1", "choice 2"]);
 	});
 
-	it("keeps no option when there is no room", () => {
-		expect(buildMenu([prioritized], state({}), 0)).toEqual([]);
+	it("keeps no choice when there is no room", () => {
+		expect(buildMenu(prioritized, world({}), history(), 0)).toEqual([]);
 	});
 
-	it("skips an action whose condition does not hold", () => {
-		const closed = action<Facts, null>({
+	it("leaves out a kind whose condition does not hold", () => {
+		const closed = choiceKind<Facts, null>({
 			name: "closed",
 			when: () => false,
-			options: () => [{ key: "x", text: "x", arg: null }],
-			observe: () => ({ source: "", text: "" }),
+			menu: () => [{ key: "x", text: "x", arg: null }],
+			run: () => ({ text: "" }),
 		});
-		expect(buildMenu([closed], state({}), 10)).toEqual([]);
+		expect(buildMenu(closed, world({}), history(), 10)).toEqual([]);
 	});
 
-	it("refuses two options with the same key or the same text", () => {
-		const twice = action<Facts, null>({
+	it("joins the menus of several kinds in their order", () => {
+		const menu = buildMenu(joinMenus(prioritized, lookUp), world({ a: "1" }), history(), 10);
+		expect(menu.map((choice) => choice.kind)).toEqual(["ranked", "ranked", "ranked", "ranked", "look-up"]);
+		expect(joinMenus(lookUp, prioritized)(world({ a: "1" }), [])[0]?.kind).toBe("look-up");
+	});
+
+	it("refuses two choices with the same key or the same text", () => {
+		const twice = choiceKind<Facts, null>({
 			name: "twice",
-			options: () => [
+			menu: () => [
 				{ key: "x", text: "one", arg: null },
 				{ key: "x", text: "two", arg: null },
 			],
-			observe: () => ({ source: "", text: "" }),
+			run: () => ({ text: "" }),
 		});
-		const echo = action<Facts, null>({
+		const echo = choiceKind<Facts, null>({
 			name: "echo",
-			options: () => [
+			menu: () => [
 				{ key: "x", text: "same", arg: null },
 				{ key: "y", text: "same", arg: null },
 			],
-			observe: () => ({ source: "", text: "" }),
+			run: () => ({ text: "" }),
 		});
-		expect(() => buildMenu([twice], state({}), 10)).toThrow(new MenuError("two options share the key twice:x"));
-		expect(() => buildMenu([twice], state({}), 10)).toThrow(expect.objectContaining({ name: "MenuError" }));
-		expect(() => buildMenu([echo], state({}), 10)).toThrow(/share the text/);
+		expect(() => buildMenu(twice, world({}), history(), 10)).toThrow(
+			new MenuError("two choices share the key twice:x"),
+		);
+		expect(() => buildMenu(twice, world({}), history(), 10)).toThrow(expect.objectContaining({ name: "MenuError" }));
+		expect(() => buildMenu(echo, world({}), history(), 10)).toThrow(/share the text/);
 	});
 
-	it("runs a chosen option against the workspace", async () => {
-		const [item] = buildMenu([lookUp], state({ a: "fact a" }), 10);
-		await expect(item?.run()).resolves.toEqual({ source: "a", text: "fact a" });
+	it("runs a chosen choice against the world", async () => {
+		const [choice] = buildMenu(lookUp, world({ a: "fact a" }), history(), 10);
+		await expect(choice?.run()).resolves.toEqual({ source: "a", text: "fact a" });
 	});
 });

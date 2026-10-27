@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Answer } from "../../src/core/index.ts";
 import { formatReport, metrics, score, type Verdicts } from "../../src/eval/score.ts";
 
-const yes: Answer = { kind: "bool", probability: 0.9 };
+const yes: Answer = { type: "bool", probability: 0.9 };
 
 describe("metrics", () => {
 	it("counts accuracy, kappa, pass rates and the two kinds of error", () => {
@@ -74,7 +74,7 @@ describe("score", () => {
 
 	it("treats a missing or non-yes-or-no answer as a fail, and names unknown categories", () => {
 		const odd = new Map<string, Verdicts>([
-			["c1", { answers: { "S-1": { kind: "score", score: 1, confidence: 1 } } }],
+			["c1", { answers: { "S-1": { type: "score", score: 1, confidence: 1 } } }],
 		]);
 		const report = score([labels[0] ?? { id: "", items: [] }], odd);
 		expect(report.itemMetrics).toMatchObject({ falseFails: 1, falsePasses: 0 });

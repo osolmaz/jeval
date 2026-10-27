@@ -28,12 +28,12 @@ export interface Setup<W> {
 	readonly limits: Limits;
 	/** The case id in a case folder, read without loading the whole case. */
 	caseId(folder: string): Promise<string>;
-	/** The workspace of a case folder. */
+	/** The world of a case folder. */
 	load(folder: string): Promise<W>;
 	/** Each question's category, for reports; none when it is missing. */
-	categories?(workspace: W): Readonly<Record<string, string>>;
+	categories?(world: W): Readonly<Record<string, string>>;
 	/** How the case ended in the domain's own terms, such as a game's result; none when it is missing. */
-	outcome?(workspace: W, result: RunResult): JsonObject;
+	outcome?(world: W, result: RunResult): JsonObject;
 }
 
 /** One case run from its folder: its id, the loop's result, each question's category and how the case ended. */
@@ -52,7 +52,7 @@ export interface CaseOptions {
 	readonly replay?: Replay;
 }
 
-/** A domain's setup without its workspace type, so that a program can keep the setups of different domains together. */
+/** A domain's setup without its world type, so that a program can keep the setups of different domains together. */
 export interface Runner {
 	readonly name: string;
 	readonly version: string;
@@ -78,13 +78,13 @@ export function runnerOf<W>(setup: Setup<W>): Runner {
 		caseId: (folder) => setup.caseId(folder),
 		async run(folder, decider, options) {
 			const id = await setup.caseId(folder);
-			const workspace = await setup.load(folder);
-			const result = await run(domain, workspace, decider, { case: id, ...options });
+			const world = await setup.load(folder);
+			const result = await run(domain, world, decider, { case: id, ...options });
 			return {
 				case: id,
 				result,
-				categories: setup.categories?.(workspace) ?? {},
-				outcome: setup.outcome?.(workspace, result) ?? null,
+				categories: setup.categories?.(world) ?? {},
+				outcome: setup.outcome?.(world, result) ?? null,
 			};
 		},
 	};

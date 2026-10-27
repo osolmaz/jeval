@@ -1,11 +1,16 @@
 import { z } from "zod";
-import type { Answer, Json, Limits, MenuItem, Observation, Usage } from "./types.ts";
+import type { Answer, Choice, Json, Limits, Observation, Usage } from "./types.ts";
 
 const usage = z.object({ inputTokens: z.number().nullable(), milliseconds: z.number() });
-export const answerSchema = z.discriminatedUnion("kind", [
-	z.object({ kind: z.literal("bool"), probability: z.number() }),
-	z.object({ kind: z.literal("choice"), choice: z.string(), probabilities: z.record(z.string(), z.number()) }),
-	z.object({ kind: z.literal("score"), score: z.number(), confidence: z.number() }),
+export const answerSchema = z.discriminatedUnion("type", [
+	z.object({ type: z.literal("bool"), probability: z.number() }),
+	z.object({
+		type: z.literal("choice"),
+		choice: z.string(),
+		probabilities: z.record(z.string(), z.number()),
+		confidence: z.number().optional(),
+	}),
+	z.object({ type: z.literal("score"), score: z.number(), confidence: z.number() }),
 ]);
 const base = { id: z.number().int(), parent: z.number().int().nullable() };
 /** A JSON value, as the core types it. */
@@ -22,15 +27,15 @@ export const traceEntrySchema = z.discriminatedUnion("type", [
 		domain: z.string(),
 		version: z.string(),
 		model: z.string(),
-		limits: z.object({ steps: z.number(), options: z.number(), windowShare: z.number() }),
+		limits: z.object({ steps: z.number(), choices: z.number(), windowShare: z.number() }),
 	}),
 	z.object({
 		...base,
 		type: z.literal("observation"),
 		step: z.number().int(),
-		action: z.string(),
+		kind: z.string(),
 		key: z.string(),
-		source: z.string(),
+		source: z.string().optional(),
 		text: z.string(),
 		images: z.array(z.string()),
 		data,
@@ -39,9 +44,7 @@ export const traceEntrySchema = z.discriminatedUnion("type", [
 		...base,
 		type: z.literal("menu"),
 		step: z.number().int(),
-		options: z.array(
-			z.object({ key: z.string(), action: z.string(), text: z.string(), informs: z.array(z.string()), data }),
-		),
+		choices: z.array(z.object({ key: z.string(), kind: z.string(), text: z.string(), data })),
 	}),
 	z.object({
 		...base,
@@ -49,6 +52,7 @@ export const traceEntrySchema = z.discriminatedUnion("type", [
 		step: z.number().int(),
 		key: z.string(),
 		probabilities: z.record(z.string(), z.number()),
+		confidence: z.number().optional(),
 		usage,
 	}),
 	z.object({
@@ -72,7 +76,7 @@ type Body<T extends TraceEntry["type"]> = Omit<Extract<TraceEntry, { type: T }>,
 /** A trace entry without the fields the trace assigns. */
 type Unplaced = TraceEntry extends infer E ? (E extends TraceEntry ? Omit<E, "id" | "parent"> : never) : never;
 
-/** The key of the stop option in traces. */
+/** The key and the kind of the stop choice in traces. */
 export const STOP_KEY = "stop";
 
 /** Records a run as a chain of entries; `onEntry` sees each one as it is written, for streaming to a file. */
@@ -88,27 +92,38 @@ export class Trace {
 		this.push({ type: "case", ...body });
 	}
 
-	observed(step: number, action: string, key: string, observation: Observation): void {
+	observed(step: number, kind: string, key: string, observation: Observation): void {
 		const images = (observation.images ?? []).map((image) => image.label);
 		const { source, text } = observation;
+		const named = source === undefined ? {} : { source };
 		const facts = observation.data === undefined ? {} : { data: observation.data };
-		this.push({ type: "observation", step, action, key, source, text, images, ...facts });
+		this.push({ type: "observation", step, kind, key, ...named, text, images, ...facts });
 	}
 
-	menu(step: number, items: readonly MenuItem[], stop: string): void {
-		const options = items.map(({ key, action, text, informs, data }) => ({
+	menu(step: number, menu: readonly Choice[], stop: string): void {
+		const choices = menu.map(({ key, kind, text, data }) => ({
 			key,
-			action,
+			kind,
 			text,
-			informs: [...informs],
 			...(data === undefined ? {} : { data }),
 		}));
-		options.push({ key: STOP_KEY, action: STOP_KEY, text: stop, informs: [] });
-		this.push({ type: "menu", step, options });
+		choices.push({ key: STOP_KEY, kind: STOP_KEY, text: stop });
+		this.push({ type: "menu", step, choices });
 	}
 
-	chose(step: number, key: string, probabilities: Readonly<Record<string, number>>, used: Usage): void {
-		this.push({ type: "choice", step, key, probabilities: { ...probabilities }, usage: used });
+	/** Records the model's choice: its key, the probabilities by key, the model's confidence and the usage. */
+	chose(
+		step: number,
+		chosen: {
+			readonly key: string;
+			readonly probabilities: Readonly<Record<string, number>>;
+			readonly confidence: number | undefined;
+			readonly usage: Usage;
+		},
+	): void {
+		const { key, probabilities, confidence } = chosen;
+		const sure = confidence === undefined ? {} : { confidence };
+		this.push({ type: "choice", step, key, probabilities: { ...probabilities }, ...sure, usage: chosen.usage });
 	}
 
 	answered(answers: Readonly<Record<string, Answer>>, used: readonly Usage[]): void {

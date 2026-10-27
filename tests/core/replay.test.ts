@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-	action,
+	choiceKind,
 	type Domain,
 	type Image,
 	limitsOf,
@@ -14,7 +14,7 @@ import {
 import { answering, type Facts, factsDomain, fakeDecider } from "../helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact b", c: "fact c" } };
-/** The same facts, found other ones now: a replay that ran the actions again would see the difference. */
+/** The same facts, found other ones now: a replay that ran the choices again would see the difference. */
 const changed: Facts = { facts: { a: "now a", b: "now b", c: "now c" } };
 
 async function recorded(): Promise<TraceEntry[]> {
@@ -28,16 +28,16 @@ const texts = (list: readonly TraceEntry[]) =>
 	list.flatMap((entry) => (entry.type === "observation" ? [entry.text] : []));
 
 describe("replayOf", () => {
-	it("repeats the recorded steps with their recorded observations, and the answers, without running an action", async () => {
+	it("repeats the recorded steps with their recorded observations, and the answers, without running a choice", async () => {
 		const entries = await recorded();
 		const { decider, replay } = replayOf(entries);
 		const again = await run(factsDomain, changed, decider, { case: "c", replay });
 		expect(choices(again.trace.entries)).toEqual(choices(entries));
 		expect(texts(again.trace.entries)).toEqual(["fact b", "fact c"]);
 		expect(again.answers).toEqual({
-			a: { kind: "bool", probability: 0.7 },
-			b: { kind: "bool", probability: 0.7 },
-			c: { kind: "bool", probability: 0.7 },
+			a: { type: "bool", probability: 0.7 },
+			b: { type: "bool", probability: 0.7 },
+			c: { type: "bool", probability: 0.7 },
 		});
 	});
 
@@ -49,7 +49,7 @@ describe("replayOf", () => {
 		const forked = await run(factsDomain, changed, decider, { case: "c", replay });
 		expect(forked.steps).toBe(3);
 		expect(texts(forked.trace.entries)).toEqual(["fact b", "now a"]);
-		expect(forked.answers?.["a"]).toEqual({ kind: "bool", probability: 0.2 });
+		expect(forked.answers?.["a"]).toEqual({ type: "bool", probability: 0.2 });
 		expect(forked.trace.entries[0]).toMatchObject({ model: "fake/decider" });
 	});
 
@@ -62,9 +62,9 @@ describe("replayOf", () => {
 
 	it("refuses a trace that does not match the run", async () => {
 		const entries = await recorded();
-		const again = (list: readonly TraceEntry[], workspace: Facts = facts) => {
+		const again = (list: readonly TraceEntry[], world: Facts = facts) => {
 			const { decider, replay } = replayOf(list);
-			return run(factsDomain, workspace, decider, { case: "c", replay });
+			return run(factsDomain, world, decider, { case: "c", replay });
 		};
 		expect(() => replayOf(entries.slice(1))).toThrow(ReplayError);
 		await expect(again(entries, { facts: { z: "other" } })).rejects.toThrow(/not on the menu/);
@@ -78,7 +78,7 @@ describe("replayOf", () => {
 		await expect(again(missing)).rejects.toThrow(/no answer for a/);
 	});
 
-	it("refuses a step whose recorded observation is missing or belongs to another option", async () => {
+	it("refuses a step whose recorded observation is missing or belongs to another choice", async () => {
 		const entries = await recorded();
 		const again = (list: readonly TraceEntry[]) => {
 			const { decider, replay } = replayOf(list);
@@ -92,7 +92,7 @@ describe("replayOf", () => {
 	});
 });
 
-/** A domain whose start and whose one action show a picture: a trace keeps only the pictures' labels. */
+/** A domain whose start and whose one kind of choice show a picture: a trace keeps only the pictures' labels. */
 interface Pictures {
 	readonly label: string;
 	/** How many pictures the start shows. */
@@ -102,51 +102,51 @@ interface Pictures {
 const picture = (label: string): Image => ({ label, mimeType: "image/png", data: "AA==" });
 let looks = 0;
 
-const look = action<Pictures, null>({
+const look = choiceKind<Pictures, null>({
 	name: "look",
-	options: () => [{ key: "picture", text: "Look at the picture", arg: null }],
-	observe: (workspace) => {
+	menu: () => [{ key: "picture", text: "Look at the picture", arg: null }],
+	run: (world) => {
 		looks += 1;
-		return { source: "picture", text: `[image: ${workspace.label}]`, images: [picture(workspace.label)] };
+		return { source: "picture", text: `[image: ${world.label}]`, images: [picture(world.label)] };
 	},
 });
 
 const picturesDomain: Domain<Pictures> = {
 	name: "pictures",
 	version: "1.0.0",
-	actions: [look],
+	menu: look,
 	stop: "Stop",
-	choose: "Look or stop.",
+	instructions: "Look or stop.",
 	questions: () => [],
-	start: (workspace) =>
+	start: (world) =>
 		Promise.resolve(
-			Array.from({ length: workspace.covers }, (_, index) => ({
-				action: "start",
+			Array.from({ length: world.covers }, (_, index) => ({
+				kind: "start",
 				key: `cover:${String(index)}`,
-				observation: { source: "cover", text: "[image: cover]", images: [picture(`cover ${workspace.label}`)] },
+				observation: { source: "cover", text: "[image: cover]", images: [picture(`cover ${world.label}`)] },
 			})),
 		),
 	view: () => ({ state: {}, images: [], omitted: [] }),
 };
 
-async function lookedAt(workspace: Pictures): Promise<TraceEntry[]> {
+async function lookedAt(world: Pictures): Promise<TraceEntry[]> {
 	let calls = 0;
 	const decider = fakeDecider(answering(0.5, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
-	return (await run(picturesDomain, workspace, decider, { case: "p" })).trace.entries;
+	return (await run(picturesDomain, world, decider, { case: "p" })).trace.entries;
 }
 
 describe("replayOf with images", () => {
 	it("runs the start and a step again for their images, which must be the same as recorded", async () => {
-		const workspace = { label: "x", covers: 1 };
-		const entries = await lookedAt(workspace);
+		const world = { label: "x", covers: 1 };
+		const entries = await lookedAt(world);
 		looks = 0;
 		const replaying = (pictures: Pictures) => {
 			const { decider, replay } = replayOf(entries);
 			return run(picturesDomain, pictures, decider, { case: "p", replay });
 		};
-		const again = await replaying(workspace);
+		const again = await replaying(world);
 		expect(looks).toBe(1);
-		expect(again.log.map((entry) => entry.observation.images?.map((image) => image.label))).toEqual([
+		expect(again.history.map((step) => step.observation.images?.map((image) => image.label))).toEqual([
 			["cover x"],
 			["x"],
 		]);
@@ -172,7 +172,7 @@ describe("parseTrace", () => {
 		const entries = await recorded();
 		const text = entries.map((entry) => JSON.stringify(entry)).join("\n");
 		expect(parseTrace(`${text}\n\n`)).toEqual(entries);
-		expect(limitsOf(entries)).toEqual({ steps: 8, options: 30, windowShare: 0.9 });
+		expect(limitsOf(entries)).toEqual({ steps: 8, choices: 30, windowShare: 0.9 });
 		expect(() => limitsOf(entries.slice(1))).toThrow(/case entry/);
 	});
 });

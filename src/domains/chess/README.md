@@ -42,9 +42,9 @@ and the final position as `fen`. Against an opponent the result is the model's: 
 self-play it names the winner: white wins or black wins, or a draw. A game the step limit cut is unfinished.
 
 The model sees the board as text with rank 8 at the top, each side's pieces, whether it is in check, what the last
-step did, and the moves so far; when the whole game does not fit the window, only the latest 20 moves. Each option is
-a legal move in algebraic notation with its meaning in words, such as `exd5 (pawn e4 to d5, takes the pawn)`. The stop
-option resigns the game.
+step did, and the moves so far; when the whole game does not fit the window, only the latest 20 moves. Each choice on
+the menu is a legal move in algebraic notation with its meaning in words, such as
+`exd5 (pawn e4 to d5, takes the pawn)`. The stop choice resigns the game.
 
 ## Replay a game
 
@@ -70,8 +70,7 @@ The page looks like a game on chess.com: a green board, with each player's bar a
 took and a box lit for the side to move. At each step the board shows the position the model chose in, with orange
 arrows for its five likeliest moves, as wide as their probabilities, the chosen one solid; then the pieces move. Beside
 the board are the model's confidence in each move it chose, the step's menu with the model's probability for each
-option, and the move
-history in numbered rows with piece icons, where a move opens its step. The page plays the game back at four speeds,
+choice, and the move history in numbered rows with piece icons, where a move opens its step. The page plays the game back at four speeds,
 the arrow keys step through it, and it downloads the game as PGN. The start of the game, each move, a capture,
 castling, a check and the end (checkmate, stalemate, or another game over) each play their own short recorded clip
 from [`assets/sounds/`](../../../assets/sounds), which the table `SOUND_SET` in `src/view/sounds.ts` maps by event;

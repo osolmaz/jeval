@@ -1,38 +1,38 @@
-import type { Action, MenuItem, State } from "./types.ts";
+import type { Choice, Menu, Step } from "./types.ts";
 
 export class MenuError extends Error {
 	override readonly name = "MenuError";
 }
 
 /**
- * The options of every action that are available now, without the steps already taken. At most `room` options are
- * kept: the ones of lowest priority value, shown in the order the actions listed them.
+ * The menu of the current step: the domain's choices without the ones already taken. At most `room` choices are kept:
+ * the ones of lowest priority value, in the order the domain listed them.
  */
-export function buildMenu<W>(actions: readonly Action<W>[], state: State<W>, room: number): readonly MenuItem[] {
-	const taken = new Set(state.log.map((entry) => entry.key));
-	const items = actions.flatMap((action) => action.items(state)).filter((item) => !taken.has(item.key));
-	assertUnique(items);
-	return cut(items, room);
+export function buildMenu<W>(menu: Menu<W>, world: W, history: readonly Step[], room: number): readonly Choice[] {
+	const taken = new Set(history.map((step) => step.key));
+	const choices = menu(world, history).filter((choice) => !taken.has(choice.key));
+	assertUnique(choices);
+	return cut(choices, room);
 }
 
-function assertUnique(items: readonly MenuItem[]): void {
+function assertUnique(choices: readonly Choice[]): void {
 	const keys = new Set<string>();
 	const texts = new Set<string>();
-	for (const item of items) {
-		if (keys.has(item.key)) throw new MenuError(`two options share the key ${item.key}`);
-		if (texts.has(item.text)) throw new MenuError(`two options share the text "${item.text}"`);
-		keys.add(item.key);
-		texts.add(item.text);
+	for (const choice of choices) {
+		if (keys.has(choice.key)) throw new MenuError(`two choices share the key ${choice.key}`);
+		if (texts.has(choice.text)) throw new MenuError(`two choices share the text "${choice.text}"`);
+		keys.add(choice.key);
+		texts.add(choice.text);
 	}
 }
 
-function cut(items: readonly MenuItem[], room: number): readonly MenuItem[] {
+function cut(choices: readonly Choice[], room: number): readonly Choice[] {
 	const kept = new Set(
-		items
-			.map((item, index) => ({ priority: item.priority, index }))
+		choices
+			.map((choice, index) => ({ priority: choice.priority, index }))
 			.sort((a, b) => a.priority - b.priority || a.index - b.index)
 			.slice(0, Math.max(0, room))
 			.map(({ index }) => index),
 	);
-	return items.filter((_, index) => kept.has(index));
+	return choices.filter((_, index) => kept.has(index));
 }

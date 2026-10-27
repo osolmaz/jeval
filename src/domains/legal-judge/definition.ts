@@ -28,7 +28,7 @@ export const judgeSchema = z
 		limits: z
 			.object({
 				steps: z.number().int().positive(),
-				options: z.number().int().positive(),
+				choices: z.number().int().positive(),
 				windowShare: z.number().positive().max(1),
 			})
 			.strict(),
@@ -36,10 +36,10 @@ export const judgeSchema = z
 			.object({
 				/** The whole process, in the state of every request. */
 				process: z.string().min(1),
-				/** The gathering stage, in the state of every choice and, followed by `choose`, as the choice's question. */
+				/** The gathering stage, in the state of every choice and, followed by `choose`, in the menu's instructions. */
 				gather: z.string().min(1),
 				choose: z.string().min(1),
-				/** The option that ends gathering. */
+				/** The text of the stop choice, which ends gathering. */
 				stop: z.string().min(1),
 				/** The checking stage, in the state of every check. */
 				check: z.string().min(1),
@@ -81,7 +81,7 @@ export const itemLabel = (item: Item): string =>
 /** The judge's questions about one item. */
 export function itemQuestions(definition: JudgeDefinition, item: Item): BoolQuestion[] {
 	return definition.questions.map((question) => ({
-		kind: "bool",
+		type: "bool",
 		id: `${item.id}/${question.id}`,
 		instructions: question.instructions.replace("{item}", itemLabel(item)),
 		yes: question.yes,
@@ -91,7 +91,7 @@ export function itemQuestions(definition: JudgeDefinition, item: Item): BoolQues
 
 /** The verdict on an item, which the judge gives from its questions; this question itself is never asked. */
 export const itemVerdict = (item: Item): BoolQuestion => ({
-	kind: "bool",
+	type: "bool",
 	id: item.id,
 	instructions: itemLabel(item),
 	yes: "The item passes.",

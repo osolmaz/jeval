@@ -1,6 +1,6 @@
 import {
-	action,
 	type Answer,
+	choiceKind,
 	type Decider,
 	type DecisionRequest,
 	type DecisionResult,
@@ -13,35 +13,34 @@ export interface Facts {
 	readonly facts: Readonly<Record<string, string>>;
 }
 
-export const lookUp = action<Facts, string>({
+export const lookUp = choiceKind<Facts, string>({
 	name: "look-up",
-	options: (state) =>
-		Object.keys(state.workspace.facts).map((name) => ({
+	menu: (world) =>
+		Object.keys(world.facts).map((name) => ({
 			key: name,
 			text: `Look up ${name}`,
 			arg: name,
-			informs: [name],
 		})),
-	observe: (workspace, name) => ({ source: name, text: workspace.facts[name] ?? "" }),
+	run: (world, name) => ({ source: name, text: world.facts[name] ?? "" }),
 });
 
 export const factsDomain: Domain<Facts> = {
 	name: "facts",
 	version: "1.0.0",
-	actions: [lookUp],
+	menu: lookUp,
 	stop: "Stop",
-	choose: "Pick the next fact to look up.",
-	questions: (workspace) =>
-		Object.keys(workspace.facts).map((name): Question => ({
-			kind: "bool",
+	instructions: "Pick the next fact to look up.",
+	questions: (world) =>
+		Object.keys(world.facts).map((name): Question => ({
+			type: "bool",
 			id: name,
 			instructions: `Is ${name} true?`,
 			yes: "yes",
 			no: "no",
 		})),
 	start: () => Promise.resolve([]),
-	view: (state, purpose, tokens) => ({
-		state: { purpose, tokens, seen: state.log.map((entry) => entry.observation.text) },
+	view: (_, history, purpose, tokens) => ({
+		state: { purpose, tokens, seen: history.map((step) => step.observation.text) },
 		images: [],
 		omitted: tokens < 100 ? ["everything", "the rest"] : [],
 	}),
@@ -66,7 +65,7 @@ export function fakeDecider(policy: Policy, window = 64_000): Decider & { readon
 	};
 }
 
-/** Answers every bool question with `probability`, and every choice with `pick(choices)`. */
+/** Answers every bool question with `probability`, and every choice question with `pick(labels)`. */
 export function answering(
 	probability: number,
 	pick: (labels: string[]) => string = (labels) => labels.at(-1) ?? "stop",
@@ -74,14 +73,14 @@ export function answering(
 	return (request) => {
 		const answers: Record<string, Answer> = {};
 		for (const question of request.questions) {
-			if (question.kind === "choice") {
+			if (question.type === "choice") {
 				const labels = Object.keys(question.choices);
 				const choice = pick(labels);
-				answers[question.id] = { kind: "choice", choice, probabilities: { [choice]: 0.9 } };
-			} else if (question.kind === "bool") {
-				answers[question.id] = { kind: "bool", probability };
+				answers[question.id] = { type: "choice", choice, probabilities: { [choice]: 0.9 } };
+			} else if (question.type === "bool") {
+				answers[question.id] = { type: "bool", probability };
 			} else {
-				answers[question.id] = { kind: "score", score: 1, confidence: 0.5 };
+				answers[question.id] = { type: "score", score: 1, confidence: 0.5 };
 			}
 		}
 		return { ok: true, answers, usage: OK_USAGE };
@@ -101,7 +100,7 @@ export function missingNothing(policy: Policy, probability = 0.1): Policy {
 		const result = policy(request, call);
 		if (!result.ok) return result;
 		const answers: Record<string, Answer> = { ...result.answers };
-		for (const id of Object.keys(answers)) if (id.endsWith("/misses")) answers[id] = { kind: "bool", probability };
+		for (const id of Object.keys(answers)) if (id.endsWith("/misses")) answers[id] = { type: "bool", probability };
 		return { ...result, answers };
 	};
 }

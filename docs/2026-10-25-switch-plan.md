@@ -410,6 +410,10 @@ The second domain is chess. It showed three gaps around the loop, which
 [Domain setup and exact replay](2026-10-27-domain-setup-and-replay.md) describes and closes: per-domain code in the
 command line, a judge record for every domain, and replays that ran the actions again.
 
+The domains then move to their own packages, as
+[Domains as examples outside switch](2026-10-28-domains-as-examples.md) plans. Its first step gives the core the terms
+that the README's "How it works" defines: world, history, menu, choice and the others.
+
 ## Prior art
 
 - **Decision-model agents.** Pydantic AI supports Jev as an agent model with tools, and warns that it tends

@@ -1,6 +1,6 @@
-import { action } from "../../../core/index.ts";
+import { choiceKind } from "../../../core/index.ts";
 import type { CaseFile } from "../case.ts";
-import type { Workspace } from "../workspace.ts";
+import type { World } from "../world.ts";
 
 const LENGTH = /\bwords?\b|word count|length|\bpages?\b|sentences?|concise/i;
 const HEADING = /^(#{1,6}\s+.+|\*\*[^*]{2,80}\*\*\s*$|P\d+ \[Heading[^\]]*\]: .+)$/;
@@ -30,13 +30,13 @@ export function countWords(file: CaseFile): string {
 }
 
 /** Count the answer's words, offered when a rubric item is about length. */
-export const count = action<Workspace, null>({
+export const count = choiceKind<World, null>({
 	name: "count",
-	when: (state) => state.workspace.case.items.some((item) => LENGTH.test(item.text)),
-	options: () => [{ key: "words", text: "Count the words of the answer, in total and for each section", arg: null }],
-	observe: (workspace) => ({
+	when: (world) => world.case.items.some((item) => LENGTH.test(item.text)),
+	menu: () => [{ key: "words", text: "Count the words of the answer, in total and for each section", arg: null }],
+	run: (world) => ({
 		source: "word counts of the answer",
-		text: workspace.case.files
+		text: world.case.files
 			.filter((file) => file.role === "answer" && file.kind !== "image")
 			.map(countWords)
 			.join("\n"),

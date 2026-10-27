@@ -1,4 +1,4 @@
-import type { Entry, Image } from "../../core/index.ts";
+import type { Image, Step } from "../../core/index.ts";
 import type { CaseFile, LegalCase, Render } from "./case.ts";
 import { searchTerms, type Term } from "./terms.ts";
 
@@ -12,20 +12,20 @@ export const LIMITS = {
 	/** The largest part of a file that one step reads. */
 	chunkTokens: 6_000,
 	images: 6,
-	searchOptions: 10,
-	partOptions: 4,
+	searchChoices: 10,
+	partChoices: 4,
 	hits: 8,
 	hitContext: 280,
 } as const;
 
-/** A case with what the domain derives from it once: the search terms, and a way to load its images. */
-export interface Workspace {
+/** The world of a case: the case, with what the domain derives from it once, the search terms and a way to load images. */
+export interface World {
 	readonly case: LegalCase;
 	readonly terms: readonly Term[];
 	image(render: Render): Promise<Image>;
 }
 
-export function makeWorkspace(legalCase: LegalCase, loadImage: (render: Render) => Promise<Image>): Workspace {
+export function makeWorld(legalCase: LegalCase, loadImage: (render: Render) => Promise<Image>): World {
 	return { case: legalCase, terms: searchTerms(legalCase), image: loadImage };
 }
 
@@ -82,11 +82,11 @@ export function partSource(part: Part): string {
 	return part.from === part.to ? `${part.file.path}, ${first}` : `${part.file.path}, ${first} to ${last}`;
 }
 
-/** The parts of each file read so far, from the keys of the log's `read` entries. */
-export function readParts(log: readonly Entry[]): Map<string, Set<number>> {
+/** The parts of each file read so far, from the keys of the history's `read` steps. */
+export function readParts(history: readonly Step[]): Map<string, Set<number>> {
 	const read = new Map<string, Set<number>>();
-	for (const entry of log) {
-		const match = /^read:(.+):(\d+)-(\d+)$/.exec(entry.key);
+	for (const step of history) {
+		const match = /^read:(.+):(\d+)-(\d+)$/.exec(step.key);
 		if (match === null) continue;
 		const [, file = "", from = "0", to = "0"] = match;
 		const units = read.get(file) ?? new Set<number>();
@@ -96,11 +96,11 @@ export function readParts(log: readonly Entry[]): Map<string, Set<number>> {
 	return read;
 }
 
-export const evidenceTokens = (log: readonly Entry[]): number =>
-	log.reduce((sum, entry) => sum + tokensOf(entry.observation.text) + tokensOf(entry.observation.source), 0);
+export const evidenceTokens = (history: readonly Step[]): number =>
+	history.reduce((sum, step) => sum + tokensOf(step.observation.text) + tokensOf(step.observation.source ?? ""), 0);
 
-export const imagesSeen = (log: readonly Entry[]): number =>
-	log.reduce((sum, entry) => sum + (entry.observation.images?.length ?? 0), 0);
+export const imagesSeen = (history: readonly Step[]): number =>
+	history.reduce((sum, step) => sum + (step.observation.images?.length ?? 0), 0);
 
 export const readable = (file: CaseFile): boolean =>
 	file.error === null && file.kind !== "image" && file.units.length > 0;

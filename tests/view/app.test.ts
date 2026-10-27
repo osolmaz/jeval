@@ -4,7 +4,8 @@ import { run } from "../../src/core/index.ts";
 import { storyOf } from "../../src/view/frames.ts";
 import { type AppConfig, start } from "../../src/view/web/app.ts";
 import type { Session } from "../../src/view/web/model.ts";
-import { type FakeAudioContext, type Started, stubAudio } from "../helpers/audio.ts";
+import type { SoundSet } from "../../src/view/web/sound.ts";
+import { clipUrl, type FakeAudioContext, stubAudio } from "../helpers/audio.ts";
 import { answering, factsDomain, fakeDecider } from "../helpers/fakes.ts";
 import { picking } from "../helpers/chess.ts";
 import { chessSession } from "../helpers/sessions.ts";
@@ -248,8 +249,9 @@ describe("a running case", () => {
 	});
 });
 
-/** What the first fake audio context started since the last call. */
-const heard = (made: readonly FakeAudioContext[]): Started[] => made[0]?.started.splice(0) ?? [];
+/** The clips that the first fake audio context started since the last call. */
+const heard = (made: readonly FakeAudioContext[]): string[] =>
+	(made[0]?.started.splice(0) ?? []).map((sound) => sound.clip);
 
 /** The sound button's state: hidden, its text, and whether it is pressed. */
 function soundButton(root: HTMLElement): (string | boolean | null)[] {
@@ -258,10 +260,15 @@ function soundButton(root: HTMLElement): (string | boolean | null)[] {
 	return [node.hidden, node.textContent, node.getAttribute("aria-pressed")];
 }
 
+const SOUNDS: SoundSet = {
+	clips: { "m.wav": clipUrl("move"), "x.wav": clipUrl("capture"), "c.wav": clipUrl("check"), "e.wav": clipUrl("end") },
+	events: { move: ["m.wav"], capture: ["x.wav"], castle: ["m.wav", "m.wav"], check: ["c.wav"], end: ["e.wav"] },
+};
+
 describe("the viewer's sounds", () => {
-	it("sound each move as it lands and chime at the end, once a click lets them, unless turned off", async () => {
+	it("play each move's clip as it lands and the end's clip at the end, once a click lets them, unless off", async () => {
 		const made = stubAudio();
-		const { root } = mount({ ...QUICK, session: await chessSession({ steps: 2 }) });
+		const { root } = mount({ ...QUICK, sounds: SOUNDS, session: await chessSession({ steps: 2 }) });
 		const next = async (to: string): Promise<void> => {
 			click(root, "button.next");
 			await vi.waitFor(() => {
@@ -272,14 +279,10 @@ describe("the viewer's sounds", () => {
 		expect(made).toHaveLength(0);
 		document.dispatchEvent(new Event("pointerdown"));
 		await next("Step 2 of 2");
-		// The model's move and the reply: a knock each.
-		expect(heard(made).filter((sound) => sound.kind === "noise").length).toBeGreaterThanOrEqual(2);
+		// The model's move and the reply: a clip each.
+		expect(heard(made)).toHaveLength(2);
 		await next("End");
-		expect(
-			heard(made)
-				.slice(-2)
-				.map((sound) => Math.round(sound.frequency)),
-		).toEqual([659, 988]);
+		expect(heard(made).at(-1)).toBe("end");
 		expect(soundButton(root)).toEqual([false, "Sound on", "true"]);
 		click(root, "button.sound");
 		expect(soundButton(root)).toEqual([false, "Sound off", "false"]);

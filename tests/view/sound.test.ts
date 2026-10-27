@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type SoundKind, soundOf, Sounds } from "../../src/view/web/sound.ts";
-import { stubAudio } from "../helpers/audio.ts";
+import { type SoundKind, soundOf, Sounds, type SoundSet } from "../../src/view/web/sound.ts";
+import { clipUrl, stubAudio } from "../helpers/audio.ts";
+
+const SET: SoundSet = {
+	clips: { "a.wav": clipUrl("a"), "b.wav": clipUrl("b"), "bad.wav": clipUrl("bad") },
+	events: { move: ["a.wav"], castle: ["a.wav", "b.wav"], check: ["bad.wav"], end: ["missing.wav"] },
+};
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -25,30 +30,31 @@ describe("the sounds", () => {
 		]);
 	});
 
-	it("wait for a click or a key, then make each kind its own way", () => {
+	it("wait for a click or a key, decode the clips, and play each event's clips one after another", async () => {
 		const made = stubAudio();
-		const sounds = new Sounds();
+		const sounds = new Sounds(SET);
 		sounds.play("move");
 		expect(made).toHaveLength(0);
 		sounds.wake();
 		sounds.wake();
 		expect(made).toHaveLength(1);
+		// The clips decode in the background.
+		await new Promise((resolve) => setTimeout(resolve, 0));
 		const heard = (kind: SoundKind): string[] => {
 			sounds.play(kind);
-			return (made[0]?.started.splice(0) ?? []).map(
-				(sound) => `${sound.kind} ${String(Math.round(sound.frequency))}`,
-			);
+			return (made[0]?.started.splice(0) ?? []).map((sound) => `${sound.clip} ${String(sound.at)}`);
 		};
-		expect(heard("move")).toEqual(["noise 1700", "tone 189"]);
-		expect(heard("capture")).toEqual(["noise 2600", "tone 289", "noise 1300", "tone 144"]);
-		expect(heard("castle")).toEqual(["noise 1700", "tone 189", "noise 1500", "tone 167"]);
-		expect(heard("check")).toEqual(["noise 1700", "tone 189", "tone 1320"]);
-		expect(heard("end")).toEqual(["tone 659", "tone 988"]);
+		expect(heard("move")).toEqual(["a 0"]);
+		expect(heard("castle")).toEqual(["a 0", "b 0.11"]);
+		// A clip that does not decode, a clip the page lacks, and an event without clips stay silent.
+		expect(heard("check")).toEqual([]);
+		expect(heard("end")).toEqual([]);
+		expect(heard("capture")).toEqual([]);
 	});
 
 	it("can be turned off, and remember it", () => {
 		const made = stubAudio();
-		const sounds = new Sounds();
+		const sounds = new Sounds(SET);
 		sounds.wake();
 		sounds.toggle();
 		sounds.play("move");

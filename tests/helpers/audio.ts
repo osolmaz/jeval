@@ -1,50 +1,24 @@
 import { vi } from "vitest";
 
-/** A sound that a fake audio context started: noise through a filter at `frequency`, or a tone at it. */
+/** A clip that a fake audio context started: the clip's text, and the time it starts. */
 export interface Started {
-	readonly kind: "noise" | "tone";
-	readonly frequency: number;
+	readonly clip: string;
+	readonly at: number;
 }
 
-interface Param {
-	value: number;
-	setValueAtTime(value: number): Param;
-	exponentialRampToValueAtTime(): Param;
+interface Clip {
+	readonly clip: string;
 }
 
-function param(): Param {
-	const node: Param = {
-		value: 0,
-		setValueAtTime(value: number) {
-			node.value = value;
-			return node;
-		},
-		exponentialRampToValueAtTime: () => node,
-	};
-	return node;
-}
+/** A data URL whose bytes are `text`, as a fake clip. */
+export const clipUrl = (text: string): string => `data:audio/wav;base64,${btoa(text)}`;
 
-interface Linked {
-	to: object | null;
-	connect<T extends object>(target: T): T;
-}
-
-/** `fields` as an audio node that remembers what it was connected to. */
-function linked<T extends object>(fields: T): T & Linked {
-	const node: T & Linked = Object.assign(fields, {
-		to: null,
-		connect<U extends object>(target: U): U {
-			node.to = target;
-			return target;
-		},
-	});
-	return node;
-}
-
-/** An audio context that makes no sound and records what starts; it runs once resumed, as after a click. */
+/**
+ * An audio context that makes no sound. It runs once resumed, as after a click; it decodes a clip into its text, fails
+ * on a clip whose text starts with "bad", and records each clip it starts.
+ */
 export class FakeAudioContext {
 	state: "suspended" | "running" = "suspended";
-	readonly sampleRate = 8000;
 	readonly currentTime = 0;
 	readonly destination = {};
 	readonly started: Started[] = [];
@@ -54,38 +28,20 @@ export class FakeAudioContext {
 		return Promise.resolve();
 	}
 
-	createBuffer(_channels: number, length: number): { getChannelData(): Float32Array } {
-		const samples = new Float32Array(length);
-		return { getChannelData: () => samples };
+	decodeAudioData(bytes: ArrayBuffer): Promise<Clip> {
+		const clip = new TextDecoder().decode(bytes);
+		return clip.startsWith("bad") ? Promise.reject(new Error("cannot decode")) : Promise.resolve({ clip });
 	}
 
-	createGain(): Linked & { gain: Param } {
-		return linked({ gain: param() });
-	}
-
-	createBiquadFilter(): Linked & { type: string; frequency: Param; Q: Param } {
-		return linked({ type: "", frequency: param(), Q: param() });
-	}
-
-	createOscillator(): Linked & { frequency: Param; start(): void; stop(): void } {
-		const frequency = param();
-		const start = (): void => {
-			this.started.push({ kind: "tone", frequency: frequency.value });
-		};
-		return linked({ frequency, start, stop: () => undefined });
-	}
-
-	createBufferSource(): Linked & { buffer: unknown; start(): void; stop(): void } {
-		const node = linked({
-			buffer: null,
-			start: () => {
-				// The noise sounds at the frequency of the filter it goes through.
-				const filter = node.to as { frequency?: Param } | null;
-				this.started.push({ kind: "noise", frequency: filter?.frequency?.value ?? 0 });
+	createBufferSource(): { buffer: Clip | null; connect(node: object): object; start(at: number): void } {
+		const source = {
+			buffer: null as Clip | null,
+			connect: (node: object) => node,
+			start: (at: number) => {
+				this.started.push({ clip: source.buffer?.clip ?? "?", at });
 			},
-			stop: () => undefined,
-		});
-		return node;
+		};
+		return source;
 	}
 }
 

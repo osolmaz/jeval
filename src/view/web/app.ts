@@ -12,7 +12,7 @@ import {
 	positionOf,
 	resultPanel,
 } from "./panels.ts";
-import { soundOf, Sounds } from "./sound.ts";
+import { type SoundSet, soundOf, Sounds } from "./sound.ts";
 
 /** How a page starts: with its session in it, or with the addresses to fetch it from while the case runs. */
 export interface AppConfig {
@@ -23,6 +23,8 @@ export interface AppConfig {
 	readonly indexUrl?: string;
 	/** Piece images by name: wK, bQ and so on. */
 	readonly pieces: Readonly<Record<string, string>>;
+	/** The sound clips and the clips each event plays; a page without them is silent. */
+	readonly sounds?: SoundSet;
 	/** Milliseconds one move glides, a decision stays on screen while playing, and between checks for news, at speed 1. */
 	readonly motion?: number;
 	readonly dwell?: number;
@@ -53,7 +55,7 @@ export class App {
 	private waiting = false;
 	private queue: Promise<void> = Promise.resolve();
 	private readonly timer: ReturnType<typeof setInterval> | undefined;
-	private readonly sounds = new Sounds();
+	private readonly sounds: Sounds;
 	private readonly onKey = (event: KeyboardEvent): void => {
 		this.sounds.wake();
 		this.key(event);
@@ -64,6 +66,7 @@ export class App {
 
 	constructor(root: HTMLElement, config: AppConfig) {
 		this.config = config;
+		this.sounds = new Sounds(config.sounds);
 		this.parts = layout(root);
 		this.controls();
 		document.addEventListener("keydown", this.onKey);

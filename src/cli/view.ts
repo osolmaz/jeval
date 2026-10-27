@@ -1,7 +1,16 @@
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { parseTrace } from "../core/index.ts";
-import { indexPage, pieceImages, plain, type Session, storyOf, viewerPage, viewerScript } from "../view/index.ts";
+import {
+	indexPage,
+	pieceImages,
+	plain,
+	type Session,
+	soundSet,
+	storyOf,
+	viewerPage,
+	viewerScript,
+} from "../view/index.ts";
 import { caseFiles, casesFolder } from "./layout.ts";
 import { exists, resultSchema } from "./runs.ts";
 
@@ -60,8 +69,13 @@ export async function caseSession(run: string, id: string): Promise<Session> {
 
 /** A case's page with its session in it, which opens without a server. */
 export async function savedPage(run: string, id: string): Promise<string> {
-	const [session, script, pieces] = await Promise.all([caseSession(run, id), viewerScript(), pieceImages()]);
-	return viewerPage({ title: `${id} · switch`, script, config: { session, pieces } });
+	const [session, script, pieces, sounds] = await Promise.all([
+		caseSession(run, id),
+		viewerScript(),
+		pieceImages(),
+		soundSet(),
+	]);
+	return viewerPage({ title: `${id} · switch`, script, config: { session, pieces, sounds } });
 }
 
 /** Writes a case's page, as it is now, to `file`. */
@@ -72,12 +86,13 @@ export async function writeCasePage(run: string, id: string, file: string): Prom
 /** A case's page that fetches its session from the server and follows the case while it runs. */
 async function livePage(id: string): Promise<string> {
 	const base = `/case/${encodeURIComponent(id)}`;
-	const [script, pieces] = await Promise.all([viewerScript(), pieceImages()]);
+	const [script, pieces, sounds] = await Promise.all([viewerScript(), pieceImages(), soundSet()]);
 	const config = {
 		sessionUrl: `${base}/session.json`,
 		versionUrl: `${base}/version`,
 		indexUrl: "/",
 		pieces,
+		sounds,
 	};
 	return viewerPage({ title: `${id} · switch`, script, config });
 }

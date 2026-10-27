@@ -59,7 +59,7 @@ const caseUrl = (port: number, id: string): string => `http://127.0.0.1:${String
 
 const program = new Command()
 	.name("switch")
-	.description("Let a decision model work through cases by choosing from steps that code lists.");
+	.description("Let a decision model work through cases by choosing each step from a menu that code builds.");
 
 program
 	.command("ingest")

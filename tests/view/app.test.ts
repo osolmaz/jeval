@@ -42,7 +42,8 @@ describe("the viewer", () => {
 		expect(text(root, ".meta")).toBe("chess · fake/decider");
 		expect(root.querySelector<HTMLElement>(".live")?.hidden).toBe(true);
 		expect(root.querySelector<HTMLElement>("button.download")?.hidden).toBe(false);
-		expect(root.querySelector<HTMLElement>("a.download")?.hidden).toBe(true);
+		// A saved page has no server, so its header links nowhere.
+		expect(root.querySelector("a.home")?.hasAttribute("href")).toBe(false);
 		expect(root.querySelectorAll(".piece")).toHaveLength(32);
 		expect(Array.from(root.querySelectorAll(".player .name")).map((name) => name.textContent)).toEqual([
 			"random legal moves, seed 7",
@@ -82,7 +83,7 @@ describe("the viewer", () => {
 			expect(label(root)).toBe("Step 1 of 2");
 		});
 		expect(root.querySelectorAll("polygon.arrow")).toHaveLength(5);
-		expect(text(root, ".decision h2")).toBe("The model's options");
+		expect(text(root, ".decision h2")).toBe("The menu");
 		expect(text(root, ".decision .step")).toBe("Step 1 of 2 · white to move");
 		expect(root.querySelector(".menu .chosen")?.textContent).toContain("(chosen)");
 		click(root, "button.latest");
@@ -183,7 +184,7 @@ describe("a running case", () => {
 			if (url.endsWith("/version")) return Promise.resolve(new Response(current?.version ?? "0:false"));
 			return Promise.resolve(current === null ? new Response("no", { status: 404 }) : Response.json(current));
 		});
-		const { root } = mount({ ...QUICK, sessionUrl: "/s", versionUrl: "/v/version", pageUrl: "/p" });
+		const { root } = mount({ ...QUICK, sessionUrl: "/s", versionUrl: "/v/version", indexUrl: "/" });
 		await vi.waitFor(() => {
 			expect(text(root, ".result-slot")).toBe("Waiting for the case to start…");
 		});
@@ -192,7 +193,7 @@ describe("a running case", () => {
 			expect(label(root)).toBe("Step 1");
 			expect(root.querySelector<HTMLElement>(".live")?.hidden).toBe(false);
 		});
-		expect(root.querySelector("a.download")?.getAttribute("href")).toBe("/p");
+		expect(root.querySelector("a.home")?.getAttribute("href")).toBe("/");
 		current = await chessSession({ steps: 2, finished: false });
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("Step 2");
@@ -238,7 +239,7 @@ describe("a running case", () => {
 		const { root } = mount({ ...QUICK, session: { ...session, story } });
 		click(root, "button.latest");
 		await vi.waitFor(() => {
-			expect(text(root, ".decision h2")).toBe("The model is choosing…");
+			expect(text(root, ".decision h2")).toBe("The model is choosing from the menu…");
 		});
 		expect(root.querySelectorAll("polygon")).toHaveLength(0);
 	});

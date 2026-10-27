@@ -18,8 +18,8 @@ export interface AppConfig {
 	readonly session?: Session;
 	readonly sessionUrl?: string;
 	readonly versionUrl?: string;
-	/** Where this case's page can be downloaded as one file. */
-	readonly pageUrl?: string;
+	/** The page that lists the run's cases, which the header links to. */
+	readonly indexUrl?: string;
 	/** Piece images by name: wK, bQ and so on. */
 	readonly pieces: Readonly<Record<string, string>>;
 	/** Milliseconds one move glides, a decision stays on screen while playing, and between checks for news, at speed 1. */
@@ -137,9 +137,9 @@ export class App {
 		this.parts.meta.textContent = `${story.domain} · ${story.model}`;
 		this.parts.live.hidden = session.finished || this.config.versionUrl === undefined;
 		this.parts.pgn.hidden = chessStep(story.opening.at(-1)?.data) === null;
-		if (this.config.pageUrl !== undefined) {
-			this.parts.page.hidden = false;
-			this.parts.page.setAttribute("href", this.config.pageUrl);
+		if (this.config.indexUrl !== undefined) {
+			this.parts.home.setAttribute("href", this.config.indexUrl);
+			this.parts.home.title = "All cases of the run";
 		}
 	}
 

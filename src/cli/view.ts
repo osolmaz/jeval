@@ -13,7 +13,6 @@ interface Reply {
 	readonly status: number;
 	readonly type: string;
 	readonly body: string;
-	readonly headers?: Readonly<Record<string, string>>;
 }
 
 export class ViewError extends Error {
@@ -77,7 +76,7 @@ async function livePage(id: string): Promise<string> {
 	const config = {
 		sessionUrl: `${base}/session.json`,
 		versionUrl: `${base}/version`,
-		pageUrl: `${base}/page.html`,
+		indexUrl: "/",
 		pieces,
 	};
 	return viewerPage({ title: `${id} · switch`, script, config });
@@ -101,12 +100,6 @@ const ROUTES: Readonly<Record<string, (run: string, id: string) => Promise<Reply
 		type: JSON_TYPE,
 		body: JSON.stringify(await caseSession(run, id)),
 	}),
-	"/page.html": async (run, id) => ({
-		status: 200,
-		type: HTML,
-		body: await savedPage(run, id),
-		headers: { "content-disposition": `attachment; filename="${id.replace(/[^\w.-]/g, "_")}.html"` },
-	}),
 };
 
 const NOT_FOUND: Reply = { status: 404, type: TEXT, body: "not found" };
@@ -119,8 +112,8 @@ function targetOf(path: string): { id: string; part: string } | null {
 }
 
 /**
- * The reply to a request: the index at /; at /case/<id> the case's page, its session, its version, and its page as one
- * file to save. A case's page opens before the case starts, and waits for it; the rest needs the case's folder.
+ * The reply to a request: the index at /; at /case/<id> the case's page, its session and its version. A case's page
+ * opens before the case starts, and waits for it; the rest needs the case's folder.
  */
 export async function route(run: string, url: string): Promise<Reply> {
 	const path = new URL(url, "http://localhost").pathname;
@@ -158,7 +151,6 @@ export function viewServer(run: string): Server {
 			response.writeHead(reply.status, {
 				"content-type": reply.type,
 				"cache-control": "no-store",
-				...reply.headers,
 			});
 			response.end(reply.body);
 		});

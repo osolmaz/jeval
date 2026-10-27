@@ -60,6 +60,8 @@ const STYLE = `
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 .app{max-width:1600px;margin:0 auto;padding:var(--gutter)}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:16px}
+.home{display:inline-flex;align-items:center;gap:14px;color:inherit;text-decoration:none}
+a.home[href]:hover h1{text-decoration:underline}
 .brand{font-weight:800;font-size:18px;letter-spacing:-0.02em;color:var(--accent)}
 .bar h1{font-size:17px;line-height:1.2;font-weight:700;margin:0;color:var(--ink);overflow-wrap:anywhere}
 .meta{color:var(--muted)}

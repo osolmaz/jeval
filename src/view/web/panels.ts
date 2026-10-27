@@ -115,7 +115,7 @@ export function decisionPanel(moment: Moment): HTMLElement {
 	}
 	const { frame } = moment;
 	const choosing = frame.chosen === null && frame.notes.length === 0;
-	const title = choosing ? "The model is choosing…" : "The model's options";
+	const title = choosing ? "The model is choosing from the menu…" : "The menu";
 	const found =
 		frame.after === null ? [] : [h("h3", {}, "What happened"), h("p", { class: "found" }, frame.after.text)];
 	const notes = frame.notes.map((note) => h("p", { class: "quiet" }, note));
@@ -244,10 +244,11 @@ export interface Parts {
 	readonly moves: HTMLElement;
 	readonly result: HTMLElement;
 	readonly live: HTMLElement;
+	/** The header's name and case title, a link to the run's cases when the page has a server. */
+	readonly home: HTMLAnchorElement;
 	readonly title: HTMLElement;
 	readonly meta: HTMLElement;
 	readonly pgn: HTMLButtonElement;
-	readonly page: HTMLElement;
 	readonly scrub: HTMLInputElement;
 	readonly where: HTMLElement;
 	readonly play: HTMLButtonElement;
@@ -272,10 +273,10 @@ export function layout(root: HTMLElement): Parts {
 		moves: h("section", { class: "moves", "aria-label": "Moves" }),
 		result: h("div", { class: "result-slot" }),
 		live: h("span", { class: "live", hidden: "" }, "Live"),
+		home: h("a", { class: "home" }) as HTMLAnchorElement,
 		title: h("h1", {}, "switch"),
 		meta: h("span", { class: "meta" }),
 		pgn: button("Download the game as PGN", "download", "PGN"),
-		page: h("a", { class: "download", hidden: "", download: "" }, "Save page"),
 		scrub: h("input", { type: "range", min: "0", max: "0", value: "0", "aria-label": "Step" }) as HTMLInputElement,
 		where: h("output", { "aria-live": "polite" }),
 		play: button("Play", "play", "Play"),
@@ -283,16 +284,15 @@ export function layout(root: HTMLElement): Parts {
 		controls: h("div", { class: "controls" }),
 	};
 	parts.pgn.hidden = true;
+	parts.home.append(h("span", { class: "brand" }, "switch"), parts.title);
 	const header = h(
 		"header",
 		{ class: "bar" },
-		h("span", { class: "brand" }, "switch"),
-		parts.title,
+		parts.home,
 		parts.meta,
 		parts.live,
 		h("span", { class: "spacer" }),
 		parts.pgn,
-		parts.page,
 	);
 	const stage = h("section", { class: "stage", "aria-label": "The case" }, parts.top, parts.stage, parts.bottom);
 	const history = h("div", { class: "card history" }, h("h2", {}, "Moves"), parts.moves, parts.result, parts.controls);

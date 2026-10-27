@@ -61,14 +61,14 @@ describe("domains on the command line", () => {
 });
 
 describe("the viewer", () => {
-	it("serves the index, each case's page, session, version and saved page", async () => {
+	it("serves the index, and each case's page, session and version", async () => {
 		const out = await chessRun(["g1", "g 2"]);
 		const index = await route(out, "/");
 		expect(index.body).toContain('<a href="/case/g%202">g 2</a> <span class="meta">loss, resignation</span>');
 		const page = await route(out, "/case/g1");
 		expect(page.type).toMatch(/^text\/html/);
 		expect(page.body).toContain(
-			'"sessionUrl":"/case/g1/session.json","versionUrl":"/case/g1/version","pageUrl":"/case/g1/page.html"',
+			'"sessionUrl":"/case/g1/session.json","versionUrl":"/case/g1/version","indexUrl":"/"',
 		);
 		expect(page.body).toContain("data:image/svg+xml;base64,");
 		const session = JSON.parse((await route(out, "/case/g%202/session.json")).body) as Session;
@@ -78,9 +78,6 @@ describe("the viewer", () => {
 			story: { case: "g 2", domain: "chess" },
 		});
 		expect((await route(out, "/case/g%202/version")).body).toBe(await caseVersion(out, "g 2"));
-		const saved = await route(out, "/case/g%202/page.html");
-		expect(saved.headers).toEqual({ "content-disposition": 'attachment; filename="g_2.html"' });
-		expect(saved.body).toContain('"session":{');
 	});
 
 	it("opens a case's page before the case starts, but nothing else of it", async () => {

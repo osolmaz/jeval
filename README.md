@@ -17,8 +17,8 @@ API as Jev, and the Hugging Face Hub tags thousands of models as
 them with Jev on tasks such as tool use, retrieval, reasoning and games.
 
 Decision models are fast and cheap, but they cannot write a tool call, so the usual agent loop does not fit them.
-switch gives them a loop that does. At each step, your program offers the model a short list of possible next steps
-and the model picks one. Your program carries out that step and shows the model what it found, and this repeats until
+switch gives them a loop that does. At each step, your program offers the model a menu, a short list of possible next
+steps, and the model picks one option from it. Your program carries out that step and shows the model what it found, and this repeats until
 the model can answer the task's questions. The name comes from a railway switch, where one track splits into a few:
 your program lays the tracks, and the model sets the switch.
 
@@ -53,8 +53,8 @@ Each domain has a README that says what it does, what else it needs installed an
 
 ## Watch a run
 
-`view` opens a run in the browser and plays it back step by step: each step's options with the model's probability
-for every one, the chosen option and what the step found. A chess game gets a board with moving pieces, arrows for the
+`view` opens a run in the browser and plays it back step by step: each step's menu with the model's probability for
+every option, the chosen option and what the step found. A chess game gets a board with moving pieces, arrows for the
 model's likeliest moves, the move list and a PGN download. Add `--view` to `run` to watch the cases while they run; each
 case's page follows it live:
 
@@ -62,8 +62,8 @@ case's page follows it live:
 node src/cli/main.ts run --domain chess examples/chess/white-seed-1 --out runs/chess --view
 ```
 
-The run folder keeps everything a later `view runs/chess` needs to play the cases back. A case's page can also be saved
-as one HTML file that opens without switch, from the page itself or with `view --html <file>`.
+The run folder keeps everything a later `view runs/chess` needs to play the cases back. `view --html <file>` saves a
+case's page as one HTML file that opens without switch.
 
 ## Write a domain
 

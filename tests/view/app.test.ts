@@ -4,6 +4,7 @@ import { run } from "../../src/core/index.ts";
 import { storyOf } from "../../src/view/frames.ts";
 import { type AppConfig, start } from "../../src/view/web/app.ts";
 import type { Session } from "../../src/view/web/model.ts";
+import { type FakeAudioContext, type Started, stubAudio } from "../helpers/audio.ts";
 import { answering, factsDomain, fakeDecider } from "../helpers/fakes.ts";
 import { picking } from "../helpers/chess.ts";
 import { chessSession } from "../helpers/sessions.ts";
@@ -30,6 +31,7 @@ afterEach(() => {
 	for (const app of mounted.splice(0)) app.close();
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
+	localStorage.clear();
 });
 
 describe("the viewer", () => {
@@ -173,6 +175,7 @@ describe("the viewer", () => {
 			expect(text(root, ".found-card")).toBe("fact a");
 		});
 		expect(root.querySelector<HTMLElement>("button.download")?.hidden).toBe(true);
+		expect(root.querySelector<HTMLElement>("button.sound")?.hidden).toBe(true);
 		expect(text(root, ".result-slot")).toBe("The case ended without an outcome.");
 	});
 });
@@ -242,5 +245,46 @@ describe("a running case", () => {
 			expect(text(root, ".decision h2")).toBe("The model is choosing from the menu…");
 		});
 		expect(root.querySelectorAll("polygon")).toHaveLength(0);
+	});
+});
+
+/** What the first fake audio context started since the last call. */
+const heard = (made: readonly FakeAudioContext[]): Started[] => made[0]?.started.splice(0) ?? [];
+
+/** The sound button's state: hidden, its text, and whether it is pressed. */
+function soundButton(root: HTMLElement): (string | boolean | null)[] {
+	const node = root.querySelector<HTMLElement>("button.sound");
+	if (node === null) return [];
+	return [node.hidden, node.textContent, node.getAttribute("aria-pressed")];
+}
+
+describe("the viewer's sounds", () => {
+	it("sound each move as it lands and chime at the end, once a click lets them, unless turned off", async () => {
+		const made = stubAudio();
+		const { root } = mount({ ...QUICK, session: await chessSession({ steps: 2 }) });
+		const next = async (to: string): Promise<void> => {
+			click(root, "button.next");
+			await vi.waitFor(() => {
+				expect(label(root)).toBe(to);
+			});
+		};
+		await next("Step 1 of 2");
+		expect(made).toHaveLength(0);
+		document.dispatchEvent(new Event("pointerdown"));
+		await next("Step 2 of 2");
+		// The model's move and the reply: a knock each.
+		expect(heard(made).filter((sound) => sound.kind === "noise").length).toBeGreaterThanOrEqual(2);
+		await next("End");
+		expect(
+			heard(made)
+				.slice(-2)
+				.map((sound) => Math.round(sound.frequency)),
+		).toEqual([659, 988]);
+		expect(soundButton(root)).toEqual([false, "Sound on", "true"]);
+		click(root, "button.sound");
+		expect(soundButton(root)).toEqual([false, "Sound off", "false"]);
+		click(root, "button.previous");
+		await next("End");
+		expect(heard(made)).toEqual([]);
 	});
 });

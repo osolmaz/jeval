@@ -105,7 +105,7 @@ describe("the viewer's script", () => {
 		const folder = await mkdtemp(join(tmpdir(), "switch-script-"));
 		try {
 			await mkdir(join(folder, "web"));
-			for (const name of ["model", "board", "panels", "app"]) {
+			for (const name of ["model", "board", "sound", "panels", "app"]) {
 				await writeFile(
 					join(folder, "web", `${name}.js`),
 					`import { a } from "./other.js";\nexport function ${name}() {}\n`,
@@ -113,7 +113,7 @@ describe("the viewer's script", () => {
 			}
 			const script = await buildScript(pathToFileURL(join(folder, "bundle.js")).href);
 			expect(script).toBe(
-				"\nfunction model() {}\n\n\nfunction board() {}\n\n\nfunction panels() {}\n\n\nfunction app() {}\n",
+				"\nfunction model() {}\n\n\nfunction board() {}\n\n\nfunction sound() {}\n\n\nfunction panels() {}\n\n\nfunction app() {}\n",
 			);
 		} finally {
 			await rm(folder, { recursive: true, force: true });

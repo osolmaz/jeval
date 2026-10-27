@@ -25,8 +25,13 @@ export interface BoardView {
 	readonly element: HTMLElement;
 	/** Shows a position at once. */
 	show(position: Position): void;
-	/** Plays `moves` from the position shown, `milliseconds` each, then shows `position`. */
-	animate(moves: readonly string[], position: Position, milliseconds: number): Promise<void>;
+	/** Plays `moves` from the position shown, `milliseconds` each, then shows `position`; `landed` hears each land. */
+	animate(
+		moves: readonly string[],
+		position: Position,
+		milliseconds: number,
+		landed?: (move: number) => void,
+	): Promise<void>;
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -138,14 +143,22 @@ class ChessBoard implements BoardView {
 		this.decorate(position);
 	}
 
-	async animate(moves: readonly string[], position: Position, milliseconds: number): Promise<void> {
+	async animate(
+		moves: readonly string[],
+		position: Position,
+		milliseconds: number,
+		landed?: (move: number) => void,
+	): Promise<void> {
 		this.element.style.setProperty("--motion", `${String(milliseconds)}ms`);
 		this.arrows.replaceChildren();
 		if (position.flipped !== this.flipped) {
 			this.show(position);
 			return;
 		}
-		for (const move of moves) await this.step(move, milliseconds);
+		for (const [index, move] of moves.entries()) {
+			await this.step(move, milliseconds);
+			landed?.(index);
+		}
 		if (samePlaces(this.pieces, piecesOf(position.fen))) this.decorate(position);
 		else this.show(position);
 	}

@@ -249,6 +249,7 @@ export interface Parts {
 	readonly title: HTMLElement;
 	readonly meta: HTMLElement;
 	readonly pgn: HTMLButtonElement;
+	readonly sound: HTMLButtonElement;
 	readonly scrub: HTMLInputElement;
 	readonly where: HTMLElement;
 	readonly play: HTMLButtonElement;
@@ -277,6 +278,7 @@ export function layout(root: HTMLElement): Parts {
 		title: h("h1", {}, "switch"),
 		meta: h("span", { class: "meta" }),
 		pgn: button("Download the game as PGN", "download", "PGN"),
+		sound: button("Turn the sound off", "sound", "Sound on"),
 		scrub: h("input", { type: "range", min: "0", max: "0", value: "0", "aria-label": "Step" }) as HTMLInputElement,
 		where: h("output", { "aria-live": "polite" }),
 		play: button("Play", "play", "Play"),
@@ -284,6 +286,7 @@ export function layout(root: HTMLElement): Parts {
 		controls: h("div", { class: "controls" }),
 	};
 	parts.pgn.hidden = true;
+	parts.sound.hidden = true;
 	parts.home.append(h("span", { class: "brand" }, "switch"), parts.title);
 	const header = h(
 		"header",
@@ -292,6 +295,7 @@ export function layout(root: HTMLElement): Parts {
 		parts.meta,
 		parts.live,
 		h("span", { class: "spacer" }),
+		parts.sound,
 		parts.pgn,
 	);
 	const stage = h("section", { class: "stage", "aria-label": "The case" }, parts.top, parts.stage, parts.bottom);

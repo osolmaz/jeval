@@ -12,6 +12,7 @@ import {
 	positionOf,
 	resultPanel,
 } from "./panels.ts";
+import { soundOf, Sounds } from "./sound.ts";
 
 /** How a page starts: with its session in it, or with the addresses to fetch it from while the case runs. */
 export interface AppConfig {
@@ -52,8 +53,13 @@ export class App {
 	private waiting = false;
 	private queue: Promise<void> = Promise.resolve();
 	private readonly timer: ReturnType<typeof setInterval> | undefined;
+	private readonly sounds = new Sounds();
 	private readonly onKey = (event: KeyboardEvent): void => {
+		this.sounds.wake();
 		this.key(event);
+	};
+	private readonly onPointer = (): void => {
+		this.sounds.wake();
 	};
 
 	constructor(root: HTMLElement, config: AppConfig) {
@@ -61,6 +67,7 @@ export class App {
 		this.parts = layout(root);
 		this.controls();
 		document.addEventListener("keydown", this.onKey);
+		document.addEventListener("pointerdown", this.onPointer);
 		if (config.session !== undefined) this.load(config.session);
 		else void this.fetchSession();
 		const poll =
@@ -72,6 +79,7 @@ export class App {
 	close(): void {
 		clearInterval(this.timer);
 		document.removeEventListener("keydown", this.onKey);
+		document.removeEventListener("pointerdown", this.onPointer);
 		this.playing = false;
 	}
 
@@ -124,6 +132,7 @@ export class App {
 		const moves = glide ? movesAfter(this.moments[this.index]) : null;
 		this.index = target;
 		await this.draw(moves);
+		if (glide && this.board !== null && this.moments[target]?.kind === "end") this.sounds.play("end");
 	}
 
 	/** Steps to `target` one moment at a time, each with its animation. */
@@ -137,13 +146,14 @@ export class App {
 		this.parts.meta.textContent = `${story.domain} · ${story.model}`;
 		this.parts.live.hidden = session.finished || this.config.versionUrl === undefined;
 		this.parts.pgn.hidden = chessStep(story.opening.at(-1)?.data) === null;
+		this.parts.sound.hidden = this.parts.pgn.hidden;
 		if (this.config.indexUrl !== undefined) {
 			this.parts.home.setAttribute("href", this.config.indexUrl);
 			this.parts.home.title = "All cases of the run";
 		}
 	}
 
-	private async draw(moves: readonly string[] | null): Promise<void> {
+	private async draw(moves: Played | null): Promise<void> {
 		const moment = this.moments[this.index];
 		if (moment === undefined) return;
 		const position = positionOf(moment);
@@ -162,7 +172,12 @@ export class App {
 			this.parts.stage.replaceChildren(this.board.element);
 			this.board.show(position);
 		} else if (moves === null) this.board.show(position);
-		else await this.board.animate(moves, position, this.motion);
+		else {
+			await this.board.animate(moves.uci, position, this.motion, (move) => {
+				const san = moves.san[move];
+				if (san !== undefined) this.sounds.play(soundOf(san));
+			});
+		}
 	}
 
 	private players(moment: Moment, fen: string): void {
@@ -230,6 +245,11 @@ export class App {
 		parts.pgn.addEventListener("click", () => {
 			this.downloadPgn();
 		});
+		parts.sound.addEventListener("click", () => {
+			this.sounds.toggle();
+			this.soundButton();
+		});
+		this.soundButton();
 		const buttons = h(
 			"div",
 			{ class: "buttons" },
@@ -247,6 +267,15 @@ export class App {
 			h("label", { class: "speed" }, "Speed ", parts.speed),
 		);
 		parts.controls.replaceChildren(parts.scrub, buttons, status);
+	}
+
+	private soundButton(): void {
+		const on = this.sounds.enabled;
+		const { sound } = this.parts;
+		sound.textContent = on ? "Sound on" : "Sound off";
+		sound.setAttribute("aria-label", on ? "Turn the sound off" : "Turn the sound on");
+		sound.title = sound.getAttribute("aria-label") ?? "";
+		sound.setAttribute("aria-pressed", String(on));
 	}
 
 	/** Read through a method, since a click can stop the playing while the loop waits. */
@@ -352,9 +381,16 @@ function ignored(event: KeyboardEvent): boolean {
 	return event.altKey || event.ctrlKey || event.metaKey;
 }
 
+/** Moves as the board plays them and as the sounds name them. */
+interface Played {
+	readonly uci: readonly string[];
+	readonly san: readonly string[];
+}
+
 /** The moves that lead from a step's decision to the next moment: the model's move and the reply. */
-function movesAfter(moment: Moment | undefined): readonly string[] {
-	return chessStep(moment?.frame?.after?.data)?.moves ?? [];
+function movesAfter(moment: Moment | undefined): Played {
+	const step = chessStep(moment?.frame?.after?.data);
+	return { uci: step?.moves ?? [], san: step?.san ?? [] };
 }
 
 /** Starts the viewer in `root`. */

@@ -8,8 +8,10 @@ reports/
 input/
 inputs/
 cases/
-# The chess example's cases are public game setups, not task data.
+# The chess example's cases are public game setups, and the wikirace example's are pairs of Wikipedia titles: not task
+# data.
 !examples/chess/cases/
+!examples/wikirace/cases/
 results/
 out/
 *.trace.jsonl

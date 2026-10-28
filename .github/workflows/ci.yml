@@ -40,6 +40,9 @@ jobs:
       - name: Check the rubric-judge example
         working-directory: examples/rubric-judge
         run: pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm coverage && pnpm dry
+      - name: Check the wikirace example
+        working-directory: examples/wikirace
+        run: pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm coverage && pnpm dry
       - uses: osolmaz/slophammer@typescript/v0.5.0
         with:
           checker: ts

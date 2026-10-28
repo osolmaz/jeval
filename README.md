@@ -31,8 +31,9 @@ loop for every domain and keeps the model's probability for every choice of ever
 budget that fits the model's window, asks for a smaller view when a request is still too long, and writes a trace of
 every state, which can be replayed or forked. What goes to the model and comes back follows the classifier interface of
 the [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) library, so any classifier model that pi-ai lists can
-decide; [docs/DECISION_MODEL_API.md](docs/DECISION_MODEL_API.md) explains these APIs. Two example harnesses in [`examples/`](examples) use switch
-the way another project would: `rubric-judge`, which grades answers to tasks against a rubric, and `chess`. The
+decide; [docs/DECISION_MODEL_API.md](docs/DECISION_MODEL_API.md) explains these APIs. Three example harnesses in
+[`examples/`](examples) use switch the way another project would: `rubric-judge`, which grades answers to tasks against
+a rubric, `chess`, and `wikirace`, which races from one Wikipedia article to another by following links. The
 same loop fits any task where a model should look around before it decides, such as routing a support ticket after
 reading its logs or deciding whether a report needs a person.
 
@@ -89,6 +90,8 @@ installed and how to run it. Its program is `src/main.ts`, which runs from the r
   rubric.
 - [Chess](examples/chess/README.md) (`chess`) plays a game of chess against an opponent that picks random legal
   moves, against Stockfish, or against itself.
+- [WikiRace](examples/wikirace/README.md) (`wikirace`) races from one Wikipedia article to a target article by
+  following only the links on the pages it visits, the demo with which TypeSafe introduced Jev.
 
 ## Watch a run
 

@@ -1,0 +1,9 @@
+# Words of the wikirace domain, which switch and the viewer must not use. switch's word test reads this file.
+wikirace
+wikipedia
+wiki
+mediawiki
+hop
+redirect
+hyperlink
+breadcrumb

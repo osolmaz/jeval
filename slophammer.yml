@@ -57,6 +57,9 @@ typescript:
     - from: examples/rubric-judge
       allow:
         - examples/rubric-judge
+    - from: examples/wikirace
+      allow:
+        - examples/wikirace
 rules:
   ts.mutation-required:
     disabled: true

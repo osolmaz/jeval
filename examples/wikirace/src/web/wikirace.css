@@ -1,0 +1,56 @@
+/* A race's page: the trail of articles as a row of pills, the current one lit and the target at the end. */
+.race-area {
+	display: grid;
+	gap: 12px;
+	padding: 16px;
+	border-radius: 12px;
+	background: var(--panel);
+}
+.race-label {
+	margin: 0;
+	font-size: 1.1rem;
+	font-weight: 600;
+	color: var(--ink);
+}
+.race-trail {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.race-trail li {
+	padding: 4px 10px;
+	border-radius: 999px;
+	background: var(--raise);
+	color: var(--text);
+}
+.race-trail li + li {
+	position: relative;
+	margin-left: 14px;
+}
+.race-trail li + li::before {
+	content: "›";
+	position: absolute;
+	left: -15px;
+	color: var(--muted);
+}
+.race-trail .race-here {
+	background: var(--accent);
+	color: var(--ink);
+}
+.race-trail .race-gap {
+	background: none;
+	color: var(--muted);
+}
+.race-trail .race-goal {
+	outline: 2px dashed var(--accent);
+	background: none;
+}
+.race-where {
+	margin: 0;
+	min-height: 1.2em;
+	color: var(--muted);
+}

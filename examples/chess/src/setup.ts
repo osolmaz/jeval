@@ -1,5 +1,5 @@
 import { DefinitionError, definitionOf, type Runner, runnerOf } from "@osolmaz/switch";
-import { CHESS, chessMachine, LIMITS, outcomeOf } from "./index.ts";
+import { CHESS, chessMachine, outcomeOf } from "./index.ts";
 import { loadCase, loadGame } from "./load.ts";
 
 /**
@@ -14,9 +14,8 @@ export function chessSetup(file: string | undefined): Promise<Runner> {
 			definition: definitionOf(CHESS.name, {
 				stop: CHESS.stop,
 				instructions: CHESS.instructions,
-				limits: { ...LIMITS },
+				limits: { ...CHESS.limits },
 			}),
-			limits: LIMITS,
 			caseId: async (folder) => (await loadCase(folder)).id,
 			load: async (folder) => chessMachine(await loadGame(folder)),
 			outcome: (state, result) => outcomeOf(state, result.ended === "stop"),

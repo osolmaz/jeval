@@ -6,7 +6,6 @@ import {
 	indexPage,
 	partConfigs,
 	partStyles,
-	plain,
 	type Session,
 	storyOf,
 	viewerPage,
@@ -47,10 +46,17 @@ export async function onlyCase(run: string): Promise<string> {
 	return id;
 }
 
-async function outcomeOf(run: string, id: string): Promise<Record<string, unknown> | null> {
+/** A finished case's outcome, and the summary of it that its domain's viewer gives; null before the case finished. */
+async function endingOf(
+	run: string,
+	id: string,
+	viewers: Viewers,
+): Promise<{ outcome: Readonly<Record<string, unknown>> | null; summary: string | null }> {
 	const path = caseFiles(run, id).result;
-	if (!(await exists(path))) return null;
-	return resultSchema.parse(JSON.parse(await readFile(path, "utf8"))).outcome;
+	if (!(await exists(path))) return { outcome: null, summary: null };
+	const { domain, outcome } = resultSchema.parse(JSON.parse(await readFile(path, "utf8")));
+	const summary = outcome === null ? undefined : viewers[domain]?.summary?.(outcome);
+	return { outcome, summary: summary ?? null };
 }
 
 /** What changes while a case runs: the size of its trace, and whether its result is written. */
@@ -63,12 +69,12 @@ export async function caseVersion(run: string, id: string): Promise<string> {
 	return `${String(size)}:${String(await exists(files.result))}`;
 }
 
-/** A case as the viewer reads it: its story so far, its outcome, and whether it has finished. */
-export async function caseSession(run: string, id: string): Promise<Session> {
+/** A case as the viewer reads it: its story so far, its outcome and its summary, and whether it has finished. */
+export async function caseSession(run: string, id: string, viewers: Viewers = {}): Promise<Session> {
 	const version = await caseVersion(run, id);
 	const story = storyOf(parseTrace(await readFile(caseFiles(run, id).trace, "utf8")), id);
-	const outcome = await outcomeOf(run, id);
-	return { story, outcome, finished: version.endsWith(":true"), version };
+	const { outcome, summary } = await endingOf(run, id, viewers);
+	return { story, outcome, summary, finished: version.endsWith(":true"), version };
 }
 
 /** The viewer's script with every part's modules, every part's styles, and every part's config. */
@@ -85,7 +91,7 @@ async function pageParts(
 
 /** A case's page with its session in it, which opens without a server. */
 export async function savedPage(run: string, id: string, viewers: Viewers = {}): Promise<string> {
-	const [session, { script, styles, parts }] = await Promise.all([caseSession(run, id), pageParts(viewers)]);
+	const [session, { script, styles, parts }] = await Promise.all([caseSession(run, id, viewers), pageParts(viewers)]);
 	return viewerPage({ title: `${id} · switch`, script, styles, config: { session, parts } });
 }
 
@@ -107,12 +113,9 @@ async function livePage(id: string, viewers: Viewers): Promise<string> {
 	return viewerPage({ title: `${id} · switch`, script, styles, config });
 }
 
-async function index(run: string, ids: readonly string[]): Promise<Reply> {
+async function index(run: string, ids: readonly string[], viewers: Viewers): Promise<Reply> {
 	const cases = await Promise.all(
-		ids.map(async (id) => {
-			const outcome = await outcomeOf(run, id);
-			return { id, outcome: outcome === null ? null : plain(Object.values(outcome).slice(0, 2)) };
-		}),
+		ids.map(async (id) => ({ id, summary: (await endingOf(run, id, viewers)).summary })),
 	);
 	return { status: 200, type: HTML, body: indexPage(run, cases) };
 }
@@ -120,16 +123,16 @@ async function index(run: string, ids: readonly string[]): Promise<Reply> {
 const ROUTES: Readonly<Record<string, (run: string, id: string, viewers: Viewers) => Promise<Reply>>> = {
 	"": async (_run, id, viewers) => ({ status: 200, type: HTML, body: await livePage(id, viewers) }),
 	"/version": async (run, id) => ({ status: 200, type: TEXT, body: await caseVersion(run, id) }),
-	"/session.json": async (run, id) => ({
+	"/session.json": async (run, id, viewers) => ({
 		status: 200,
 		type: JSON_TYPE,
-		body: JSON.stringify(await caseSession(run, id)),
+		body: JSON.stringify(await caseSession(run, id, viewers)),
 	}),
 };
 
 const NOT_FOUND: Reply = { status: 404, type: TEXT, body: "not found" };
 
-/** The case and the part of it that a path names, such as /case/g1/version. */
+/** The case and the part of it that a path names, such as /case/c1/version. */
 function targetOf(path: string): { id: string; part: string } | null {
 	const match = /^\/case\/([^/]+)(\/[\w.]+)?$/.exec(path);
 	if (match?.[1] === undefined) return null;
@@ -143,7 +146,7 @@ function targetOf(path: string): { id: string; part: string } | null {
 export async function route(run: string, url: string, viewers: Viewers = {}): Promise<Reply> {
 	const path = new URL(url, "http://localhost").pathname;
 	const ids = await caseIds(run);
-	if (path === "/") return index(run, ids);
+	if (path === "/") return index(run, ids, viewers);
 	const target = targetOf(path);
 	const handler = target === null ? undefined : ROUTES[target.part];
 	if (target === null || handler === undefined || (target.part !== "" && !ids.includes(target.id))) return NOT_FOUND;

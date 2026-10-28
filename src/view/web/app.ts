@@ -12,7 +12,7 @@ export interface AppConfig {
 	readonly indexUrl?: string;
 	/** Each domain part's config by the domain's name, such as the images it draws with. */
 	readonly parts?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
-	/** Milliseconds one move glides, a decision stays on screen while playing, and between checks for news, at speed 1. */
+	/** Milliseconds one motion on the stage takes, a step stays on screen while playing, and between checks for news, at speed 1. */
 	readonly motion?: number;
 	readonly dwell?: number;
 	readonly poll?: number;
@@ -164,6 +164,8 @@ export class App {
 
 	private header(session: Session): void {
 		const { story } = session;
+		// A domain's stylesheet can restyle the page for its own cases under this attribute.
+		document.documentElement.dataset["domain"] = story.domain;
 		this.parts.title.textContent = story.case;
 		this.parts.meta.textContent = `${story.domain} · ${story.model}`;
 		this.parts.live.hidden = session.finished || this.config.versionUrl === undefined;
@@ -191,7 +193,7 @@ export class App {
 	private place(moment: Moment, drawing: HTMLElement | null): void {
 		if (drawing === null) {
 			const text = moment.state === null ? "No state yet." : JSON.stringify(moment.state, null, 2);
-			this.parts.stage.replaceChildren(h("div", { class: "found-card" }, text));
+			this.parts.stage.replaceChildren(h("div", { class: "state-card" }, text));
 		} else if (this.parts.stage.firstElementChild !== drawing) {
 			this.parts.stage.replaceChildren(drawing);
 		}
@@ -305,13 +307,13 @@ export class App {
 	private key(event: KeyboardEvent): void {
 		const target = event.target;
 		if (ignored(event)) return;
-		const moves: Readonly<Record<string, () => void>> = {
+		const jumps: Readonly<Record<string, () => void>> = {
 			ArrowLeft: () => void this.go(this.goal - 1, false),
 			ArrowRight: () => void this.go(this.goal + 1, true),
 			Home: () => void this.go(0, false),
 			End: () => void this.go(this.last, false),
 		};
-		const goTo = moves[event.key];
+		const goTo = jumps[event.key];
 		if (goTo !== undefined) {
 			this.stop();
 			goTo();

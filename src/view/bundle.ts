@@ -16,6 +16,8 @@ export interface DomainViewer {
 	readonly modules: readonly URL[];
 	/** The part's stylesheets; the page has them after its own styles. */
 	readonly styles?: readonly URL[];
+	/** A short line on how a case ended, from its outcome, for the list of cases and the result's banner. */
+	summary?(outcome: Readonly<Record<string, unknown>>): string;
 	/** The part's config, such as the images it draws with: JSON, so that a saved page needs no other file. */
 	config(): Promise<Readonly<Record<string, unknown>>>;
 }

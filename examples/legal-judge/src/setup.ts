@@ -11,7 +11,6 @@ export async function legalJudgeSetup(file: string | undefined): Promise<Runner>
 	return runnerOf({
 		...legalJudge(judge),
 		definition: { name: judge.definition.name, hash: judge.hash, content: judge.definition },
-		limits: judge.definition.limits,
 		caseId: async (folder) => (await loadCase(folder)).case.id,
 		load: async (folder) => legalMachine(judge.definition, await loadCase(folder)),
 	});

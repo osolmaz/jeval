@@ -1,4 +1,4 @@
-import { type BoundChoice, type DomainTexts, joinTypes, type StateMachine } from "@osolmaz/switch";
+import { type BoundChoice, type DomainShared, joinTypes, type StateMachine } from "@osolmaz/switch";
 import { changes } from "./choices/changes.ts";
 import { compare } from "./choices/compare.ts";
 import { count } from "./choices/count.ts";
@@ -15,13 +15,17 @@ import { view } from "./view.ts";
 /** The version of this domain's code; the judge definition's name and hash follow it in a run's version. */
 export const CODE_VERSION = "0.4.0";
 
-/** What every case shares under a judge: the domain's name and version, and the two texts of the pick question. */
-export function legalJudge({ definition, hash }: Judge): DomainTexts {
+/**
+ * What every case shares under a judge: the domain's name and version, the two texts of the pick question, and the
+ * judge's limits.
+ */
+export function legalJudge({ definition, hash }: Judge): DomainShared {
 	return {
 		name: "legal-judge",
 		version: `${CODE_VERSION} ${definition.name}@${hash.slice(0, 12)}`,
 		stop: definition.texts.stop,
 		instructions: `${definition.texts.gather} ${definition.texts.choose}`,
+		limits: definition.limits,
 	};
 }
 

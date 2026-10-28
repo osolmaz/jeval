@@ -1,6 +1,50 @@
-:root {
+/* A chess case's page looks like a game on chess.com: its colors, and a square board between two player bars. */
+:root[data-domain="chess"] {
+	--bg: #312e2b;
+	--panel: #262522;
+	--stripe: #2b2926;
+	--raise: #3c3a37;
+	--raise-hover: #4a4744;
+	--line: #3f3d3a;
+	--ink: #ffffff;
+	--text: #e8e6e3;
+	--muted: #a3a19e;
+	--faint: #77756f;
+	--accent: #81b64c;
+	--accent-edge: #45753c;
+	--accent-hover: #95c25a;
+	--live: #fa412d;
+	--track: #403d39;
+	--bar: #8b8987;
+	--chart: #ffffff;
 	--light: #ebecd0;
 	--dark: #739552;
+}
+:root[data-domain="chess"] .layout {
+	justify-content: center;
+}
+:root[data-domain="chess"] .stage {
+	width: min(100%, max(280px, 100dvh - 200px));
+	justify-self: center;
+}
+:root[data-domain="chess"] .bar-slot {
+	min-height: 44px;
+}
+@media (min-width: 981px) {
+	:root[data-domain="chess"] .layout {
+		container-type: size;
+		grid-template-columns: auto 380px;
+		--stage: max(240px, min(100cqw - 404px, 100cqh - 104px));
+	}
+	:root[data-domain="chess"] .stage {
+		width: var(--stage);
+	}
+	:root[data-domain="chess"] .state-card {
+		max-height: var(--stage);
+	}
+	:root[data-domain="chess"] .side {
+		height: calc(var(--stage) + 104px);
+	}
 }
 .player {
 	display: flex;

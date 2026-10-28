@@ -1,5 +1,5 @@
 import { Chess } from "chess.js";
-import type { DomainTexts, JsonObject, Limits, StateMachine } from "@osolmaz/switch";
+import type { DomainShared, JsonObject, Limits, StateMachine } from "@osolmaz/switch";
 import type { ChessCase, ChessGame } from "./case.ts";
 import {
 	boardOf,
@@ -22,12 +22,13 @@ import type { ChessState } from "./web/data.ts";
  */
 export const LIMITS: Limits = { steps: 200, choices: 220, windowShare: 0.9 };
 
-/** What every game shares: the domain's name and version, and the two texts of the pick question. */
-export const CHESS: DomainTexts = {
+/** What every game shares: the domain's name and version, the two texts of the pick question, and the limits. */
+export const CHESS: DomainShared = {
 	name: "chess",
 	version: "0.4.0",
 	stop: "Resign the game",
 	instructions: "Choose your next move. Win material, attack the opponent's king, and keep your own pieces safe.",
+	limits: LIMITS,
 };
 
 /** The initial state: the start position, after the opponent's first move when it is to move. */

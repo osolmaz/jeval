@@ -58,5 +58,6 @@ export const chessModules = (moduleUrl: string = import.meta.url): URL[] =>
 export const chessViewer: DomainViewer = {
 	modules: chessModules(),
 	styles: [new URL("./web/chess.css", import.meta.url)],
+	summary: ({ result, reason }) => [result, reason].filter((part) => typeof part === "string").join(" · "),
 	config: async () => ({ pieces: await pieceImages(), sounds: await soundSet() }),
 };

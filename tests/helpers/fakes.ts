@@ -1,7 +1,7 @@
 import {
 	type BoundChoice,
 	choiceType,
-	type DomainTexts,
+	type DomainShared,
 	joinTypes,
 	type JsonObject,
 	type Question,
@@ -35,11 +35,12 @@ export const lookUp = (facts: Facts) =>
 		}),
 	});
 
-export const factsTexts: DomainTexts = {
+export const FACTS: DomainShared = {
 	name: "facts",
 	version: "1.0.0",
 	stop: "Stop",
 	instructions: "Pick the next fact to look up.",
+	limits: { steps: 8, choices: 30, windowShare: 0.9 },
 };
 
 /** The toy domain's state machine for `facts`, starting from `initial`. */

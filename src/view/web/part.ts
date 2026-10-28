@@ -6,7 +6,7 @@ import type { Moment, Session } from "./model.ts";
 export interface PartContext {
 	/** The part's config from the server, such as the images it draws with. */
 	readonly config: Readonly<Record<string, unknown>>;
-	/** Milliseconds one move on the stage takes at the page's speed; 0 when the viewer asks for less motion. */
+	/** Milliseconds one motion on the stage takes at the page's speed; 0 when the viewer asks for less motion. */
 	motion(): number;
 	/** Milliseconds between the motions of one step while the page plays; 0 when it does not play. */
 	gap(): number;

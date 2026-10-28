@@ -172,7 +172,7 @@ describe("the chess part of the page", () => {
 		const session = await chessSession({ steps: 1 });
 		const { root } = mount({ ...QUICK, session: { ...session, story: { ...session.story, initial: null } } });
 		await vi.waitFor(() => {
-			expect(text(root, ".found-card")).toBe("No state yet.");
+			expect(text(root, ".state-card")).toBe("No state yet.");
 		});
 		expect(root.querySelectorAll(".player")).toHaveLength(0);
 		click(root, "button.next");

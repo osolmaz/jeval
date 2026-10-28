@@ -17,7 +17,7 @@ import {
 	viewerPage,
 	viewerScript,
 } from "../../src/view/index.ts";
-import { answering, type Facts, factsMachine, factsTexts, failing, fakeDecider } from "../helpers/fakes.ts";
+import { answering, type Facts, factsMachine, FACTS, failing, fakeDecider } from "../helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact <b>" } };
 const opened = { looked: ["intro"], found: ["Hello"] };
@@ -30,7 +30,7 @@ async function traced(): Promise<TraceEntry[]> {
 		if (call === 2) return failing("provider", "down");
 		return answering(0.7, (labels) => labels[0] ?? STOP_KEY)(request, call);
 	});
-	const result = await run(factsTexts, factsMachine(facts, opened), decider);
+	const result = await run(FACTS, factsMachine(facts, opened), decider);
 	expect(calls).toBeGreaterThan(2);
 	return result.trace.entries;
 }
@@ -88,17 +88,22 @@ describe("the page", () => {
 		expect(page.indexOf(".x{color:red}")).toBeGreaterThan(page.indexOf(".app{"));
 	});
 
-	it("has no style of any domain's drawing", () => {
+	it("has no style of any domain's drawing, colors or layout", () => {
 		const page = viewerPage({ title: "c1", script: "", config: {} });
 		for (const name of [".board", ".square", ".piece", ".arrow", ".player", ".plies", ".ply", "--board", "--light"]) {
 			expect(page).not.toContain(name);
 		}
+		// A domain's own stylesheet gives the square stage, the room for bars and the colors of its look.
+		for (const rule of ["--stage", ".bar-slot{min-height", "container-type", "#312E2B", "#81B64C"]) {
+			expect(page).not.toContain(rule);
+		}
+		expect(page).toMatch(/\.stage\{display:grid;gap:8px;min-width:0\}/);
 	});
 
 	it("links every case of a run from the index", () => {
 		const page = indexPage("runs/a", [
-			{ id: "x y", outcome: "win, checkmate" },
-			{ id: "z", outcome: null },
+			{ id: "x y", summary: "win, checkmate" },
+			{ id: "z", summary: null },
 		]);
 		expect(page).toContain('<a href="/case/x%20y">x y</a> <span class="meta">win, checkmate</span>');
 		expect(page).toContain('<a href="/case/z">z</a></li>');

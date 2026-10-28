@@ -35,7 +35,7 @@ state is $S_t$, and one step goes from $S_{t-1}$ to $S_t$:
 $$c_t \in C(S_{t-1}) \cup \{\text{stop}\}, \qquad S_t = T(S_{t-1}, c_t)$$
 
 The model picks $c_t$, and when it picks stop, the run ends at $S_{t-1}$. A state is JSON that the domain designs:
-everything that the choice function, the transition function and the view need to know about where the case is. The
+everything that the choice function, the transition function and the view function need to know about where the case is. The
 case's data that never changes is no part of the state. It stays inside the functions.
 
 In chess, a state holds the moves played so far. $C$ gives the legal moves of the position that those moves lead to,
@@ -55,16 +55,16 @@ The textbook model for this is a Markov decision process. Its names map to switc
 $T$ may give a different next state for the same state and choice, for example when a chess engine replies. switch
 does not need $T$ to be repeatable, because the trace keeps every state that $T$ gave.
 
-## The view
+## The view function
 
-The model does not read the state itself. It reads the **view** $V(S, \tau)$, JSON and images that the domain makes
-from the state in at most $\tau$ estimated tokens, so that the request fits the model's window. A domain that gives no
-view lets the model read the state as it is:
+The model does not read the state itself. It reads the **view**, which a fourth function of the domain, the **view
+function** $V$, makes from the state: JSON and images in at most $\tau$ estimated tokens, so that the request fits the
+model's window. A domain that gives no view function lets the model read the state as it is:
 
 $$V(S, \tau) = S$$
 
-In chess, the view draws the board as text, lists each side's pieces, and gives the moves so far, or only the latest
-ones when the whole game does not fit $\tau$.
+In chess, the view function draws the board as text, lists each side's pieces, and gives the moves so far, or only
+the latest ones when the whole game does not fit $\tau$.
 
 ## What switch does to the choices
 
@@ -179,7 +179,7 @@ an answer stage adds, and the view gets the rest:
 
 $$\tau_1 = B - \hat{t}(\text{questions})$$
 
-The domain's view gets $\tau$ and must make JSON that fits it. When the model's API says that the request was still
+The domain's view function gets $\tau$ and must make JSON that fits it. When the model's API says that the request was still
 too long, switch asks again with a smaller view, up to $A$ requests in all, each time by a factor $\lambda < 1$:
 
 $$\tau_{a+1} = \lfloor \lambda \, \tau_a \rfloor$$

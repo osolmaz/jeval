@@ -106,38 +106,6 @@ The pieces are cburnett by Colin M.L. Burnett, the set lichess shows by default,
 `assets/pieces/cburnett/` holds them unchanged from
 [Wikimedia Commons](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces) with their license.
 
-## Traces from before states
-
-A trace written before switch saved states has `observation` entries in place of `state` entries, and the newer code
-does not read it. This command turns one into states; it writes a new file, and you replace the old one after a
-check. A trace from before switch's PR #26 first needs that PR's renames, which
-[the plan](../../docs/2026-10-28-domains-as-examples.md#migrations) lists with the `run.json` change.
-
-```bash
-jq -s -c '
-  def next($before; $seen):
-    $seen.data as $d
-    | {you: $d.you, opponent: ($before.opponent // $d.opponent), start: ($before.start // $d.start),
-       moves: (($before.moves // []) + $d.moves), san: (($before.san // []) + $d.san),
-       fen: $d.fen, status: $d.status, check: $d.check, last: $seen.text};
-  def flush: if .open == null then . else .out += [{type: "state", step: .open, state: .state}] | .open = null end;
-  def entry($e):
-    if $e.type == "case" then {type: "start", domain: $e.domain, version: $e.version, model: $e.model, limits: $e.limits}
-    elif $e.type == "menu" then
-      {type: "choices", step: $e.step, choices: [$e.choices[] | {key, type: .kind, text} + (if .data == null then {} else {data} end)]}
-    elif $e.type == "choice" then $e | del(.id, .parent) | .type = "pick"
-    elif $e.type == "asked" then (if $e.stage == "answers" then empty else $e | del(.id, .parent) | .type = "stage" end)
-    else $e | del(.id, .parent) end;
-  reduce .[] as $e ({out: [], state: null, open: null};
-    if $e.type == "observation" then .state = next(.state; $e) | .open = $e.step else flush | .out += [entry($e)] end)
-  | flush | .out | to_entries[] | .value + {id: .key, parent: (if .key == 0 then null else .key - 1 end)}
-' trace.jsonl > trace.states.jsonl
-```
-
-The command was tried on copies of three runs, seven games in all. Each converted trace loads in the viewer, and each
-game that needs no engine replays to the same states and picks. A trace that the code before this change wrote, once
-converted, is the same as the trace that the code now writes for the same game, except for the domain's version.
-
 ## Check
 
 `pnpm check` in this folder runs the example's own format, lint, typecheck, tests with the 85% coverage gate and DRY

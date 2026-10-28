@@ -39,6 +39,7 @@ describe("the viewer, for a domain without a part", () => {
 			expect(label(root)).toBe("Start");
 		});
 		expect(text(root, "h1")).toBe("f1");
+		expect(document.documentElement.dataset["domain"]).toBe("facts");
 		expect(text(root, ".meta")).toBe("facts · fake/decider");
 		expect([hidden(root, ".live"), hidden(root, "button.download"), hidden(root, "button.sound")]).toEqual([
 			true,
@@ -47,7 +48,7 @@ describe("the viewer, for a domain without a part", () => {
 		]);
 		// A saved page has no server, so its header links nowhere.
 		expect(root.querySelector("a.home")?.hasAttribute("href")).toBe(false);
-		expect(JSON.parse(text(root, ".found-card"))).toEqual({ looked: [], found: [] });
+		expect(JSON.parse(text(root, ".state-card"))).toEqual({ looked: [], found: [] });
 		expect(text(root, ".timeline h2")).toBe("Result");
 		expect(text(root, ".banner")).toBe("answered · the model stopped");
 		expect(text(root, ".facts")).toContain("looked2");
@@ -64,13 +65,13 @@ describe("the viewer, for a domain without a part", () => {
 		expect(text(root, ".decision .step")).toBe("Step 1 of 3");
 		expect(root.querySelector(".choices .picked")?.textContent).toContain("(picked)");
 		expect(text(root, ".decision h3")).toBe("What changed");
-		expect(Array.from(root.querySelectorAll(".found")).map((line) => line.textContent)).toEqual([
+		expect(Array.from(root.querySelectorAll(".change")).map((line) => line.textContent)).toEqual([
 			"looked + a",
 			"found + fact a",
 		]);
 		click(root, "button.next");
 		await vi.waitFor(() => {
-			expect(JSON.parse(text(root, ".found-card"))).toEqual({ looked: ["a"], found: ["fact a"] });
+			expect(JSON.parse(text(root, ".state-card"))).toEqual({ looked: ["a"], found: ["fact a"] });
 		});
 		click(root, "button.latest");
 		await vi.waitFor(() => {
@@ -272,7 +273,7 @@ describe("a domain's part of the page", () => {
 		expect(root.querySelector(".current .jump2")).not.toBeNull();
 		click(root, "button.latest");
 		await vi.waitFor(() => {
-			expect(JSON.parse(text(root, ".found-card"))).toEqual({ looked: ["a", "b"], found: ["fact a", "fact b"] });
+			expect(JSON.parse(text(root, ".state-card"))).toEqual({ looked: ["a", "b"], found: ["fact a", "fact b"] });
 		});
 	});
 

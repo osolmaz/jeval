@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Answer, DEFAULT_LIMITS, parseTrace, STOP_KEY } from "@osolmaz/switch";
+import { type Answer, parseTrace, STOP_KEY } from "@osolmaz/switch";
 import { replayCase, resultSchema, RunMismatchError, runCases, runRecordSchema } from "@osolmaz/switch/cli";
 import { answering, fakeDecider, type Policy } from "@osolmaz/switch/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -81,7 +81,7 @@ describe("the legal-judge harness", () => {
 			version: `0.4.0 legal-judge@${legalJudge.definition.hash.slice(0, 12)}`,
 			definition: { name: "legal-judge", hash: legalJudge.definition.hash, content: { domain: "legal-judge" } },
 			model: "fake/decider",
-			limits: DEFAULT_LIMITS,
+			limits: { steps: 8, choices: 30, windowShare: 0.9 },
 			set: { name: "s", file: "set.json" },
 			totals: { cases: 2, failed: 0, calls: 4 },
 		});

@@ -41,7 +41,7 @@ Each case is a state machine, in `src/index.ts`:
   tracked changes, and compare the answer's Word file with the original. Each type leaves out what the evidence
   already holds.
 - The transition function adds the evidence of the picked choice.
-- The view shows the request, the rubric, the files and what has been read of them, and the evidence, cut to fit the
+- The view function shows the request, the rubric, the files and what has been read of them, and the evidence, cut to fit the
   window. It loads the images that the evidence names from the case folder.
 - The answer stage asks the judge's two questions about every rubric item over the evidence, and combines them into
   one verdict per item.
@@ -130,41 +130,6 @@ The report adds three more numbers:
 `replay` runs a case again from its trace, with the judge file that the trace was made with, and with `--fork <steps>`
 it takes the state after that many recorded steps and lets the model go on from there. The
 [main README](../../README.md#replay-a-case) says how a replay repeats a case.
-
-## Traces from before states
-
-A trace written before switch saved states has `observation` entries in place of `state` entries, and the newer code
-does not read it. This command turns one into states, with the case's `case.json`, which names the file of each image
-that the trace looked at. It writes a new file, and you replace the old one after a check. A trace from before switch's
-PR #26 first needs that PR's renames, which [the plan](../../docs/2026-10-28-domains-as-examples.md#migrations) lists
-with the `run.json` change.
-
-```bash
-jq -s -c --slurpfile case cases/case-1/case.json '
-  def image($seen):
-    if ($seen.images | length) == 0 then {}
-    else ($seen.key | capture("^look:(?<file>.+):(?<index>[0-9]+)$")) as $look
-      | {image: ($case[0].files[] | select(.id == $look.file) | .renders[$look.index | tonumber])}
-    end;
-  def next($before; $seen):
-    {evidence: (($before.evidence // []) + [{key: $seen.key, source: $seen.source, text: $seen.text} + image($seen)])};
-  def flush: if .open == null then . else .out += [{type: "state", step: .open, state: .state}] | .open = null end;
-  def entry($e):
-    if $e.type == "case" then {type: "start", domain: $e.domain, version: $e.version, model: $e.model, limits: $e.limits}
-    elif $e.type == "menu" then
-      {type: "choices", step: $e.step, choices: [$e.choices[] | {key, type: .kind, text} + (if .data == null then {} else {data} end)]}
-    elif $e.type == "choice" then $e | del(.id, .parent) | .type = "pick"
-    elif $e.type == "asked" then (if $e.stage == "answers" then empty else $e | del(.id, .parent) | .type = "stage" end)
-    else $e | del(.id, .parent) end;
-  reduce .[] as $e ({out: [], state: null, open: null};
-    if $e.type == "observation" then .state = next(.state; $e) | .open = $e.step else flush | .out += [entry($e)] end)
-  | flush | .out | to_entries[] | .value + {id: .key, parent: (if .key == 0 then null else .key - 1 end)}
-' results/cases/case-1/trace.jsonl > trace.states.jsonl
-```
-
-No legal-judge run was at hand, so the command was tried on a trace that the code before this change wrote for a test
-case with an answer image and a scanned page. Converted, it is the same as the trace that the code now writes for that
-case, except for the domain's version.
 
 ## Check
 

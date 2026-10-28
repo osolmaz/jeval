@@ -8,6 +8,8 @@ import type { Frame, FrameChoice, Story } from "../frames.ts";
 export interface Session {
 	readonly story: Story;
 	readonly outcome: Readonly<Record<string, unknown>> | null;
+	/** The domain's short line on how the case ended; null when it gives none. */
+	readonly summary: string | null;
 	/** Whether the case has its result, so nothing more will come. */
 	readonly finished: boolean;
 	readonly version: string;

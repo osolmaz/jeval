@@ -10,7 +10,7 @@ import {
 	STOP_KEY,
 	type TraceEntry,
 } from "../../src/core/index.ts";
-import { answering, type Facts, factsMachine, type FactsState, factsTexts, fakeDecider } from "../helpers/fakes.ts";
+import { answering, type Facts, factsMachine, type FactsState, FACTS, fakeDecider } from "../helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact b", c: "fact c" } };
 
@@ -24,7 +24,7 @@ const unrunnable: StateMachine<FactsState> = {
 async function recorded(): Promise<TraceEntry[]> {
 	let calls = 0;
 	const decider = fakeDecider(answering(0.7, (labels) => (calls++ < 2 ? (labels[1] ?? STOP_KEY) : STOP_KEY)));
-	return (await run(factsTexts, factsMachine(facts), decider)).trace.entries;
+	return (await run(FACTS, factsMachine(facts), decider)).trace.entries;
 }
 
 const picks = (list: readonly TraceEntry[]) => list.flatMap((entry) => (entry.type === "pick" ? [entry.key] : []));
@@ -34,7 +34,7 @@ describe("replayOf", () => {
 	it("repeats the recorded picks with their recorded states, and the answers, and runs no transition", async () => {
 		const entries = await recorded();
 		const { decider, replay } = replayOf(entries);
-		const again = await run(factsTexts, unrunnable, decider, { replay });
+		const again = await run(FACTS, unrunnable, decider, { replay });
 		expect(picks(again.trace.entries)).toEqual(picks(entries));
 		expect(states(again.trace.entries)).toEqual(states(entries));
 		expect(again.state).toEqual({ looked: ["b", "c"], found: ["fact b", "fact c"] });
@@ -50,7 +50,7 @@ describe("replayOf", () => {
 		let calls = 0;
 		const then = fakeDecider(answering(0.2, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
 		const { decider, replay } = replayOf(entries, { steps: 1, then });
-		const forked = await run(factsTexts, factsMachine(facts), decider, { replay });
+		const forked = await run(FACTS, factsMachine(facts), decider, { replay });
 		expect(forked.steps).toBe(3);
 		expect(forked.state).toEqual({ looked: ["b", "a"], found: ["fact b", "fact a"] });
 		expect(forked.answers?.["a"]).toEqual({ type: "bool", probability: 0.2 });
@@ -61,14 +61,14 @@ describe("replayOf", () => {
 		const entries = await recorded();
 		const shortened = entries.filter((entry) => !(entry.type === "pick" && entry.step === 3));
 		const { decider, replay } = replayOf(shortened);
-		expect((await run(factsTexts, unrunnable, decider, { replay })).steps).toBe(3);
+		expect((await run(FACTS, unrunnable, decider, { replay })).steps).toBe(3);
 	});
 
 	it("refuses a trace that does not match the run", async () => {
 		const entries = await recorded();
 		const again = (list: readonly TraceEntry[], machine: StateMachine<FactsState> = unrunnable) => {
 			const { decider, replay } = replayOf(list);
-			return run(factsTexts, machine, decider, { replay });
+			return run(FACTS, machine, decider, { replay });
 		};
 		expect(() => replayOf(entries.slice(1))).toThrow(ReplayError);
 		await expect(again(entries, factsMachine({ facts: { z: "other" } }))).rejects.toThrow(
@@ -86,9 +86,7 @@ describe("replayOf", () => {
 			"the trace's states skip to step 2",
 		);
 		const { decider, replay } = replayOf(entries.filter((entry) => !(entry.type === "state" && entry.step === 2)));
-		await expect(run(factsTexts, unrunnable, decider, { replay })).rejects.toThrow(
-			"the trace has no state after step 2",
-		);
+		await expect(run(FACTS, unrunnable, decider, { replay })).rejects.toThrow("the trace has no state after step 2");
 	});
 });
 

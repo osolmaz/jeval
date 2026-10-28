@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { inPool, replayCase, RunMismatchError, runCases } from "../../src/cli/commands.ts";
 import { resultSchema, runRecordSchema } from "../../src/cli/runs.ts";
 import { loadSet } from "../../src/cli/sets.ts";
-import { DEFAULT_LIMITS, parseTrace, STOP_KEY } from "../../src/core/index.ts";
+import { parseTrace, STOP_KEY } from "../../src/core/index.ts";
 import { factsFolder, factsSetup } from "../helpers/facts.ts";
-import { answering, fakeDecider } from "../helpers/fakes.ts";
+import { answering, FACTS, fakeDecider } from "../helpers/fakes.ts";
 
 let folder = "";
 beforeEach(async () => {
@@ -60,7 +60,7 @@ describe("runCases", () => {
 			version: "1.0.0",
 			definition: { name: "facts", hash: domain.definition.hash, content: { stop: "Stop" } },
 			model: "fake/decider",
-			limits: DEFAULT_LIMITS,
+			limits: FACTS.limits,
 			switch: { version: expect.any(String) as unknown },
 			finished: expect.stringMatching(/^\d{4}-/) as unknown,
 			set: { name: "s", file: "set.json" },

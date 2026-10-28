@@ -50,8 +50,16 @@ describe("a harness's domains", () => {
 describe("the viewer", () => {
 	it("serves the index, and each case's page, session and version, with the parts' configs", async () => {
 		const out = await factsRun(["f1", "f 2"]);
-		const index = await route(out, "/");
-		expect(index.body).toContain('<a href="/case/f%202">f 2</a> <span class="meta">answered, stop</span>');
+		expect((await route(out, "/")).body).toContain('<a href="/case/f%202">f 2</a></li>');
+		const summarized = {
+			...viewer,
+			summary: (outcome: Readonly<Record<string, unknown>>) => `${String(outcome["reason"])}!`,
+		};
+		const index = await route(out, "/", { facts: summarized });
+		expect(index.body).toContain('<a href="/case/f%202">f 2</a> <span class="meta">stop!</span>');
+		expect(JSON.parse((await route(out, "/case/f1/session.json", { facts: summarized })).body)).toMatchObject({
+			summary: "stop!",
+		});
 		const page = await route(out, "/case/f1", { facts: viewer });
 		expect(page.type).toMatch(/^text\/html/);
 		expect(page.body).toContain(
@@ -61,6 +69,7 @@ describe("the viewer", () => {
 		expect(session).toMatchObject({
 			finished: true,
 			outcome: { result: "answered" },
+			summary: null,
 			story: { case: "f 2", domain: "facts" },
 		});
 		expect((await route(out, "/case/f%202/version")).body).toBe(await caseVersion(out, "f 2"));

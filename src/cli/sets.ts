@@ -4,8 +4,7 @@ import { z } from "zod";
 
 /**
  * An eval set: a name, the folder of its case folders, relative to the set file, and the ids of the cases it
- * schedules. A harness may add fields of its own, such as a file of labels. Sets live with their private
- * data, not in this repository.
+ * schedules. A harness may add fields of its own.
  */
 export const setSchema = z.object({
 	name: z.string().min(1),

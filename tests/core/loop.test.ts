@@ -11,15 +11,7 @@ import {
 	STOP_KEY,
 	Trace,
 } from "../../src/core/index.ts";
-import {
-	answering,
-	type Facts,
-	factsMachine,
-	type FactsState,
-	factsTexts,
-	failing,
-	fakeDecider,
-} from "../helpers/fakes.ts";
+import { answering, type Facts, factsMachine, type FactsState, FACTS, failing, fakeDecider } from "../helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact b" } };
 const firstChoice = (labels: string[]) => labels[0] ?? STOP_KEY;
@@ -29,7 +21,7 @@ describe("run", () => {
 	it("takes steps until the model stops, then answers every question", async () => {
 		let calls = 0;
 		const decider = fakeDecider(answering(0.8, (labels) => (calls++ === 0 ? firstChoice(labels) : STOP_KEY)));
-		const result = await run(factsTexts, factsMachine(facts), decider);
+		const result = await run(FACTS, factsMachine(facts), decider);
 		expect(result.steps).toBe(2);
 		expect(result.ended).toBe("stop");
 		expect(result.error).toBeNull();
@@ -50,7 +42,7 @@ describe("run", () => {
 	});
 
 	it("saves every state, the initial one at step 0", async () => {
-		const result = await run(factsTexts, factsMachine(facts), fakeDecider(answering(0.5, firstChoice)));
+		const result = await run(FACTS, factsMachine(facts), fakeDecider(answering(0.5, firstChoice)));
 		const states = result.trace.entries.flatMap((entry) =>
 			entry.type === "state" ? [[entry.step, entry.state]] : [],
 		);
@@ -63,7 +55,7 @@ describe("run", () => {
 	});
 
 	it("records each pick's probability under its key", async () => {
-		const result = await run(factsTexts, factsMachine(facts), fakeDecider(answering(0.5, firstChoice)), one);
+		const result = await run(FACTS, factsMachine(facts), fakeDecider(answering(0.5, firstChoice)), one);
 		const pick = result.trace.entries.find((entry) => entry.type === "pick");
 		expect(pick).toMatchObject({ key: "look-up:a", probabilities: { "look-up:a": 0.9 } });
 		expect(pick).not.toHaveProperty("confidence");
@@ -76,15 +68,15 @@ describe("run", () => {
 			const answer = result.answers["next"];
 			return answer?.type === "choice" ? { ...result, answers: { next: { ...answer, confidence: 0.7 } } } : result;
 		});
-		const result = await run(factsTexts, factsMachine(facts), sure, one);
+		const result = await run(FACTS, factsMachine(facts), sure, one);
 		expect(result.trace.entries.find((entry) => entry.type === "pick")).toMatchObject({ confidence: 0.7 });
 	});
 
 	it("stops when a state has no choices or the step limit is reached", async () => {
-		const empty = await run(factsTexts, factsMachine({ facts: {} }), fakeDecider(answering(0.5, firstChoice)));
+		const empty = await run(FACTS, factsMachine({ facts: {} }), fakeDecider(answering(0.5, firstChoice)));
 		expect(empty).toMatchObject({ steps: 0, ended: "no choices" });
 		const limited = await run(
-			factsTexts,
+			FACTS,
 			factsMachine({ facts: { a: "1", b: "2", c: "3" } }),
 			fakeDecider(answering(0.5, firstChoice)),
 			{ limits: { steps: 2, choices: 30, windowShare: 0.9 } },
@@ -94,7 +86,7 @@ describe("run", () => {
 
 	it("goes on to the answers when a pick fails or names no choice", async () => {
 		const failed = await run(
-			factsTexts,
+			FACTS,
 			factsMachine(facts),
 			fakeDecider((request, call) => (call === 1 ? failing("provider") : answering(0.9)(request, call))),
 		);
@@ -104,7 +96,7 @@ describe("run", () => {
 			true,
 		);
 		const silent = await run(
-			factsTexts,
+			FACTS,
 			factsMachine(facts),
 			fakeDecider((request, call) =>
 				call === 1
@@ -124,7 +116,7 @@ describe("run", () => {
 				call === 1 ? failing("window", "max_tokens_exceeded") : answering(0.6, () => STOP_KEY)(request, call),
 			120,
 		);
-		const result = await run(factsTexts, factsMachine(facts), decider);
+		const result = await run(FACTS, factsMachine(facts), decider);
 		expect(result.answers).not.toBeNull();
 		const rooms = decider.requests.map((request) => request.json["tokens"]);
 		expect(Number(rooms[1])).toBeLessThan(Number(rooms[0]));
@@ -135,7 +127,7 @@ describe("run", () => {
 
 	it("gives up on the answers after three window failures", async () => {
 		const result = await run(
-			factsTexts,
+			FACTS,
 			factsMachine(facts),
 			fakeDecider(() => failing("window")),
 		);
@@ -153,14 +145,14 @@ describe("run", () => {
 						usage: { inputTokens: 1, milliseconds: 1 },
 					},
 		);
-		const result = await run(factsTexts, factsMachine(facts), partial);
+		const result = await run(FACTS, factsMachine(facts), partial);
 		expect(result.error).toBe("no answer for b");
 	});
 
 	it("starts from the initial state and writes entries to the sink", async () => {
 		const seen: string[] = [];
 		const decider = fakeDecider(answering(0.5, () => STOP_KEY));
-		await run(factsTexts, factsMachine(facts, { looked: ["x"], found: ["opened"] }), decider, {
+		await run(FACTS, factsMachine(facts, { looked: ["x"], found: ["opened"] }), decider, {
 			trace: new Trace((entry) => seen.push(entry.type)),
 		});
 		expect(seen.slice(0, 2)).toEqual(["start", "state"]);
@@ -189,7 +181,7 @@ describe("a domain with only the three functions", () => {
 
 	it("runs: the model reads the state as it is, and the run asks no questions", async () => {
 		const decider = fakeDecider(answering(0.5, (labels) => labels.at(-2) ?? STOP_KEY));
-		const result = await run(factsTexts, counter, decider);
+		const result = await run(FACTS, counter, decider);
 		expect(decider.requests.map((request) => request.json)).toEqual([{ n: 0 }, { n: 2 }]);
 		expect(decider.requests.every((request) => request.images.length === 0)).toBe(true);
 		expect(result).toMatchObject({ state: { n: 4 }, ended: "no choices", answers: {} });
@@ -214,14 +206,14 @@ describe("run, in detail", () => {
 
 	it("labels the choices o1, o2… and keeps one place for stop", async () => {
 		const decider = fakeDecider(answering(0.5, () => STOP_KEY));
-		await run(factsTexts, factsMachine(three), decider, { limits: { steps: 8, choices: 2, windowShare: 0.9 } });
+		await run(FACTS, factsMachine(three), decider, { limits: { steps: 8, choices: 2, windowShare: 0.9 } });
 		const question = decider.requests[0]?.questions[0];
 		expect(question?.type === "choice" ? question.choices : null).toEqual({ o1: "Look up a", stop: "Stop" });
 	});
 
 	it("gives the view the window's share less the questions' size", async () => {
 		const decider = fakeDecider(answering(0.5, () => STOP_KEY));
-		await run(factsTexts, factsMachine(facts), decider);
+		await run(FACTS, factsMachine(facts), decider);
 		const [pick, answers] = decider.requests;
 		const room = (request: typeof pick) => Number(request?.json["tokens"]);
 		expect(room(pick)).toBe(Math.floor(64_000 * 0.9) - estimateTokens(pick?.questions, 3));
@@ -233,7 +225,7 @@ describe("run, in detail", () => {
 			answering(0.5, () => STOP_KEY),
 			200,
 		);
-		const result = await run(factsTexts, factsMachine(three), decider);
+		const result = await run(FACTS, factsMachine(three), decider);
 		const answerRequests = decider.requests.filter((request) => request.questions[0]?.type === "bool");
 		expect(answerRequests.length).toBe(2);
 		expect(result.trace.entries.find((entry) => entry.type === "answers")).toMatchObject({ usage: [{}, {}] });
@@ -246,12 +238,12 @@ describe("run, in detail", () => {
 				? answering(0.5, () => STOP_KEY)(request, 0)
 				: { ok: true, answers: {}, usage: { inputTokens: 1, milliseconds: 1 } },
 		);
-		expect((await run(factsTexts, factsMachine(facts), silent)).error).toBe("no answer for a, b");
+		expect((await run(FACTS, factsMachine(facts), silent)).error).toBe("no answer for a, b");
 		const tight = fakeDecider(
 			(request, call) => (call === 1 ? failing("window") : answering(0.5, () => STOP_KEY)(request, call)),
 			120,
 		);
-		const notes = (await run(factsTexts, factsMachine(facts), tight)).trace.entries.flatMap((entry) =>
+		const notes = (await run(FACTS, factsMachine(facts), tight)).trace.entries.flatMap((entry) =>
 			entry.type === "note" ? [entry.message] : [],
 		);
 		expect(notes).toContain("the view left out: everything; the rest");
@@ -270,7 +262,7 @@ describe("run, in detail", () => {
 			},
 		};
 		const decider = fakeDecider(answering(0.3, () => STOP_KEY));
-		const result = await run(factsTexts, staged, decider);
+		const result = await run(FACTS, staged, decider);
 		expect(result.trace.entries.slice(-2).map((entry) => entry.type)).toEqual(["stage", "answers"]);
 		expect(result.trace.entries.at(-2)).toMatchObject({ stage: "check" });
 		expect(decider.requests.at(-1)?.json).toEqual({ seen: [] });
@@ -289,7 +281,7 @@ describe("data for tools", () => {
 	};
 
 	it("keeps the choices' data in the trace", async () => {
-		const result = await run(factsTexts, tagged, fakeDecider(answering(0.5, firstChoice)), one);
+		const result = await run(FACTS, tagged, fakeDecider(answering(0.5, firstChoice)), one);
 		const lines = result.trace.entries.map((entry) => JSON.stringify(entry)).join("\n");
 		const entries = parseTrace(lines);
 		const offered = entries.find((entry) => entry.type === "choices");
@@ -302,7 +294,7 @@ describe("data for tools", () => {
 	});
 
 	it("writes no data field when a choice has none", async () => {
-		const result = await run(factsTexts, factsMachine(facts), fakeDecider(answering(0.5, firstChoice)), one);
+		const result = await run(FACTS, factsMachine(facts), fakeDecider(answering(0.5, firstChoice)), one);
 		const lines = result.trace.entries.map((entry) => JSON.stringify(entry));
 		expect(lines.some((line) => line.includes('"data"'))).toBe(false);
 	});

@@ -81,7 +81,7 @@ export function chessPart(context: PartContext): DomainPart {
 		stepNote: turnOf,
 		steps: { title: "Moves", list: (session, index, open) => moveList(session.story, index, pieces, open) },
 		score: scoreOf,
-		hidden: ["fen"],
+		hidden: ["result", "reason", "fen"],
 		download: {
 			label: "Download the game as PGN",
 			text: "PGN",

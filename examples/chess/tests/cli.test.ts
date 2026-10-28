@@ -59,15 +59,16 @@ describe("the chess harness", () => {
 		});
 	});
 
-	it("serves a game's page with the chess part, its pieces, its styles and its outcome in the index", async () => {
+	it("serves a game's page with the chess part, its pieces, its styles and its summary in the index", async () => {
 		const out = await chessRun(["g1", "g 2"]);
-		expect((await route(out, "/")).body).toContain(
-			'<a href="/case/g%202">g 2</a> <span class="meta">loss, resignation</span>',
+		expect((await route(out, "/", { chess: chessViewer })).body).toContain(
+			'<a href="/case/g%202">g 2</a> <span class="meta">loss · resignation</span>',
 		);
 		const page = await route(out, "/case/g1", { chess: chessViewer });
 		expect(page.body).toContain('registerPart("chess", chessPart)');
 		expect(page.body).toContain("data:image/svg+xml;base64,");
 		expect(page.body).toContain(".board {");
+		expect(page.body).toContain(':root[data-domain="chess"] {');
 		const plain = (await route(out, "/case/g1")).body;
 		expect(plain).not.toContain("data:image/svg+xml;base64,");
 		expect(plain).not.toContain(".board");

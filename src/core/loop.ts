@@ -19,21 +19,24 @@ import type {
 	Usage,
 	View,
 } from "./types.ts";
-import { DEFAULT_LIMITS } from "./types.ts";
 
 export interface RunOptions {
+	/** Limits in place of the domain's own, such as those of a trace that the run repeats. */
 	readonly limits?: Limits;
 	readonly trace?: Trace;
 	/** A trace to repeat: the run takes its recorded states and runs no transition, up to a fork. */
 	readonly replay?: Replay;
 }
 
-/** What the loop needs of a domain: its name and version, and the two texts of the pick question. */
-export type DomainTexts = Pick<Domain<JsonObject>, "name" | "version" | "stop" | "instructions">;
+/**
+ * What every case of a domain shares, as the loop needs it: the domain's name and version, the two texts of the pick
+ * question, and the limits.
+ */
+export type DomainShared = Pick<Domain<JsonObject>, "name" | "version" | "stop" | "instructions" | "limits">;
 
 /** One run of a case: what each part of the loop works with. */
 interface Loop<S extends JsonObject, C extends Choice> {
-	readonly domain: DomainTexts;
+	readonly domain: DomainShared;
 	readonly machine: StateMachine<S, C>;
 	readonly decider: Decider;
 	readonly limits: Limits;
@@ -51,12 +54,12 @@ const QUESTION_SHARE = 0.4;
  * next state, until the model picks stop; then the model answers the questions over the last state.
  */
 export async function run<S extends JsonObject, C extends Choice>(
-	domain: DomainTexts,
+	domain: DomainShared,
 	machine: StateMachine<S, C>,
 	decider: Decider,
 	options: RunOptions = {},
 ): Promise<RunResult<S>> {
-	const limits = options.limits ?? DEFAULT_LIMITS;
+	const limits = options.limits ?? domain.limits;
 	const trace = options.trace ?? new Trace();
 	trace.started({ domain: domain.name, version: domain.version, model: decider.model, limits });
 	const loop: Loop<S, C> = { domain, machine, decider, limits, trace };

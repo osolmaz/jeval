@@ -155,8 +155,6 @@ export interface Limits {
 	readonly windowShare: number;
 }
 
-export const DEFAULT_LIMITS: Limits = { steps: 8, choices: 30, windowShare: 0.9 };
-
 /** Every text a domain gives the model that does not come from a case, and its limits: what a run records. */
 export interface Definition {
 	readonly name: string;

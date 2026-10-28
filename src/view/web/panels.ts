@@ -53,7 +53,7 @@ function choiceList(moment: Moment): HTMLElement {
 function changes(moment: Moment): HTMLElement[] {
 	const after = moment.frame?.after ?? null;
 	if (after === null) return [];
-	const lines = changesOf(moment.frame?.before ?? null, after).map((line) => h("p", { class: "found" }, line));
+	const lines = changesOf(moment.frame?.before ?? null, after).map((line) => h("p", { class: "change" }, line));
 	return [
 		h("h3", {}, "What changed"),
 		...(lines.length > 0 ? lines : [h("p", { class: "quiet" }, "Nothing changed.")]),
@@ -88,9 +88,9 @@ function waitingPanel(session: Session | null, waiting: boolean): HTMLElement | 
 	return h("p", { class: "quiet" }, session.finished ? "The case ended without an outcome." : "The case is running.");
 }
 
-/** The outcome's facts but its result, its reason and the `hidden` ones, then the answers, as rows of a list. */
+/** The outcome's facts but the `hidden` ones, then the answers, as rows of a list. */
 function factRows(session: Session, hidden: readonly string[]): HTMLElement[] {
-	const left = new Set(["result", "reason", ...hidden]);
+	const left = new Set(hidden);
 	const facts = Object.entries(session.outcome ?? {})
 		.filter(([key]) => !left.has(key))
 		.flatMap(([key, value]) => [h("dt", {}, key), h("dd", {}, plain(value))]);
@@ -102,8 +102,8 @@ function factRows(session: Session, hidden: readonly string[]): HTMLElement[] {
 }
 
 /**
- * How the case ended: a banner with the score and the reason, and the outcome's other facts and the answers. A domain's
- * part gives the score, and the facts it leaves out.
+ * How the case ended: a banner with the score and the domain's summary, and the outcome's facts and the answers. A
+ * domain's part gives the score and the facts it leaves out, and its viewer gives the summary.
  */
 export function resultPanel(
 	session: Session | null,
@@ -113,12 +113,10 @@ export function resultPanel(
 ): HTMLElement {
 	const pending = waitingPanel(session, waiting);
 	if (pending !== null || session === null) return h("section", { class: "result" }, pending ?? "");
-	const outcome = session.outcome ?? {};
-	const headline = [outcome["result"], outcome["reason"]].filter((part) => typeof part === "string").join(" · ");
 	return h(
 		"section",
 		{ class: "result" },
-		h("p", { class: "banner" }, score === null ? "" : h("strong", {}, score), h("span", {}, headline)),
+		h("p", { class: "banner" }, score === null ? "" : h("strong", {}, score), h("span", {}, session.summary ?? "")),
 		h("dl", { class: "facts" }, ...factRows(session, hidden)),
 	);
 }

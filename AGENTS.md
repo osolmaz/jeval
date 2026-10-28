@@ -13,10 +13,10 @@
 ## Terms
 
 - Use the terms of switch, as the README's "How it works" defines them, in code and docs: state, initial state, choice
-  function, choice, pick, transition function, step, view, instructions, question, answer, trace and type. A case is a
-  state machine: an initial state, a choice function from the latest state to its choices, and a transition function
-  from the state and the picked choice to the next state. "State" means only that state; the JSON that the model reads
-  is the view's `json`.
+  function, choice, pick, transition function, step, view function, view, instructions, question, answer, trace and
+  type. A case is a state machine: an initial state, a choice function from the latest state to its choices, and a
+  transition function from the state and the picked choice to the next state. The view function turns a state into the
+  view, what the model reads. "State" means only that state; the JSON that the model reads is the view's `json`.
 - Do not use their old names: world, history, observation, menu, kind, workspace, log, entry for a step, option and
   action. Use judge only inside legal-judge, for its own judge files. "Entry" still means one line of a trace, and
   "options" still means a settings object, such as `RunOptions`.
@@ -34,10 +34,10 @@
 - switch knows nothing about any domain. `src/`, the trace and the page have no domain's words, fields, file formats,
   styles or special cases. This also holds for the comments, help texts and examples in `src/`.
 - A domain brings what it needs through switch's general parts: its state, its choice function, its transition
-  function, its view, its questions, its own hooks, and its part of the page with its own styles.
+  function, its view function, its questions, its own hooks, and its part of the page with its own styles.
 - A concept goes into switch only when it means the same thing for any domain.
-- A domain must give an initial state, a choice function and a transition function. The view, the questions, the
-  answer stages and the outcome are optional. Behind these functions, a domain may use any library, program or data
+- A domain must give an initial state, a choice function and a transition function. The view function, the questions,
+  the answer stages and the outcome are optional. Behind these functions, a domain may use any library, program or data
   of its own, and switch never sees it.
 
 ## Boundaries
@@ -60,7 +60,7 @@
   its folder. In this repository the `switch-source` condition points those names at switch's TypeScript sources:
   `tsconfig.json`, the Vitest configs and each example's `src/main.ts` shebang set it.
 - A domain's choice function reads only the state and the case's fixed data. In a run, only `load`, the initial state,
-  the transition and the view's reads of the case's own files read files or start programs; the rest of the file and
+  the transition and the view function's reads of the case's own files read files or start programs; the rest of the file and
   process work stays in the domain's `ingest/` folder, `load.ts`, `setup.ts` and `viewer.ts`. A state machine may hold
   a handle to a program outside, such as the chess engine that `load.ts` starts: a replay takes each recorded state and
   runs no transition again.

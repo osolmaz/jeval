@@ -12,7 +12,7 @@ export const resultSchema = z.object({
 	steps: z.number().int(),
 	error: z.string().nullable(),
 	answers: z.record(z.string(), answerSchema).nullable(),
-	/** How the case ended in the domain's own terms, such as a game's result; null when the domain reports none. */
+	/** How the case ended in the domain's own terms; null when the domain reports none. */
 	outcome: z.record(z.string(), z.unknown()).nullable(),
 });
 export type CaseResult = z.infer<typeof resultSchema>;

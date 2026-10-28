@@ -54,9 +54,9 @@ typescript:
     - from: examples/chess
       allow:
         - examples/chess
-    - from: examples/legal-judge
+    - from: examples/rubric-judge
       allow:
-        - examples/legal-judge
+        - examples/rubric-judge
 rules:
   ts.mutation-required:
     disabled: true

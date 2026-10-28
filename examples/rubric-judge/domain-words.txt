@@ -1,0 +1,14 @@
+# Words of the rubric-judge domain, which switch and the viewer must not use. switch's word test reads this file.
+legal
+lawyer
+judge
+rubric
+criterion
+evidence
+verdict
+grader
+qualifier
+ingest
+docx
+pdf
+tracked

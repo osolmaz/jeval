@@ -77,7 +77,7 @@ describe("switch's sources", () => {
 		const lists = await exampleWords();
 		for (const [name, words] of Object.entries(lists)) expect(words.length, name).toBeGreaterThan(5);
 		const words = await domainWords();
-		for (const name of ["chessPart", "toPgn", "legalCase", "judgeDefinition", "rubricItems", "chess_board"]) {
+		for (const name of ["chessPart", "toPgn", "judgeCase", "judgeDefinition", "rubricItems", "chess_board"]) {
 			expect(words.test(wordsOf(name))).toBe(true);
 		}
 		for (const name of ["keyboard", "removeEventListener", "criteria", "labels", "checkSquare"]) {

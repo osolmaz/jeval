@@ -32,7 +32,7 @@ budget that fits the model's window, asks for a smaller view when a request is s
 every state, which can be replayed or forked. What goes to the model and comes back follows the classifier interface of
 the [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) library, so any classifier model that pi-ai lists can
 decide; [docs/DECISION_MODEL_API.md](docs/DECISION_MODEL_API.md) explains these APIs. Two example harnesses in [`examples/`](examples) use switch
-the way another project would: `legal-judge`, which grades answers to legal tasks against a rubric, and `chess`. The
+the way another project would: `rubric-judge`, which grades answers to tasks against a rubric, and `chess`. The
 same loop fits any task where a model should look around before it decides, such as routing a support ticket after
 reading its logs or deciding whether a report needs a person.
 
@@ -85,8 +85,8 @@ To work on switch itself, clone it and run `pnpm install`.
 Each example is a package of its own in `examples/`, with a README that says what it does, what else it needs
 installed and how to run it. Its program is `src/main.ts`, which runs from the repository root.
 
-- [Legal judge](examples/legal-judge/README.md) (`legal-judge`) grades a saved answer to a legal task against the
-  task's rubric.
+- [Rubric judge](examples/rubric-judge/README.md) (`rubric-judge`) grades a saved answer to a task against the task's
+  rubric.
 - [Chess](examples/chess/README.md) (`chess`) plays a game of chess against an opponent that picks random legal
   moves, against Stockfish, or against itself.
 
@@ -238,7 +238,7 @@ export function triageSetup(): Promise<Runner> {
 ```
 
 `commandLine` turns the setup into the harness's program, with switch's `run` and `replay` commands. It is a
-[Commander](https://github.com/tj/commander.js) program, so the harness can add its own commands, as `legal-judge`
+[Commander](https://github.com/tj/commander.js) program, so the harness can add its own commands, as `rubric-judge`
 adds `ingest`, `score` and `compare`, and both examples add the viewer's `view`:
 
 ```ts
@@ -251,11 +251,11 @@ await commandLine({ triage: { setup: triageSetup } })
 ```
 
 Each domain of a harness is a `DomainSetup`: its setup function, and the flags of its own, which `run` and `replay`
-then take. `setup` gets their values by name. For example, `legal-judge` declares
+then take. `setup` gets their values by name. For example, `rubric-judge` declares
 `flags: [{ flag: "--judge <file>", description: "…" }]`, and its setup reads the judge file from `flags["judge"]`. A
 harness with more than one domain takes `--domain` to pick one. The model's API key comes from the environment
 variable that `--api-key-env` names, or pi-ai finds the provider's own, such as `TYPESAFE_API_KEY`.
-[`examples/legal-judge/`](examples/legal-judge) and [`examples/chess/`](examples/chess) are complete harnesses, and
+[`examples/rubric-judge/`](examples/rubric-judge) and [`examples/chess/`](examples/chess) are complete harnesses, and
 [docs/MATH.md](docs/MATH.md) explains the loop in symbols.
 
 ## License

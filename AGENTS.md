@@ -21,7 +21,7 @@
   view, what the model reads. "State" means only that state; the JSON that the model reads is the view's
   `decisionState`.
 - Do not use their old names: world, history, observation, menu, kind, workspace, log, entry for a step, option and
-  action. Use judge only inside legal-judge, for its own judge files. "Entry" still means one line of a trace, and
+  action. Use judge only inside rubric-judge, for its own judge files. "Entry" still means one line of a trace, and
   "options" still means a settings object, such as `RunOptions`. The viewer and its `view` command show a run in the
   browser; they are not the view that the model reads. Do not use switch's terms for other things in a domain either,
   such as "answer" for an engine's reply.
@@ -85,11 +85,11 @@
 - A domain's choice function reads only the state and the case's fixed data. In a run, only `load`, the initial state,
   the transition and the view function's reads of the case's own files read files or start programs. The rest of the
   file and process work stays in the domain's setup and harness: its `ingest/` folder, `load.ts`, `setup.ts`,
-  `viewer.ts`, the reading of its definition file, and its own commands, such as legal-judge's scoring. A state
+  `viewer.ts`, the reading of its definition file, and its own commands, such as rubric-judge's scoring. A state
   machine may hold a handle to a program outside, such as the chess engine that `load.ts` starts: a replay takes each
   recorded state and runs no transition again.
 - Each domain's `setup.ts` exports the function that sets the domain up: it loads case folders and reports a case. A
-  domain that needs input from the command line, such as legal-judge's judge file, declares its own `flags` in its
+  domain that needs input from the command line, such as rubric-judge's judge file, declares its own `flags` in its
   `DomainSetup`, and `setup` gets their values. switch's commands have no flag of any one domain. The example's
   `src/main.ts` passes the domain to `commandLine`, and adds the viewer's `viewCommand`.
 - Each example lists its own words in `domain-words.txt`, one a line. `tests/no-domain.test.ts` reads every example's

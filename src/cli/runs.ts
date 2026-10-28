@@ -19,7 +19,7 @@ export type CaseResult = z.infer<typeof resultSchema>;
 
 /**
  * What `switch run` writes as `run.json`: what ran, with which definition and model, on which code, from which earlier
- * run's steps if any, and at the end its totals.
+ * run's states if any, and at the end its totals.
  */
 export const runRecordSchema = z.object({
 	domain: z.string(),
@@ -29,7 +29,7 @@ export const runRecordSchema = z.object({
 	limits: z.object({ steps: z.number().int(), choices: z.number().int(), windowShare: z.number() }),
 	switch: z.object({ version: z.string(), commit: z.string().nullable(), changed: z.boolean().nullable() }),
 	set: z.object({ name: z.string(), file: z.string() }).nullable(),
-	stepsFrom: z.string().nullable(),
+	stateFrom: z.string().nullable(),
 	started: z.string(),
 	finished: z.string().nullable(),
 	totals: z

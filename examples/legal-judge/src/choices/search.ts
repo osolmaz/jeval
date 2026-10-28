@@ -1,7 +1,7 @@
-import { choiceKind } from "@osolmaz/switch";
-import type { CaseFile } from "../case.ts";
+import { choiceType } from "@osolmaz/switch";
+import type { CaseFile, LegalCase } from "../case.ts";
+import { found, type LegalState, LIMITS, withEvidence } from "../state.ts";
 import type { Term } from "../terms.ts";
-import { LIMITS, type World } from "../world.ts";
 
 const choiceText = (term: Term): string => {
 	const from = term.items.length > 0 ? term.items.join(", ") : "the answer";
@@ -31,25 +31,26 @@ export function searchFiles(files: readonly CaseFile[], term: string): string {
 	return hits.length > 0 ? hits.join("\n") : "Not found in any file.";
 }
 
-/** Search one term from the rubric, or a figure or clause reference the answer cites. */
-export const search = choiceKind<World, Term>({
-	name: "search",
-	menu(world, history) {
-		const done = new Set(history.map((step) => step.key));
-		return world.terms
-			.filter((term) => !done.has(`search:${term.term.toLowerCase()}`))
-			.slice(0, LIMITS.searchChoices)
-			.map((term) => ({
-				key: term.term.toLowerCase(),
-				text: choiceText(term),
-				arg: term,
-				priority: 1,
-				// The rubric items the term comes from, for tools that read the trace.
-				data: { informs: [...term.items] },
-			}));
-	},
-	run: (world, term) => ({
-		source: `search for “${term.term}”`,
-		text: searchFiles(world.case.files, term.term),
-	}),
-});
+/** Search one term from the rubric, or a figure or clause reference the answer cites, that was not searched yet. */
+export const search = (legalCase: LegalCase, terms: readonly Term[]) =>
+	choiceType<LegalState, Term>({
+		type: "search",
+		choices: (state) =>
+			terms
+				.filter((term) => !found(state, `search:${term.term.toLowerCase()}`))
+				.slice(0, LIMITS.searchChoices)
+				.map((term) => ({
+					key: term.term.toLowerCase(),
+					text: choiceText(term),
+					arg: term,
+					priority: 1,
+					// The rubric items the term comes from, for tools that read the trace.
+					data: { informs: [...term.items] },
+				})),
+		transition: (state, term) =>
+			withEvidence(state, {
+				key: `search:${term.term.toLowerCase()}`,
+				source: `search for “${term.term}”`,
+				text: searchFiles(legalCase.files, term.term),
+			}),
+	});

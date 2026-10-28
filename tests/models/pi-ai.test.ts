@@ -35,7 +35,7 @@ function registry(
 }
 
 const request = {
-	state: { a: 1 },
+	json: { a: 1 },
 	images: [{ label: "page", mimeType: "image/png", data: "AAAA" }],
 	questions: [
 		{ type: "bool", id: "b", instructions: "B?", yes: "yes", no: "no" },

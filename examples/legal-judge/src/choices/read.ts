@@ -1,8 +1,9 @@
-import { choiceKind, type TypedChoice } from "@osolmaz/switch";
-import type { CaseFile } from "../case.ts";
+import { choiceType, type TypedChoice } from "@osolmaz/switch";
+import type { CaseFile, LegalCase } from "../case.ts";
 import {
 	evidenceTokens,
 	LIMITS,
+	type LegalState,
 	type Part,
 	partKey,
 	partSource,
@@ -11,8 +12,8 @@ import {
 	readable,
 	readParts,
 	unreadParts,
-	type World,
-} from "../world.ts";
+	withEvidence,
+} from "../state.ts";
 
 const describe = (file: CaseFile): string =>
 	`${file.path} (${file.kind}${file.units.length > 1 ? `, ${String(file.units.length)} parts` : ""}, ~${String(file.words)} words)`;
@@ -37,15 +38,17 @@ function fileChoices(file: CaseFile, read: ReadonlySet<number>, room: number): T
 	}));
 }
 
-/** Read a whole file when it is small, otherwise one run of its parts. */
-export const read = choiceKind<World, Part>({
-	name: "read",
-	menu(world, history) {
-		const room = LIMITS.evidenceTokens - evidenceTokens(history);
-		const done = readParts(history);
-		return world.case.files
-			.filter(readable)
-			.flatMap((file) => fileChoices(file, done.get(file.id) ?? new Set(), room));
-	},
-	run: (_, part) => ({ source: partSource(part), text: partText(part) }),
-});
+/** Read a whole file when it is small, otherwise one run of its parts that the evidence does not hold yet. */
+export const read = (legalCase: LegalCase) =>
+	choiceType<LegalState, Part>({
+		type: "read",
+		choices(state) {
+			const room = LIMITS.evidenceTokens - evidenceTokens(state);
+			const done = readParts(state);
+			return legalCase.files
+				.filter(readable)
+				.flatMap((file) => fileChoices(file, done.get(file.id) ?? new Set(), room));
+		},
+		transition: (state, part) =>
+			withEvidence(state, { key: `read:${partKey(part)}`, source: partSource(part), text: partText(part) }),
+	});

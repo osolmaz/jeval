@@ -1,6 +1,6 @@
 /** The chess part's model of a game, in the browser and in tests: no DOM here. */
 import type { Session, Story } from "@osolmaz/switch/page";
-import { type ChessStepData, chessStep } from "./data.ts";
+import { type ChessState, chessState, movesOfStep } from "./data.ts";
 
 export type Color = "w" | "b";
 export type Kind = "k" | "q" | "r" | "b" | "n" | "p";
@@ -140,22 +140,25 @@ function numbering(fen: string, back: number): { color: Color; number: number } 
 	return { color: half % 2 === 0 ? "w" : "b", number: Math.floor(half / 2) + 1 };
 }
 
-/** Every move of the game in order, from the opening and each step. */
+/** The game's initial state; null for a story without chess states. */
+export const initialOf = (story: Story): ChessState | null => chessState(story.initial);
+
+/** Every move of the game in order, from the initial state and each step. */
 export function pliesOf(story: Story): Ply[] {
-	const opening = chessStep(story.opening.at(-1)?.data);
-	if (opening === null) return [];
+	const initial = initialOf(story);
+	if (initial === null) return [];
 	const moves: Omit<Ply, "color" | "number">[] = [];
-	for (const san of opening.san) moves.push({ san, byModel: false, probability: null, moment: 0, shown: 0 });
+	for (const san of initial.san) moves.push({ san, byModel: false, probability: null, moment: 0, shown: 0 });
 	story.frames.forEach((frame, index) => {
-		const step = chessStep(frame.after?.data);
-		const chosen = frame.choices.find((choice) => choice.chosen)?.probability ?? null;
-		step?.san.forEach((san, ply) => {
+		const step = movesOfStep(chessState(frame.before), chessState(frame.after));
+		const picked = frame.choices.find((choice) => choice.picked)?.probability ?? null;
+		step.san.forEach((san, ply) => {
 			const byModel = ply === 0;
 			const moment = index + (byModel ? 1 : 2);
-			moves.push({ san, byModel, probability: byModel ? chosen : null, moment, shown: index + 2 });
+			moves.push({ san, byModel, probability: byModel ? picked : null, moment, shown: index + 2 });
 		});
 	});
-	const first = numbering(opening.fen, opening.san.length);
+	const first = numbering(initial.fen, initial.san.length);
 	return moves.map((move, index) => {
 		const half = 2 * (first.number - 1) + (first.color === "b" ? 1 : 0) + index;
 		return { ...move, color: half % 2 === 0 ? "w" : "b", number: Math.floor(half / 2) + 1 };
@@ -163,7 +166,7 @@ export function pliesOf(story: Story): Ply[] {
 }
 
 /** The score of each result, by the side the model plays: its own result, or the winner's color in self-play. */
-const RESULTS: Readonly<Record<string, Readonly<Record<ChessStepData["you"], string>>>> = {
+const RESULTS: Readonly<Record<string, Readonly<Record<ChessState["you"], string>>>> = {
 	win: { white: "1-0", black: "0-1", both: "*" },
 	loss: { white: "0-1", black: "1-0", both: "*" },
 	draw: { white: "1/2-1/2", black: "1/2-1/2", both: "1/2-1/2" },
@@ -175,11 +178,11 @@ const STANDARD = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w";
 
 /** The players of the game by color, and its start position. */
 function players(story: Story): { white: string; black: string; start: string } {
-	const opening = chessStep(story.opening.at(-1)?.data);
-	if (opening === null) return { white: story.model, black: "opponent", start: STANDARD };
-	const opponent = opening.opponent === "itself" ? story.model : (opening.opponent ?? "opponent");
-	const [white, black] = opening.you === "black" ? [opponent, story.model] : [story.model, opponent];
-	return { white, black, start: opening.start ?? STANDARD };
+	const initial = initialOf(story);
+	if (initial === null) return { white: story.model, black: "opponent", start: STANDARD };
+	const opponent = initial.opponent === "itself" ? story.model : initial.opponent;
+	const [white, black] = initial.you === "black" ? [opponent, story.model] : [story.model, opponent];
+	return { white, black, start: initial.start };
 }
 
 function pgnHeaders(story: Story, result: string): [string, string][] {
@@ -195,13 +198,13 @@ function pgnHeaders(story: Story, result: string): [string, string][] {
 
 /** The game's result in PGN: 1-0, 0-1 or 1/2-1/2, or * while it is not over. */
 function pgnResult(session: Session): string {
-	const you = chessStep(session.story.opening.at(-1)?.data)?.you ?? "white";
+	const you = initialOf(session.story)?.you ?? "white";
 	return RESULTS[String(session.outcome?.["result"])]?.[you] ?? "*";
 }
 
-/** A chess game's score once it is over, such as 1-0; null for a session without chess data or a game not over. */
+/** A chess game's score once it is over, such as 1-0; null for a session without chess states or a game not over. */
 export function scoreOf(session: Session): string | null {
-	if (chessStep(session.story.opening.at(-1)?.data) === null) return null;
+	if (initialOf(session.story) === null) return null;
 	const score = pgnResult(session);
 	return score === "*" ? null : score;
 }

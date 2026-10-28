@@ -10,7 +10,7 @@ export interface AppConfig {
 	readonly versionUrl?: string;
 	/** The page that lists the run's cases, which the header links to. */
 	readonly indexUrl?: string;
-	/** Each domain part's config by the domain's name, such as the chess pieces' images and the sound clips. */
+	/** Each domain part's config by the domain's name, such as the images it draws with. */
 	readonly parts?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 	/** Milliseconds one move glides, a decision stays on screen while playing, and between checks for news, at speed 1. */
 	readonly motion?: number;
@@ -32,7 +32,7 @@ export class App {
 	private readonly parts: Parts;
 	/** The domain's part of the page, known once the first session names the domain. */
 	private part: DomainPart = {};
-	/** Whether the stage shows the part's own drawing, not the plain text of what the model saw. */
+	/** Whether the stage shows the part's own drawing, not the state as JSON. */
 	private drawn = false;
 	private session: Session | null = null;
 	private moments: Moment[] = [];
@@ -111,7 +111,7 @@ export class App {
 		}
 		if (!this.following) this.panels();
 		else if (this.last > this.goal) this.walk(this.last);
-		// The newest step can change in place: its choice arrives after its menu.
+		// The newest step can change in place: its pick arrives after its choices.
 		else void this.go(this.last, false);
 	}
 
@@ -153,7 +153,7 @@ export class App {
 
 	/** Gives the part's end sound when the page moved onto the end of the case with the part's drawing. */
 	private reached(target: number): void {
-		if (!this.drawn || this.session === null || this.moments[target]?.kind !== "end") return;
+		if (!this.drawn || this.session === null || this.moments[target]?.type !== "end") return;
 		this.part.sound?.ended(this.session);
 	}
 
@@ -173,7 +173,7 @@ export class App {
 		}
 	}
 
-	/** Draws the current moment: the part's stage, moved there from `from`, or the plain text of what the model saw. */
+	/** Draws the current moment: the part's stage, moved there from `from`, or the state as JSON. */
 	private async draw(from: Moment | null): Promise<void> {
 		const moment = this.moments[this.index];
 		const session = this.session;
@@ -187,11 +187,11 @@ export class App {
 		this.place(moment, drawing);
 	}
 
-	/** Puts the part's drawing on the stage, or the plain text of what the model saw when there is none. */
+	/** Puts the part's drawing on the stage, or the state as JSON when there is none. */
 	private place(moment: Moment, drawing: HTMLElement | null): void {
 		if (drawing === null) {
-			const text = moment.seen?.text ?? "";
-			this.parts.stage.replaceChildren(h("div", { class: "found-card" }, text === "" ? "Nothing seen yet." : text));
+			const text = moment.state === null ? "No state yet." : JSON.stringify(moment.state, null, 2);
+			this.parts.stage.replaceChildren(h("div", { class: "found-card" }, text));
 		} else if (this.parts.stage.firstElementChild !== drawing) {
 			this.parts.stage.replaceChildren(drawing);
 		}
@@ -226,13 +226,13 @@ export class App {
 			this.following = false;
 			void this.go(target, false);
 		};
-		this.parts.moves.replaceChildren(...(this.part.steps?.list(session, this.index, open) ?? []));
+		this.parts.steps.replaceChildren(...(this.part.steps?.list(session, this.index, open) ?? []));
 		this.reveal();
 	}
 
 	/** Scrolls the steps list so that its current entry is in view. */
 	private reveal(): void {
-		const list = this.parts.moves.firstElementChild;
+		const list = this.parts.steps.firstElementChild;
 		const current = list?.querySelector<HTMLElement>(".current") ?? null;
 		if (!(list instanceof HTMLElement) || current === null) return;
 		list.scrollTop = Math.max(0, current.offsetTop - list.offsetTop - list.clientHeight / 2);
@@ -372,7 +372,7 @@ export class App {
 		if ((await response.text()) !== this.session?.version) await this.fetchSession();
 	}
 
-	/** Gives the file that the part offers, such as a chess game as PGN. */
+	/** Gives the file that the part offers. */
 	private download(): void {
 		const offer = this.part.download;
 		if (this.session === null || offer === undefined) return;

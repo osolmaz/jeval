@@ -1,34 +1,39 @@
 import { describe, expect, it } from "vitest";
 import { confidence } from "@osolmaz/switch/page";
-import { chessChoice, chessStep } from "../src/web/data.ts";
+import { chessChoice, chessState, movesOfStep } from "../src/web/data.ts";
 import { captures, pgnOf, piecesOf, play, pliesOf, samePlaces, scoreOf } from "../src/web/model.ts";
-import { picking } from "./helpers/chess.ts";
+import { picking, stateOf } from "./helpers/chess.ts";
 import { chessSession } from "./helpers/sessions.ts";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const squaresOf = (fen: string) => piecesOf(fen).map((piece) => `${piece.color}${piece.kind}${piece.square}`);
 
-describe("chess data", () => {
-	it("reads a step and a choice only when every field is there", () => {
-		const step = { you: "white", moves: [], san: [], fen: START, status: "playing", check: false };
-		expect(chessStep(step)).toEqual(step);
-		expect(chessStep({ ...step, you: "red" })).toBeNull();
-		expect(chessStep({ ...step, moves: [1] })).toBeNull();
-		expect(chessStep({ ...step, check: "no" })).toBeNull();
-		expect(chessStep(null)).toBeNull();
+describe("chess states", () => {
+	it("read a state and a choice only when every field is there", () => {
+		const state = stateOf([]);
+		expect(chessState(state)).toEqual(state);
+		expect(chessState({ ...state, you: "red" })).toBeNull();
+		expect(chessState({ ...state, moves: [1] })).toBeNull();
+		expect(chessState({ ...state, check: "no" })).toBeNull();
+		expect(chessState({ ...state, last: null })).toBeNull();
+		expect(chessState(null)).toBeNull();
 		expect(chessChoice({ from: "e2", to: "e4", san: "e4" })).toEqual({ from: "e2", to: "e4", san: "e4" });
 		expect(chessChoice({ from: "e9", to: "e4", san: "e4" })).toBeNull();
 		expect(chessChoice({ from: "e2", san: "e4" })).toBeNull();
 		expect(chessChoice("e2e4")).toBeNull();
 	});
 
-	it("is what the domain writes: the page reads every step of a game", async () => {
+	it("are what the domain writes: the page reads every state of a game and the moves of each step", async () => {
 		const session = await chessSession({ steps: 2 });
-		expect(chessStep(session.story.opening[0]?.data)).toMatchObject({
+		expect(chessState(session.story.initial)).toMatchObject({
 			you: "white",
 			opponent: "random legal moves, seed 7",
+			start: START,
 		});
-		expect(session.story.frames.map((frame) => chessStep(frame.after?.data)?.moves.length)).toEqual([2, 2]);
+		const steps = session.story.frames.map((frame) => movesOfStep(chessState(frame.before), chessState(frame.after)));
+		expect(steps.map((step) => step.lan.length)).toEqual([2, 2]);
+		expect(movesOfStep(null, stateOf(["e2e4"]))).toEqual({ lan: ["e2e4"], san: ["e4"] });
+		expect(movesOfStep(stateOf(["e2e4"]), null)).toEqual({ lan: [], san: [] });
 		expect(session.story.frames[0]?.choices.filter((choice) => chessChoice(choice.data) !== null)).toHaveLength(20);
 	});
 });
@@ -113,9 +118,9 @@ describe("the move list and the PGN", () => {
 		]);
 	});
 
-	it("has no moves without a chess opening", async () => {
+	it("has no moves without a chess state at the start", async () => {
 		const session = await chessSession({ steps: 1 });
-		expect(pliesOf({ ...session.story, opening: [] })).toEqual([]);
+		expect(pliesOf({ ...session.story, initial: null })).toEqual([]);
 	});
 
 	it("writes the game as PGN with the players, the result and a set-up position", async () => {
@@ -151,14 +156,14 @@ describe("the move list and the PGN", () => {
 	it("has no score for a game that is not over or a case that is not chess", async () => {
 		const running = await chessSession({ steps: 1, finished: false });
 		expect(scoreOf(running)).toBeNull();
-		expect(scoreOf({ ...running, story: { ...running.story, opening: [] } })).toBeNull();
+		expect(scoreOf({ ...running, story: { ...running.story, initial: null } })).toBeNull();
 		const lost = await chessSession({ side: "black", steps: 1 });
 		expect(scoreOf({ ...lost, outcome: { result: "loss" } })).toBe("1-0");
 		expect(scoreOf({ ...lost, outcome: { result: "draw" } })).toBe("1/2-1/2");
 	});
 
-	it("names the model's opponent as such when the opening says nothing about it", async () => {
+	it("names the model's opponent as such when the story has no chess state at the start", async () => {
 		const session = await chessSession({ steps: 1 });
-		expect(pgnOf({ ...session, story: { ...session.story, opening: [] } })).toContain('[Black "opponent"]');
+		expect(pgnOf({ ...session, story: { ...session.story, initial: null } })).toContain('[Black "opponent"]');
 	});
 });

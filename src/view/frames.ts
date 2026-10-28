@@ -1,45 +1,38 @@
-import type { Answer, TraceEntry } from "../core/index.ts";
+import type { Answer, JsonObject, TraceEntry } from "../core/index.ts";
 
-/** One observation as the viewer shows it. */
-export interface Seen {
-	/** Where the text came from; null when the domain names no source. */
-	readonly source: string | null;
-	readonly text: string;
-	readonly data: unknown;
-}
-
-/** One choice on a menu, with the probability the model gave it; null when the model never answered. */
+/** One choice that the model saw, with the probability it gave it; null when the model never answered. */
 export interface FrameChoice {
 	readonly key: string;
 	readonly text: string;
 	readonly probability: number | null;
-	readonly chosen: boolean;
+	readonly picked: boolean;
 	readonly data: unknown;
 }
 
-/** One step of a case: what the model had seen, the menu it chose from, its choice, and what the step found. */
+/** One step of a case: the state the model picked in, the choices it saw, its pick, and the state after it. */
 export interface Frame {
 	readonly step: number;
-	/** The latest observation before the menu: what the model chose in. */
-	readonly before: Seen | null;
+	/** The state before the pick. */
+	readonly before: JsonObject | null;
 	readonly choices: readonly FrameChoice[];
-	/** The chosen choice's key; null when the choice failed. */
-	readonly chosen: string | null;
-	/** What the chosen choice found; null after stop or a failed choice. */
-	readonly after: Seen | null;
+	/** The picked choice's key; null when the pick failed. */
+	readonly picked: string | null;
+	/** The state after the transition; null after stop or a failed pick. */
+	readonly after: JsonObject | null;
 	readonly notes: readonly string[];
 }
 
 /** A case's trace, read for viewing. */
 export interface Story {
+	/** The case's name, from the folder that holds the trace. */
 	readonly case: string;
 	readonly domain: string;
 	readonly model: string;
-	/** The observations every case starts with, made before the first choice. */
-	readonly opening: readonly Seen[];
+	/** The state before the first pick; null until the trace has it. */
+	readonly initial: JsonObject | null;
 	readonly frames: readonly Frame[];
-	/** The latest observation of the case. */
-	readonly last: Seen | null;
+	/** The latest state of the case. */
+	readonly last: JsonObject | null;
 	readonly answers: Readonly<Record<string, Answer>> | null;
 	/** Notes made outside a step, such as a failed answer. */
 	readonly notes: readonly string[];
@@ -47,54 +40,53 @@ export interface Story {
 
 interface Building {
 	step: number;
-	before: Seen | null;
+	before: JsonObject | null;
 	choices: FrameChoice[];
-	chosen: string | null;
-	after: Seen | null;
+	picked: string | null;
+	after: JsonObject | null;
 	notes: string[];
 }
 
 type Entry<T extends TraceEntry["type"]> = Extract<TraceEntry, { type: T }>;
 
-function withChoice(frame: Building, choice: Entry<"choice">): void {
-	frame.chosen = choice.key;
+function withPick(frame: Building, pick: Entry<"pick">): void {
+	frame.picked = pick.key;
 	frame.choices = frame.choices.map((offered) => ({
 		...offered,
-		probability: choice.probabilities[offered.key] ?? null,
-		chosen: offered.key === choice.key,
+		probability: pick.probabilities[offered.key] ?? null,
+		picked: offered.key === pick.key,
 	}));
 }
 
-function menuFrame(menu: Entry<"menu">, before: Seen | null): Building {
-	const choices = menu.choices.map((choice) => ({
+function choicesFrame(entry: Entry<"choices">, before: JsonObject | null): Building {
+	const choices = entry.choices.map((choice) => ({
 		key: choice.key,
 		text: choice.text,
 		probability: null,
-		chosen: false,
+		picked: false,
 		data: choice.data,
 	}));
-	return { step: menu.step, before, choices, chosen: null, after: null, notes: [] };
+	return { step: entry.step, before, choices, picked: null, after: null, notes: [] };
 }
 
 interface Reading {
-	readonly opening: Seen[];
+	initial: JsonObject | null;
 	readonly frames: Building[];
 	readonly notes: string[];
-	last: Seen | null;
+	last: JsonObject | null;
 	answers: Readonly<Record<string, Answer>> | null;
 }
 
-function observed(reading: Reading, entry: Entry<"observation">): void {
-	const seen = { source: entry.source ?? null, text: entry.text, data: entry.data };
+function stated(reading: Reading, entry: Entry<"state">): void {
 	const frame = reading.frames.at(-1);
-	if (frame === undefined || entry.step === 0) reading.opening.push(seen);
-	else frame.after = seen;
-	reading.last = seen;
+	if (entry.step === 0) reading.initial = entry.state;
+	else if (frame !== undefined) frame.after = entry.state;
+	reading.last = entry.state;
 }
 
-function chose(reading: Reading, entry: Entry<"choice">): void {
+function picked(reading: Reading, entry: Entry<"pick">): void {
 	const frame = reading.frames.at(-1);
-	if (frame !== undefined) withChoice(frame, entry);
+	if (frame !== undefined) withPick(frame, entry);
 }
 
 function noted(reading: Reading, entry: Entry<"note">): void {
@@ -103,14 +95,14 @@ function noted(reading: Reading, entry: Entry<"note">): void {
 
 function read(reading: Reading, entry: TraceEntry): void {
 	switch (entry.type) {
-		case "observation":
-			observed(reading, entry);
+		case "state":
+			stated(reading, entry);
 			return;
-		case "menu":
-			reading.frames.push(menuFrame(entry, reading.last));
+		case "choices":
+			reading.frames.push(choicesFrame(entry, reading.last));
 			return;
-		case "choice":
-			chose(reading, entry);
+		case "pick":
+			picked(reading, entry);
 			return;
 		case "note":
 			noted(reading, entry);
@@ -118,18 +110,18 @@ function read(reading: Reading, entry: TraceEntry): void {
 		case "answers":
 			reading.answers = entry.answers;
 			return;
-		case "case":
-		case "asked":
+		case "start":
+		case "stage":
 			return;
 	}
 }
 
-/** Reads a case's trace into its opening, one frame per step, and its answers. */
-export function storyOf(entries: readonly TraceEntry[]): Story {
+/** Reads the trace of the case named `name` into its initial state, one frame per step, and its answers. */
+export function storyOf(entries: readonly TraceEntry[], name: string): Story {
 	const head = entries[0];
-	if (head?.type !== "case") throw new Error("a trace starts with its case entry");
-	const reading: Reading = { opening: [], frames: [], notes: [], last: null, answers: null };
+	if (head?.type !== "start") throw new Error("a trace starts with its start entry");
+	const reading: Reading = { initial: null, frames: [], notes: [], last: null, answers: null };
 	for (const entry of entries) read(reading, entry);
-	const { opening, frames, notes, last, answers } = reading;
-	return { case: head.case, domain: head.domain, model: head.model, opening, frames, last, answers, notes };
+	const { initial, frames, notes, last, answers } = reading;
+	return { case: name, domain: head.domain, model: head.model, initial, frames, last, answers, notes };
 }

@@ -9,7 +9,7 @@
 	"coverageAnalysis": "perTest",
 	"checkers": ["typescript"],
 	"tsconfigFile": "tsconfig.json",
-	"mutate": ["src/core/menu.ts", "src/core/loop.ts"],
+	"mutate": ["src/core/choices.ts", "src/core/loop.ts"],
 	"thresholds": {
 		"high": 80,
 		"low": 60,

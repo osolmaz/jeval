@@ -1,39 +1,43 @@
 import { describe, expect, it } from "vitest";
 import {
-	choiceKind,
-	type Domain,
-	type Image,
 	limitsOf,
 	parseTrace,
 	ReplayError,
 	replayOf,
 	run,
+	type StateMachine,
+	startOf,
 	STOP_KEY,
 	type TraceEntry,
 } from "../../src/core/index.ts";
-import { answering, type Facts, factsDomain, fakeDecider } from "../helpers/fakes.ts";
+import { answering, type Facts, factsMachine, type FactsState, factsTexts, fakeDecider } from "../helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact b", c: "fact c" } };
-/** The same facts, found other ones now: a replay that ran the choices again would see the difference. */
-const changed: Facts = { facts: { a: "now a", b: "now b", c: "now c" } };
+
+/** The same facts with a transition that fails: a replay that ran a transition again would fail. */
+const unrunnable: StateMachine<FactsState> = {
+	...factsMachine(facts),
+	initial: () => Promise.reject(new Error("the initial state was made again")),
+	transition: () => Promise.reject(new Error("a transition ran again")),
+};
 
 async function recorded(): Promise<TraceEntry[]> {
 	let calls = 0;
 	const decider = fakeDecider(answering(0.7, (labels) => (calls++ < 2 ? (labels[1] ?? STOP_KEY) : STOP_KEY)));
-	return (await run(factsDomain, facts, decider, { case: "c" })).trace.entries;
+	return (await run(factsTexts, factsMachine(facts), decider)).trace.entries;
 }
 
-const choices = (list: readonly TraceEntry[]) => list.flatMap((entry) => (entry.type === "choice" ? [entry.key] : []));
-const texts = (list: readonly TraceEntry[]) =>
-	list.flatMap((entry) => (entry.type === "observation" ? [entry.text] : []));
+const picks = (list: readonly TraceEntry[]) => list.flatMap((entry) => (entry.type === "pick" ? [entry.key] : []));
+const states = (list: readonly TraceEntry[]) => list.flatMap((entry) => (entry.type === "state" ? [entry.state] : []));
 
 describe("replayOf", () => {
-	it("repeats the recorded steps with their recorded observations, and the answers, without running a choice", async () => {
+	it("repeats the recorded picks with their recorded states, and the answers, and runs no transition", async () => {
 		const entries = await recorded();
 		const { decider, replay } = replayOf(entries);
-		const again = await run(factsDomain, changed, decider, { case: "c", replay });
-		expect(choices(again.trace.entries)).toEqual(choices(entries));
-		expect(texts(again.trace.entries)).toEqual(["fact b", "fact c"]);
+		const again = await run(factsTexts, unrunnable, decider, { replay });
+		expect(picks(again.trace.entries)).toEqual(picks(entries));
+		expect(states(again.trace.entries)).toEqual(states(entries));
+		expect(again.state).toEqual({ looked: ["b", "c"], found: ["fact b", "fact c"] });
 		expect(again.answers).toEqual({
 			a: { type: "bool", probability: 0.7 },
 			b: { type: "bool", probability: 0.7 },
@@ -41,138 +45,60 @@ describe("replayOf", () => {
 		});
 	});
 
-	it("forks: repeats some steps and their observations, then lets another model decide, and runs its steps", async () => {
+	it("forks: takes the state after some steps, then lets another model pick, and runs its transitions", async () => {
 		const entries = await recorded();
 		let calls = 0;
 		const then = fakeDecider(answering(0.2, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
 		const { decider, replay } = replayOf(entries, { steps: 1, then });
-		const forked = await run(factsDomain, changed, decider, { case: "c", replay });
+		const forked = await run(factsTexts, factsMachine(facts), decider, { replay });
 		expect(forked.steps).toBe(3);
-		expect(texts(forked.trace.entries)).toEqual(["fact b", "now a"]);
+		expect(forked.state).toEqual({ looked: ["b", "a"], found: ["fact b", "fact a"] });
 		expect(forked.answers?.["a"]).toEqual({ type: "bool", probability: 0.2 });
 		expect(forked.trace.entries[0]).toMatchObject({ model: "fake/decider" });
 	});
 
-	it("stops once the recorded steps run out", async () => {
+	it("stops once the recorded picks run out", async () => {
 		const entries = await recorded();
-		const shortened = entries.filter((entry) => !(entry.type === "choice" && entry.step === 3));
+		const shortened = entries.filter((entry) => !(entry.type === "pick" && entry.step === 3));
 		const { decider, replay } = replayOf(shortened);
-		expect((await run(factsDomain, facts, decider, { case: "c", replay })).steps).toBe(3);
+		expect((await run(factsTexts, unrunnable, decider, { replay })).steps).toBe(3);
 	});
 
 	it("refuses a trace that does not match the run", async () => {
 		const entries = await recorded();
-		const again = (list: readonly TraceEntry[], world: Facts = facts) => {
+		const again = (list: readonly TraceEntry[], machine: StateMachine<FactsState> = unrunnable) => {
 			const { decider, replay } = replayOf(list);
-			return run(factsDomain, world, decider, { case: "c", replay });
+			return run(factsTexts, machine, decider, { replay });
 		};
 		expect(() => replayOf(entries.slice(1))).toThrow(ReplayError);
-		await expect(again(entries, { facts: { z: "other" } })).rejects.toThrow(/not on the menu/);
-		await expect(
-			again(entries.filter((entry) => entry.type !== "answers" && entry.type !== "asked")),
-		).rejects.toThrow(/no answers/);
-		await expect(again(entries.filter((entry) => entry.type !== "menu"))).rejects.toThrow(/fewer choices/);
-		const missing = entries.map((entry) =>
-			entry.type === "answers" || entry.type === "asked" ? { ...entry, answers: {} } : entry,
+		await expect(again(entries, factsMachine({ facts: { z: "other" } }))).rejects.toThrow(
+			/not among the choices any more/,
 		);
+		await expect(again(entries.filter((entry) => entry.type !== "answers"))).rejects.toThrow(/no answers/);
+		await expect(again(entries.filter((entry) => entry.type !== "choices"))).rejects.toThrow(/fewer picks/);
+		const missing = entries.map((entry) => (entry.type === "answers" ? { ...entry, answers: {} } : entry));
 		await expect(again(missing)).rejects.toThrow(/no answer for a/);
 	});
 
-	it("refuses a step whose recorded observation is missing or belongs to another choice", async () => {
+	it("refuses a trace whose states skip a step or end too early", async () => {
 		const entries = await recorded();
-		const again = (list: readonly TraceEntry[]) => {
-			const { decider, replay } = replayOf(list);
-			return run(factsDomain, facts, decider, { case: "c", replay });
-		};
-		await expect(again(entries.filter((entry) => entry.type !== "observation"))).rejects.toThrow(
-			"step 1 took look-up:b; the trace took no step",
+		expect(() => replayOf(entries.filter((entry) => !(entry.type === "state" && entry.step === 1)))).toThrow(
+			"the trace's states skip to step 2",
 		);
-		const moved = entries.map((entry) => (entry.type === "observation" ? { ...entry, key: "look-up:a" } : entry));
-		await expect(again(moved)).rejects.toThrow("step 1 took look-up:b; the trace took look-up:a");
-	});
-});
-
-/** A domain whose start and whose one kind of choice show a picture: a trace keeps only the pictures' labels. */
-interface Pictures {
-	readonly label: string;
-	/** How many pictures the start shows. */
-	readonly covers: number;
-}
-
-const picture = (label: string): Image => ({ label, mimeType: "image/png", data: "AA==" });
-let looks = 0;
-
-const look = choiceKind<Pictures, null>({
-	name: "look",
-	menu: () => [{ key: "picture", text: "Look at the picture", arg: null }],
-	run: (world) => {
-		looks += 1;
-		return { source: "picture", text: `[image: ${world.label}]`, images: [picture(world.label)] };
-	},
-});
-
-const picturesDomain: Domain<Pictures> = {
-	name: "pictures",
-	version: "1.0.0",
-	menu: look,
-	stop: "Stop",
-	instructions: "Look or stop.",
-	questions: () => [],
-	start: (world) =>
-		Promise.resolve(
-			Array.from({ length: world.covers }, (_, index) => ({
-				kind: "start",
-				key: `cover:${String(index)}`,
-				observation: { source: "cover", text: "[image: cover]", images: [picture(`cover ${world.label}`)] },
-			})),
-		),
-	view: () => ({ state: {}, images: [], omitted: [] }),
-};
-
-async function lookedAt(world: Pictures): Promise<TraceEntry[]> {
-	let calls = 0;
-	const decider = fakeDecider(answering(0.5, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
-	return (await run(picturesDomain, world, decider, { case: "p" })).trace.entries;
-}
-
-describe("replayOf with images", () => {
-	it("runs the start and a step again for their images, which must be the same as recorded", async () => {
-		const world = { label: "x", covers: 1 };
-		const entries = await lookedAt(world);
-		looks = 0;
-		const replaying = (pictures: Pictures) => {
-			const { decider, replay } = replayOf(entries);
-			return run(picturesDomain, pictures, decider, { case: "p", replay });
-		};
-		const again = await replaying(world);
-		expect(looks).toBe(1);
-		expect(again.history.map((step) => step.observation.images?.map((image) => image.label))).toEqual([
-			["cover x"],
-			["x"],
-		]);
-		await expect(replaying({ label: "y", covers: 1 })).rejects.toThrow(
-			"cover:0 found something other than what the trace recorded",
-		);
-		await expect(replaying({ label: "x", covers: 2 })).rejects.toThrow(
-			"the start found other observations than the trace",
-		);
-	});
-
-	it("refuses a step with images that finds something else when it runs again", async () => {
-		const entries = await lookedAt({ label: "x", covers: 0 });
-		const { decider, replay } = replayOf(entries);
-		await expect(run(picturesDomain, { label: "y", covers: 0 }, decider, { case: "p", replay })).rejects.toThrow(
-			"look:picture found something other than what the trace recorded",
+		const { decider, replay } = replayOf(entries.filter((entry) => !(entry.type === "state" && entry.step === 2)));
+		await expect(run(factsTexts, unrunnable, decider, { replay })).rejects.toThrow(
+			"the trace has no state after step 2",
 		);
 	});
 });
 
 describe("parseTrace", () => {
-	it("reads the JSON Lines it was written as, and the limits of its case", async () => {
+	it("reads the JSON Lines it was written as, its start and its limits", async () => {
 		const entries = await recorded();
 		const text = entries.map((entry) => JSON.stringify(entry)).join("\n");
 		expect(parseTrace(`${text}\n\n`)).toEqual(entries);
+		expect(startOf(entries)).toMatchObject({ domain: "facts", version: "1.0.0", model: "fake/decider" });
 		expect(limitsOf(entries)).toEqual({ steps: 8, choices: 30, windowShare: 0.9 });
-		expect(() => limitsOf(entries.slice(1))).toThrow(/case entry/);
+		expect(() => limitsOf(entries.slice(1))).toThrow(/start entry/);
 	});
 });

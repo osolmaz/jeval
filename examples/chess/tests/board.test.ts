@@ -49,29 +49,29 @@ describe("the board", () => {
 		expect(cells[63]?.textContent).toBe("a");
 	});
 
-	it("marks the last move and a king in check, and draws an arrow per option with its label", () => {
+	it("marks the last move and a king in check, and draws an arrow per choice with its label", () => {
 		const board = createBoard(document, {});
 		const arrows = [
-			{ from: "e2", to: "e4", probability: 0.7, chosen: true, label: "e4 70.0%" },
-			{ from: "d2", to: "d4", probability: 0.2, chosen: false, label: "d4 20.0%" },
+			{ from: "e2", to: "e4", probability: 0.7, picked: true, label: "e4 70.0%" },
+			{ from: "d2", to: "d4", probability: 0.2, picked: false, label: "d4 20.0%" },
 		];
 		board.show(at(START, { last: ["e7", "e5"], check: "e1", arrows }));
 		expect(board.element.querySelectorAll(".mark.last")).toHaveLength(2);
 		expect(board.element.querySelectorAll(".mark.check")).toHaveLength(1);
 		expect(Array.from(board.element.querySelectorAll("polygon")).map((shape) => shape.getAttribute("class"))).toEqual(
-			["arrow chosen", "arrow"],
+			["arrow picked", "arrow"],
 		);
 		expect(board.element.querySelector("polygon title")?.textContent).toBe("e4 70.0%");
-		expect(board.element.getAttribute("aria-label")).toBe("Chess board; the model chose e4 70.0%");
+		expect(board.element.getAttribute("aria-label")).toBe("Chess board; the model picked e4 70.0%");
 	});
 
 	it("draws an arrow wider for a likelier move, ending on its target square", () => {
-		const wide = arrowPoints({ from: "e2", to: "e4", probability: 1, chosen: true, label: "" }, false).split(" ");
-		const thin = arrowPoints({ from: "e2", to: "e4", probability: 0, chosen: false, label: "" }, false).split(" ");
+		const wide = arrowPoints({ from: "e2", to: "e4", probability: 1, picked: true, label: "" }, false).split(" ");
+		const thin = arrowPoints({ from: "e2", to: "e4", probability: 0, picked: false, label: "" }, false).split(" ");
 		const width = (points: string[]) => Math.abs(Number(points[0]?.split(",")[0]) - Number(points[6]?.split(",")[0]));
 		expect(width(wide)).toBeGreaterThan(width(thin));
 		expect(wide[3]).toBe("4.500,4.500");
-		expect(arrowPoints({ from: "e2", to: "e4", probability: 0, chosen: false, label: "" }, true).split(" ")[3]).toBe(
+		expect(arrowPoints({ from: "e2", to: "e4", probability: 0, picked: false, label: "" }, true).split(" ")[3]).toBe(
 			"3.500,3.500",
 		);
 	});

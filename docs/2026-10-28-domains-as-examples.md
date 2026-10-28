@@ -319,6 +319,8 @@ interface ChessState {
   readonly you: "white" | "black" | "both";
   /** The opponent's name, for the viewer. */
   readonly opponent: string;
+  /** The position the game started from, in FEN. */
+  readonly start: string;
   /** Every move so far, of both sides: in long algebraic notation, and in SAN. */
   readonly moves: readonly string[];
   readonly san: readonly string[];
@@ -330,8 +332,9 @@ interface ChessState {
 }
 ```
 
-- `you` and `opponent` never change. They are in the state because the viewer draws them. The start position, the
-  seed, the move time and the engine stay inside the functions that `load` makes.
+- `you`, `opponent` and `start` never change. They are in the state because the viewer draws them: the players' bars,
+  and the move numbers and the set-up position of the PGN. The seed, the move time and the engine stay inside the
+  functions that `load` makes.
 - `initial()` plays the opponent's first move when the opponent is to move.
 - `choices` gives the legal moves of the board that the start position and `moves` make, so chess.js still sees a
   repeated position. The keys stay `move:<plies>:<lan>`.
@@ -384,10 +387,11 @@ interface LegalState {
   and the view's image reads are the only parts of a run that read files or start programs, and that the choice
   function reads only the state and the case's fixed data.
 - The comments and help texts in `src/` that name an example get general words.
-- `docs/2026-10-28-the-math-behind-switch.md` becomes an abstract explainer. It has one state Sₜ, S₀, the choice
-  function, the model's pick and the transition function, and then what switch does to the choices, one pick, a run,
-  the replay and the window, with symbols only. It names no model, no example's numbers, no file path and no flag.
-  Its two legal-judge sections, on verdicts and on scores, move to the legal-judge README.
+- `docs/2026-10-28-the-math-behind-switch.md` becomes an abstract explainer. It starts with no domain at all: one
+  state Sₜ, S₀, the choice function, the model's pick and the transition function, and then what switch does to the
+  choices, one pick, a run, the replay and the window, with symbols only. It names no model, no file path and no flag.
+  Where an example helps, it uses chess, and it uses no legal-judge example. Its two legal-judge sections, on verdicts
+  and on scores, move to the legal-judge README.
 
 ## Tests
 
@@ -423,14 +427,14 @@ interface LegalState {
 
 This PR replaces the old contract in place. switch keeps no reader for the old trace entries.
 
-| Before                   | What to do                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A trace                  | Turn it into states with the example's `jq` command, which this PR adds to each example's README after a try on a copy of a run. The command also turns the `case` entry into a `start` entry without the case, renames `asked` to `stage`, and drops an `asked` entry named "answers". The legal-judge command also reads the case's `case.json`, to name the file of each image from its label. |
-| A `run.json`             | Rename `stepsFrom` to `stateFrom` with `jq '.stateFrom = .stepsFrom \| del(.stepsFrom)' run.json > run.renamed.json`.                                                                                                                                                                                                                                                                             |
-| A `result.json`          | Nothing.                                                                                                                                                                                                                                                                                                                                                                                          |
-| A `requests.jsonl`       | Nothing. Only the run totals read it, and they read only the usage.                                                                                                                                                                                                                                                                                                                               |
-| `run --steps-from <run>` | `run --state-from <run>`                                                                                                                                                                                                                                                                                                                                                                          |
-| A domain of your own     | Merge its setup into one `Domain`, and give a JSON state type and a `load` that makes a `StateMachine` for each case folder. Move the code of each choice's `run` into the transition, and the world into the functions. Use `type` on choices and `json` on views.                                                                                                                               |
+| Before                   | What to do                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A trace                  | Turn it into states with the example's `jq` command, which this PR adds to each example's README after a try on a copy of a run. The command also turns the `case` entry into a `start` entry without the case, renames `asked` to `stage`, and drops an `asked` entry named "answers". The legal-judge command also reads the case's `case.json`, to name the file of each image from the key of the look. |
+| A `run.json`             | Rename `stepsFrom` to `stateFrom` with `jq '.stateFrom = .stepsFrom \| del(.stepsFrom)' run.json > run.renamed.json`.                                                                                                                                                                                                                                                                                       |
+| A `result.json`          | Nothing.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| A `requests.jsonl`       | Nothing. Only the run totals read it, and they read only the usage.                                                                                                                                                                                                                                                                                                                                         |
+| `run --steps-from <run>` | `run --state-from <run>`                                                                                                                                                                                                                                                                                                                                                                                    |
+| A domain of your own     | Merge its setup into one `Domain`, and give a JSON state type and a `load` that makes a `StateMachine` for each case folder. Move the code of each choice's `run` into the transition, and the world into the functions. Use `type` on choices and `json` on views.                                                                                                                                         |
 
 A run from before #26 first needs the renames of #26. These commands write new files, and you replace the old files
 after a check:
@@ -447,6 +451,36 @@ jq '.answers |= (if . == null then . else map_values(.type = .kind | del(.kind))
 
 jq '.limits |= (.choices = .options | del(.options)) | .stepsFrom = .evidenceFrom | del(.evidenceFrom)' run.json > run.renamed.json
 ```
+
+## Where the build differs from the plan
+
+The fourth PR follows the plan above, with these differences and additions:
+
+- **Chess state.** It also holds `start`, the start position, because the viewer numbers the moves and writes the
+  PGN's set-up position from it.
+- **Loop.** `run(texts, machine, decider, options)` takes the four texts that every case shares as `DomainTexts`, and
+  the case's state machine. `RunOptions` has no `case`.
+- **Choices.** `Choice.priority` is optional, 0 by default. `offerChoices` also refuses a choice with the key `stop`.
+  `choiceType` gives a function from a state to its choices, each of which carries the transition of its type, and
+  `joinTypes` joins such functions into one choice function and one transition function.
+- **Errors.** `SetupError` becomes `DefinitionError`, because `Setup` goes and the error means a definition that the
+  domain does not take.
+- **Viewer.** The story has `initial` in place of `opening`. A frame and each of its choices have `picked` in place of
+  `chosen`, and a moment has `type` and `state` in place of `kind` and `seen`. Without a domain part, the stage shows
+  the state as JSON, and the side panel lists "What changed" with `changesOf`. The page's own classes `menu`,
+  `chosen`, `history`, `player-slot` and `moves` become `choices`, `picked`, `timeline`, `bar-slot` and `steps`.
+  `ViewerPage.styles` holds the parts' styles, which `partStyles` reads, and the page entry point exports the `Json`
+  and `JsonObject` types for a part's state type.
+- **Legal-judge.** `world.ts` becomes `state.ts`. A `CaseFolder`, the case and a way to load its images, replaces the
+  world inside the functions, and `legalMachine(definition, folder)` makes a case's state machine. The initial state is
+  made without reading a file. An answer with more images than the case may see now gets exactly that many: before,
+  a negative slice dropped images from the end.
+- **Chess.** `CHESS` holds the texts, `chessMachine(game)` makes a game's state machine, and `movesIn` and `play` are
+  its choice function and the body of its transition.
+- **Checks.** A test checked before the merge that the requests of a chess game and of a legal-judge case with
+  images are byte for byte the same as on `main`. The `jq` commands were tried on copies of three earlier chess runs
+  and on traces that `main` wrote for test cases; the converted traces equal the traces that the new code writes,
+  except for the domain's version.
 
 ## Out of scope
 

@@ -1,7 +1,7 @@
 import type { Chess } from "chess.js";
-import type { JsonObject, Step, View } from "@osolmaz/switch";
-import type { ChessCase } from "./case.ts";
-import { colorOf, movesOf, nameOf, replay } from "./game.ts";
+import type { JsonObject, View } from "@osolmaz/switch";
+import { boardOf, colorOf, nameOf } from "./game.ts";
+import type { ChessState } from "./web/data.ts";
 
 const LEGEND =
 	"Capital letters are white pieces and small letters black pieces: K king, Q queen, R rook, B bishop, N knight, P pawn. A dot is an empty square.";
@@ -42,12 +42,12 @@ export function numbered(start: string, san: readonly string[]): string[] {
 	});
 }
 
-/** The position the model chooses a move in, with as many earlier moves as fit `tokens`. */
-export function chessView(game: ChessCase, history: readonly Step[], tokens: number): View {
-	const board = replay(game.start, movesOf(history));
+/** The position the model picks a move in, with as many earlier moves as fit `tokens`. */
+export function chessView(state: ChessState, tokens: number): View {
+	const board = boardOf(state);
 	// In self-play the model plays the side to move.
-	const mine = game.opponent === "self" ? board.turn() : colorOf(game.side);
-	const moves = numbered(game.start, board.history());
+	const mine = state.you === "both" ? board.turn() : colorOf(state.you);
+	const moves = numbered(state.start, board.history());
 	const base: JsonObject = {
 		you: nameOf(mine),
 		to_move: board.turn() === "w" ? "white" : "black",
@@ -56,15 +56,15 @@ export function chessView(game: ChessCase, history: readonly Step[], tokens: num
 		your_pieces: pieces(board, mine),
 		opponent_pieces: pieces(board, mine === "w" ? "b" : "w"),
 		in_check: board.isCheck(),
-		last_step: history.at(-1)?.observation.text ?? "",
+		last_step: state.last,
 		fen: board.fen(),
 	};
 	const whole = { ...base, moves: moves.join(" ") };
 	if (JSON.stringify(whole).length / CHARS_PER_TOKEN <= tokens || moves.length <= RECENT) {
-		return { state: whole, images: [], omitted: [] };
+		return { json: whole, images: [], omitted: [] };
 	}
 	return {
-		state: { ...base, moves: `… ${moves.slice(-RECENT).join(" ")}` },
+		json: { ...base, moves: `… ${moves.slice(-RECENT).join(" ")}` },
 		images: [],
 		omitted: [`the first ${String(moves.length - RECENT)} moves of the game`],
 	};

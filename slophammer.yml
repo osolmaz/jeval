@@ -22,7 +22,7 @@ typescript:
       min_tokens: 100
   mutation:
     targets:
-      - src/core/menu.ts
+      - src/core/choices.ts
       - src/core/loop.ts
   dependency_boundaries:
     - from: src/core

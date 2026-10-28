@@ -1,12 +1,12 @@
 /// <reference lib="dom" />
 import { type Piece, piecesOf, play, samePlaces } from "./model.ts";
 
-/** An arrow for one choice on the menu: as wide as its probability, dark when the model chose it. */
+/** An arrow for one move among the choices: as wide as its probability, dark when the model picked it. */
 export interface Arrow {
 	readonly from: string;
 	readonly to: string;
 	readonly probability: number;
-	readonly chosen: boolean;
+	readonly picked: boolean;
 	readonly label: string;
 }
 
@@ -192,17 +192,17 @@ class ChessBoard implements BoardView {
 			...position.arrows.map((arrow) => {
 				const shape = this.document.createElementNS(SVG, "polygon");
 				shape.setAttribute("points", arrowPoints(arrow, this.flipped));
-				shape.setAttribute("class", arrow.chosen ? "arrow chosen" : "arrow");
+				shape.setAttribute("class", arrow.picked ? "arrow picked" : "arrow");
 				const title = this.document.createElementNS(SVG, "title");
 				title.textContent = arrow.label;
 				shape.append(title);
 				return shape;
 			}),
 		);
-		const chosen = position.arrows.find((arrow) => arrow.chosen);
+		const picked = position.arrows.find((arrow) => arrow.picked);
 		this.element.setAttribute(
 			"aria-label",
-			chosen === undefined ? "Chess board" : `Chess board; the model chose ${chosen.label}`,
+			picked === undefined ? "Chess board" : `Chess board; the model picked ${picked.label}`,
 		);
 	}
 

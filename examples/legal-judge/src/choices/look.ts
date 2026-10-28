@@ -1,30 +1,44 @@
-import { choiceKind, type TypedChoice } from "@osolmaz/switch";
-import type { CaseFile, Render } from "../case.ts";
-import { imagesSeen, LIMITS, type World } from "../world.ts";
+import { choiceType, type TypedChoice } from "@osolmaz/switch";
+import type { CaseFile, LegalCase, Render } from "../case.ts";
+import { found, imagesSeen, type LegalState, LIMITS, withEvidence } from "../state.ts";
 
 interface Picture {
 	readonly file: CaseFile;
 	readonly render: Render;
+	readonly index: number;
 }
 
 const lookText = ({ file, render }: Picture): string =>
 	file.kind === "image" ? `Look at ${file.path}` : `Look at ${file.path} ${render.label} (the page has no text layer)`;
 
-/** Look at an image file, or at a page image of a PDF page that has no text layer. */
-export const look = choiceKind<World, Picture>({
-	name: "look",
-	when: (_, history) => imagesSeen(history) < LIMITS.images,
-	menu: (world) =>
-		world.case.files.flatMap((file) =>
-			file.renders.map((render, index): TypedChoice<Picture> => ({
-				key: `${file.id}:${String(index)}`,
-				text: lookText({ file, render }),
-				arg: { file, render },
-			})),
-		),
-	async run(world, { file, render }) {
-		const image = await world.image(render);
-		const label = file.kind === "image" ? file.path : `${file.path} ${render.label}`;
-		return { source: label, text: `[image: ${label}]`, images: [image] };
-	},
-});
+/** The key of the look at one image of a file, by the image's place among the file's images. */
+export const lookKey = (file: CaseFile, index: number): string => `${file.id}:${String(index)}`;
+
+/** The evidence of a look at an image: its label as text, and the image, which the view loads from the case folder. */
+export function lookedAt(file: CaseFile, render: Render, index: number): LegalState["evidence"][number] {
+	const label = file.kind === "image" ? file.path : `${file.path} ${render.label}`;
+	return { key: `look:${lookKey(file, index)}`, source: label, text: `[image: ${label}]`, image: render };
+}
+
+/** Look at an image file, or at a page image of a PDF page that has no text layer, until the run saw enough images. */
+export const look = (legalCase: LegalCase) =>
+	choiceType<LegalState, Picture>({
+		type: "look",
+		choices: (state) =>
+			imagesSeen(state) >= LIMITS.images
+				? []
+				: legalCase.files.flatMap((file) =>
+						file.renders.flatMap((render, index): TypedChoice<Picture>[] =>
+							found(state, `look:${lookKey(file, index)}`)
+								? []
+								: [
+										{
+											key: lookKey(file, index),
+											text: lookText({ file, render, index }),
+											arg: { file, render, index },
+										},
+									],
+						),
+					),
+		transition: (state, { file, render, index }) => withEvidence(state, lookedAt(file, render, index)),
+	});

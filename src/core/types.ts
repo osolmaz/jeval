@@ -1,15 +1,16 @@
 /**
- * The building blocks of switch. A domain presents its world and the history of a run to a decision model as a menu of
- * choices, and asks questions at the end; the core runs the loop that lets the model pick from the menu until it stops,
- * then answers the questions.
+ * The building blocks of switch. A domain gives each case as a state machine: an initial state, a choice function that
+ * gives the choices in a state, and a transition function that gives the state after a choice. The core runs the loop:
+ * the decision model picks from the choices until it picks stop, then it answers the questions.
  */
+import type { Trace } from "./trace.ts";
 
 export type Json = string | number | boolean | null | readonly Json[] | JsonObject;
 export interface JsonObject {
 	readonly [key: string]: Json;
 }
 
-/** An image sent with the state to a model that accepts images. */
+/** An image sent with the view to a model that accepts images. */
 export interface Image {
 	readonly label: string;
 	readonly mimeType: string;
@@ -17,40 +18,19 @@ export interface Image {
 	readonly data: string;
 }
 
-/** What a choice found when it ran: text for the view, and images when it looked at one. */
-export interface Observation {
-	/** Where the text came from, such as a file and its pages, when the domain names it. */
-	readonly source?: string;
-	readonly text: string;
-	readonly images?: readonly Image[];
-	/** Facts about the step for tools that read the trace, such as a viewer; the model never sees them. */
-	readonly data?: JsonObject;
-}
-
-/** One step of the history: the kind and the key of the choice that ran, and what it found. */
-export interface Step {
-	readonly kind: string;
-	readonly key: string;
-	readonly observation: Observation;
-}
-
-/** One thing the model can do now, ready to run. */
+/** One thing that the model can do in a state. Stop is a choice too, which the core adds. */
 export interface Choice {
-	/** A label such as "read" or "move", for the trace and the viewer. */
-	readonly kind: string;
-	/** Unique in a run: a choice whose key is in the history is not offered again. */
+	/** What sort of choice it is, for the trace and the viewer. */
+	readonly type: string;
+	/** Unique in a run: the model picks a key at most once. */
 	readonly key: string;
 	/** What the model reads. */
 	readonly text: string;
-	/** Lower keeps the choice when the menu must be cut; 0 by default. */
-	readonly priority: number;
+	/** Lower keeps the choice when the choices must be cut; 0 by default. */
+	readonly priority?: number;
 	/** Facts about the choice for tools that read the trace; the model never sees them. */
 	readonly data?: JsonObject;
-	readonly run: () => Promise<Observation>;
 }
-
-/** The choices for the current step, from the world and the history: the menu of a domain, or of one kind of choice. */
-export type Menu<W> = (world: W, history: readonly Step[]) => readonly Choice[];
 
 export interface BoolQuestion {
 	readonly type: "bool";
@@ -93,53 +73,51 @@ export interface ScoreAnswer {
 }
 export type Answer = BoolAnswer | ChoiceAnswer | ScoreAnswer;
 
-/** What the model sees: the JSON state and its images. `omitted` names what the view left out to fit. */
+/** What the model reads in a state: JSON and images. `omitted` names what the view left out to fit. */
 export interface View {
-	readonly state: JsonObject;
+	readonly json: JsonObject;
 	readonly images: readonly Image[];
 	readonly omitted: readonly string[];
 }
 
-/** How an answer stage asks questions: over the view, or over a fixed state such as one rubric item. */
+/** How an answer stage asks questions: over the view, or over fixed JSON of the stage's own. */
 export interface AskOptions {
 	/** The stage's name in the trace. */
 	readonly stage: string;
-	/** A fixed state instead of the view's; it is sent as is and never cut. */
-	readonly state?: JsonObject;
-	/** Fields added to the view's state, such as a description of the stage. */
+	/** JSON to send in place of the view; it is sent as is and never cut. */
+	readonly json?: JsonObject;
+	/** Fields added to the view's JSON, such as a description of the stage. */
 	readonly extra?: JsonObject;
 }
 
 /** Asks questions in as many requests as the window needs and returns every answer; it throws `AskError` on failure. */
 export type Ask = (questions: readonly Question[], options: AskOptions) => Promise<Readonly<Record<string, Answer>>>;
 
-export interface AnswerContext<W> {
-	readonly world: W;
-	readonly history: readonly Step[];
-	/** The domain's questions: the answer stages must answer every one. */
+export interface AnswerContext<S> {
+	/** The last state of the case. */
+	readonly state: S;
+	/** The questions: the answer stages must answer every one. */
 	readonly questions: readonly Question[];
 	readonly ask: Ask;
 }
 
-export interface Domain<W> {
-	readonly name: string;
-	readonly version: string;
-	/** The choices for the current step: how the domain presents its world and the history to the model. */
-	readonly menu: Menu<W>;
-	/** The text of the stop choice, which ends the steps. */
-	readonly stop: string;
-	/** The instructions of the menu's question: how the model picks the next step. */
-	readonly instructions: string;
-	questions(world: W): readonly Question[];
-	/** The steps every case starts with, taken before the first pick. */
-	start(world: W): Promise<readonly Step[]>;
-	/** The state the model sees, in at most `tokens` estimated tokens. */
-	view(world: W, history: readonly Step[], purpose: "choose" | "answer", tokens: number): View;
-	/**
-	 * Answers the questions in stages of its own, such as checking each part of an item before deciding the item.
-	 * Without it, the questions are asked once over the view.
-	 */
-	answer?(context: AnswerContext<W>): Promise<Readonly<Record<string, Answer>>>;
+/**
+ * One case as a state machine: the interface between a domain and switch. The case's fixed data stays inside the
+ * functions, and a state is JSON, so that the trace can keep every one.
+ */
+export interface StateMachine<S extends JsonObject, C extends Choice = Choice> {
+	/** The state before the first pick. */
+	initial(): Promise<S>;
+	/** The choice function: the choices in a state. */
+	choices(state: S): readonly C[];
+	/** The transition function: the state after the model picked `choice` in `state`. */
+	transition(state: S, choice: C): Promise<S>;
+	/** What the model reads in a state, in at most `tokens` estimated tokens; the state as it is by default. */
+	view?(state: S, purpose: "choose" | "answer", tokens: number): Promise<View>;
+	/** The questions that the model answers over the last state; none by default. */
+	questions?(): readonly Question[];
+	/** Answers the questions in stages of its own; without it, the questions are asked once over the view. */
+	answer?(context: AnswerContext<S>): Promise<Readonly<Record<string, Answer>>>;
 }
 
 export interface Usage {
@@ -148,7 +126,8 @@ export interface Usage {
 }
 
 export interface DecisionRequest {
-	readonly state: JsonObject;
+	/** The JSON that the model reads. */
+	readonly json: JsonObject;
 	readonly images: readonly Image[];
 	readonly questions: readonly Question[];
 }
@@ -170,7 +149,7 @@ export interface Decider {
 
 export interface Limits {
 	readonly steps: number;
-	/** The most choices on one menu, stop included. */
+	/** The most choices that the model sees in one step, stop included. */
 	readonly choices: number;
 	/** Tokens a request may use, as a share of the model's window. */
 	readonly windowShare: number;
@@ -178,10 +157,54 @@ export interface Limits {
 
 export const DEFAULT_LIMITS: Limits = { steps: 8, choices: 30, windowShare: 0.9 };
 
+/** Every text a domain gives the model that does not come from a case, and its limits: what a run records. */
+export interface Definition {
+	readonly name: string;
+	/** The SHA-256 of `content` as JSON, so formatting does not count. */
+	readonly hash: string;
+	readonly content: JsonObject;
+}
+
+/**
+ * Why the steps ended: the model picked stop, the state had no choices, the run took as many steps as its limits
+ * allow, or the pick failed.
+ */
+export type Ending = "stop" | "no choices" | "step limit" | "pick failed";
+
+export interface RunResult<S extends JsonObject = JsonObject> {
+	/** Every question's answer, or null when the answers could not be obtained. */
+	readonly answers: Readonly<Record<string, Answer>> | null;
+	readonly steps: number;
+	readonly ended: Ending;
+	readonly error: string | null;
+	readonly trace: Trace;
+	/** The last state of the case. */
+	readonly state: S;
+}
+
+/** A domain, as a harness runs it on case folders: what every case shares, and the state machine of a case folder. */
+export interface Domain<S extends JsonObject, C extends Choice = Choice> {
+	/** The name and the version go into the trace and the run's record. */
+	readonly name: string;
+	readonly version: string;
+	/** The text of the stop choice, which ends the steps. */
+	readonly stop: string;
+	/** The text that tells the model how to pick from the choices. */
+	readonly instructions: string;
+	readonly definition: Definition;
+	readonly limits: Limits;
+	/** The case id in a case folder, read without loading the whole case. */
+	caseId(folder: string): Promise<string>;
+	/** The state machine of a case folder. */
+	load(folder: string): Promise<StateMachine<S, C>>;
+	/** How the case ended in the domain's own terms, from its last state; none when it is missing. */
+	outcome?(state: S, result: RunResult<S>): JsonObject;
+}
+
 /** One request to the decision model and its result, as a run's requests file keeps them. Images appear by label. */
 export interface Exchange {
 	readonly request: {
-		readonly state: JsonObject;
+		readonly json: JsonObject;
 		readonly images: readonly string[];
 		readonly questions: readonly Question[];
 	};

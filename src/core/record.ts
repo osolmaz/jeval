@@ -9,7 +9,7 @@ export function recording(decider: Decider, record: (exchange: Exchange) => void
 		async decide(request) {
 			const result = await decider.decide(request);
 			const images = request.images.map((image) => image.label);
-			record({ request: { state: request.state, images, questions: request.questions }, result });
+			record({ request: { json: request.json, images, questions: request.questions }, result });
 			return result;
 		},
 	};

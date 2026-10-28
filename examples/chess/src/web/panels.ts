@@ -2,51 +2,51 @@
 /** The chess part's pieces of the page: the board's position and arrows, the move list and the players' bars. */
 import { button, type Child, h, type Moment, percent, ranked, type Story } from "@osolmaz/switch/page";
 import type { Arrow, Position } from "./board.ts";
-import { type ChessStepData, chessChoice, chessStep } from "./data.ts";
+import { type ChessState, chessChoice, chessState } from "./data.ts";
 import { captures, piecesOf, pliesOf, type Ply } from "./model.ts";
 
-/** How many of the likeliest moves get an arrow; the chosen one always does. */
+/** How many of the likeliest moves get an arrow; the picked one always does. */
 const ARROWS = 5;
 type Images = Readonly<Record<string, string>>;
 
 /** The king's square when the side to move is in check. */
-function checkSquare(step: ChessStepData): string | null {
-	if (!step.check) return null;
-	const turn = step.fen.split(" ")[1] === "b" ? "b" : "w";
-	return piecesOf(step.fen).find((piece) => piece.kind === "k" && piece.color === turn)?.square ?? null;
+function checkSquare(state: ChessState): string | null {
+	if (!state.check) return null;
+	const turn = state.fen.split(" ")[1] === "b" ? "b" : "w";
+	return piecesOf(state.fen).find((piece) => piece.kind === "k" && piece.color === turn)?.square ?? null;
 }
 
-/** The arrows of a step: the likeliest moves and the chosen one. */
+/** The arrows of a step: the likeliest moves and the picked one. */
 function arrowsOf(moment: Moment): Arrow[] {
 	const choices = ranked(moment.frame?.choices ?? []);
 	return choices.flatMap((choice, rank) => {
 		const move = chessChoice(choice.data);
 		const { probability } = choice;
 		// Before the model answers, no choice has a probability, and no arrow would mean anything.
-		if (move === null || probability === null || (rank >= ARROWS && !choice.chosen)) return [];
-		return [{ ...move, probability, chosen: choice.chosen, label: `${move.san} ${percent(probability)}` }];
+		if (move === null || probability === null || (rank >= ARROWS && !choice.picked)) return [];
+		return [{ ...move, probability, picked: choice.picked, label: `${move.san} ${percent(probability)}` }];
 	});
 }
 
-/** The position the board shows for a moment; null when the moment has no chess data. */
+/** The position the board shows for a moment; null when the moment has no chess state. */
 export function positionOf(moment: Moment): Position | null {
-	const step = chessStep(moment.seen?.data);
-	if (step === null) return null;
-	const last = step.moves.at(-1);
+	const state = chessState(moment.state);
+	if (state === null) return null;
+	const last = state.moves.at(-1);
 	return {
-		fen: step.fen,
-		flipped: step.you === "black",
+		fen: state.fen,
+		flipped: state.you === "black",
 		last: last === undefined ? [] : [last.slice(0, 2), last.slice(2, 4)],
-		check: checkSquare(step),
-		arrows: moment.kind === "step" ? arrowsOf(moment) : [],
+		check: checkSquare(state),
+		arrows: moment.type === "step" ? arrowsOf(moment) : [],
 	};
 }
 
-/** Who is to move in a chess step, such as " · white to move"; empty for a moment without chess data. */
+/** Who is to move in a chess state, such as " · white to move"; empty for a moment without a chess state. */
 export function turnOf(moment: Moment): string {
-	const step = chessStep(moment.seen?.data);
-	if (step === null) return "";
-	return step.fen.split(" ")[1] === "b" ? " · black to move" : " · white to move";
+	const state = chessState(moment.state);
+	if (state === null) return "";
+	return state.fen.split(" ")[1] === "b" ? " · black to move" : " · white to move";
 }
 
 /** A move in figurine notation: the piece's image in place of its letter, light on the dark list, as chess.com writes. */

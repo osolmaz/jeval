@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerText, confidence, momentsOf, percent, plain, ranked } from "../../src/view/web/model.ts";
+import { answerText, changesOf, confidence, momentsOf, percent, plain, ranked } from "../../src/view/web/model.ts";
 import { factsSession } from "../helpers/sessions.ts";
 
 describe("moments", () => {
@@ -38,7 +38,7 @@ describe("text", () => {
 			key,
 			text: key,
 			probability,
-			chosen: false,
+			picked: false,
 			data: null,
 		});
 		expect(ranked([choice("a", null), choice("b", 0.2), choice("c", 0.7)]).map((item) => item.key)).toEqual([
@@ -46,5 +46,20 @@ describe("text", () => {
 			"b",
 			"a",
 		]);
+	});
+});
+
+describe("changesOf", () => {
+	it("gives the new value of each changed field, and the new entries of a list that only grew", () => {
+		const before = { moves: ["e4"], fen: "a", same: 1, gone: true };
+		const after = { moves: ["e4", "e5", "Nf3"], fen: "b", same: 1, added: { x: 1 } };
+		expect(changesOf(before, after)).toEqual(["moves + e5", "moves + Nf3", "fen: b", "added: x 1", "gone: removed"]);
+	});
+
+	it("gives a list's whole value when it changed in another way, and every field when there was no state", () => {
+		expect(changesOf({ list: ["a", "b"] }, { list: ["b"] })).toEqual(["list: b"]);
+		expect(changesOf({ list: "a" }, { list: ["a"] })).toEqual(["list: a"]);
+		expect(changesOf(null, { n: 1 })).toEqual(["n: 1"]);
+		expect(changesOf({ n: 1 }, { n: 1 })).toEqual([]);
 	});
 });

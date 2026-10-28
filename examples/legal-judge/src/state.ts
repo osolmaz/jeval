@@ -1,6 +1,5 @@
-import type { Image, Step } from "@osolmaz/switch";
+import type { Image, JsonObject } from "@osolmaz/switch";
 import type { CaseFile, LegalCase, Render } from "./case.ts";
-import { searchTerms, type Term } from "./terms.ts";
 
 /** Sizes in estimated tokens, at three characters a token. */
 export const LIMITS = {
@@ -18,16 +17,33 @@ export const LIMITS = {
 	hitContext: 280,
 } as const;
 
-/** The world of a case: the case, with what the domain derives from it once, the search terms and a way to load images. */
-export interface World {
+/** A case as its folder gives it: the case, and a way to load the images stored next to it. */
+export interface CaseFolder {
 	readonly case: LegalCase;
-	readonly terms: readonly Term[];
 	image(render: Render): Promise<Image>;
 }
 
-export function makeWorld(legalCase: LegalCase, loadImage: (render: Render) => Promise<Image>): World {
-	return { case: legalCase, terms: searchTerms(legalCase), image: loadImage };
+/** One thing the run found: the key of the choice that found it, where it came from, its text, and its image. */
+export interface Evidence extends JsonObject {
+	readonly key: string;
+	readonly source: string;
+	readonly text: string;
+	/** The image the choice looked at, by its file next to the case; the view loads it. */
+	readonly image?: Render;
 }
+
+/** Where a case is: the evidence found so far, in order. */
+export interface LegalState extends JsonObject {
+	readonly evidence: readonly Evidence[];
+}
+
+/** The state with one more piece of evidence. */
+export const withEvidence = (state: LegalState, found: Evidence): LegalState => ({
+	evidence: [...state.evidence, found],
+});
+
+/** Whether the state holds the evidence of the choice with `key`. */
+export const found = (state: LegalState, key: string): boolean => state.evidence.some((entry) => entry.key === key);
 
 export const tokensOf = (text: string): number => Math.ceil(text.length / LIMITS.charsPerToken);
 
@@ -82,11 +98,11 @@ export function partSource(part: Part): string {
 	return part.from === part.to ? `${part.file.path}, ${first}` : `${part.file.path}, ${first} to ${last}`;
 }
 
-/** The parts of each file read so far, from the keys of the history's `read` steps. */
-export function readParts(history: readonly Step[]): Map<string, Set<number>> {
+/** The parts of each file read so far, from the keys of the state's `read` evidence. */
+export function readParts(state: LegalState): Map<string, Set<number>> {
 	const read = new Map<string, Set<number>>();
-	for (const step of history) {
-		const match = /^read:(.+):(\d+)-(\d+)$/.exec(step.key);
+	for (const entry of state.evidence) {
+		const match = /^read:(.+):(\d+)-(\d+)$/.exec(entry.key);
 		if (match === null) continue;
 		const [, file = "", from = "0", to = "0"] = match;
 		const units = read.get(file) ?? new Set<number>();
@@ -96,11 +112,11 @@ export function readParts(history: readonly Step[]): Map<string, Set<number>> {
 	return read;
 }
 
-export const evidenceTokens = (history: readonly Step[]): number =>
-	history.reduce((sum, step) => sum + tokensOf(step.observation.text) + tokensOf(step.observation.source ?? ""), 0);
+export const evidenceTokens = (state: LegalState): number =>
+	state.evidence.reduce((sum, entry) => sum + tokensOf(entry.text) + tokensOf(entry.source), 0);
 
-export const imagesSeen = (history: readonly Step[]): number =>
-	history.reduce((sum, step) => sum + (step.observation.images?.length ?? 0), 0);
+export const imagesSeen = (state: LegalState): number =>
+	state.evidence.filter((entry) => entry.image !== undefined).length;
 
 export const readable = (file: CaseFile): boolean =>
 	file.error === null && file.kind !== "image" && file.units.length > 0;

@@ -1,6 +1,6 @@
-import { choiceKind } from "@osolmaz/switch";
-import type { CaseFile } from "../case.ts";
-import type { World } from "../world.ts";
+import { choiceType } from "@osolmaz/switch";
+import type { CaseFile, LegalCase } from "../case.ts";
+import { found, type LegalState, withEvidence } from "../state.ts";
 
 const SHOWN = 60;
 const basename = (path: string): string => (path.split("/").at(-1) ?? path).toLowerCase();
@@ -30,25 +30,29 @@ interface Pair {
 	readonly original: CaseFile;
 }
 
-/** Compare the answer's Word file with the task's document of the same name. */
-export const compare = choiceKind<World, Pair>({
-	name: "compare",
-	menu(world) {
-		const files = world.case.files;
-		return files
-			.filter((file) => file.role === "answer" && file.kind === "docx")
-			.flatMap((edited) => {
-				const original = files.find(
-					(file) =>
-						file.role === "document" && file.kind === "docx" && basename(file.path) === basename(edited.path),
-				);
-				if (original === undefined) return [];
-				const text = `Compare ${edited.path} with the original ${original.path}, paragraph by paragraph`;
-				return [{ key: edited.id, text, arg: { edited, original } }];
-			});
-	},
-	run: (_, { edited, original }) => ({
-		source: `${edited.path} compared with ${original.path}`,
-		text: compareFiles(edited, original),
-	}),
-});
+/** The task's document with the same name as an answer's Word file. */
+const originalOf = (files: readonly CaseFile[], edited: CaseFile): CaseFile | undefined =>
+	files.find(
+		(file) => file.role === "document" && file.kind === "docx" && basename(file.path) === basename(edited.path),
+	);
+
+/** Compare the answer's Word file with the task's document of the same name, once. */
+export const compare = (legalCase: LegalCase) =>
+	choiceType<LegalState, Pair>({
+		type: "compare",
+		choices: (state) =>
+			legalCase.files
+				.filter((file) => file.role === "answer" && file.kind === "docx" && !found(state, `compare:${file.id}`))
+				.flatMap((edited) => {
+					const original = originalOf(legalCase.files, edited);
+					if (original === undefined) return [];
+					const text = `Compare ${edited.path} with the original ${original.path}, paragraph by paragraph`;
+					return [{ key: edited.id, text, arg: { edited, original } }];
+				}),
+		transition: (state, { edited, original }) =>
+			withEvidence(state, {
+				key: `compare:${edited.id}`,
+				source: `${edited.path} compared with ${original.path}`,
+				text: compareFiles(edited, original),
+			}),
+	});

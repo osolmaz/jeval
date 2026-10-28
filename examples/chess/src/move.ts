@@ -1,11 +1,11 @@
 import type { Move } from "chess.js";
-import { choiceKind, type Observation } from "@osolmaz/switch";
+import type { Choice } from "@osolmaz/switch";
 import type { ChessGame } from "./case.ts";
-import { movesOf, nameOf, PIECE_NAMES, replay, replyOf, stepDataOf, statusOf, youOf } from "./game.ts";
+import { boardOf, nameOf, PIECE_NAMES, replyOf, stateAfter, statusOf } from "./game.ts";
+import type { ChessState } from "./web/data.ts";
 
-interface Play {
-	/** Every move played before this one. */
-	readonly before: readonly string[];
+/** A move among the choices, with the move in long algebraic notation for the transition. */
+export interface MoveChoice extends Choice {
 	readonly lan: string;
 }
 
@@ -32,43 +32,37 @@ const STATUS_TEXTS: Readonly<Record<string, string>> = {
 	"fifty-move rule": "Fifty moves passed without a capture or a pawn move: the game is a draw.",
 };
 
-/** Who played a move, in the words of the step: you against an opponent, the side's color in self-play. */
+/** Who played a move, in the words of the state: you against an opponent, the side's color in self-play. */
 function mover(game: ChessGame, color: "w" | "b"): string {
 	if (game.opponent !== "self") return "You";
 	return nameOf(color) === "white" ? "White" : "Black";
 }
 
-/** Plays the model's move and, against an opponent while the game goes on, the opponent's reply. */
-async function play(game: ChessGame, { before, lan }: Play): Promise<Observation> {
-	const board = replay(game.start, before);
+/** The choice function: the legal moves of the state's position; none once the game is over, which ends the case. */
+export function movesIn(state: ChessState): MoveChoice[] {
+	const board = boardOf(state);
+	if (statusOf(board) !== "playing") return [];
+	return board.moves({ verbose: true }).map((legal) => ({
+		type: "move",
+		key: `move:${String(state.moves.length)}:${legal.lan}`,
+		text: describe(legal),
+		lan: legal.lan,
+		data: { from: legal.from, to: legal.to, san: legal.san },
+	}));
+}
+
+/** The transition function: the model's move and, against an opponent while the game goes on, the opponent's reply. */
+export async function play(game: ChessGame, state: ChessState, lan: string): Promise<ChessState> {
+	const board = boardOf(state);
 	const who = mover(game, board.turn());
 	const ours = board.move(lan);
-	const answer = statusOf(board) === "playing" ? await replyOf(game, board, [...before, ours.lan]) : undefined;
+	const answer = statusOf(board) === "playing" ? await replyOf(game, board, [...state.moves, ours.lan]) : undefined;
 	const reply = answer === undefined ? undefined : board.move(answer);
 	const text = [
 		`${who} played ${ours.san}.`,
 		reply === undefined ? "" : `The opponent played ${reply.san}.`,
 		STATUS_TEXTS[statusOf(board)] ?? "",
 	];
-	return {
-		text: text.filter((part) => part !== "").join(" "),
-		data: stepDataOf(youOf(game), board, reply === undefined ? [ours] : [ours, reply]),
-	};
+	const played = reply === undefined ? [ours] : [ours, reply];
+	return stateAfter(state, board, played, text.filter((part) => part !== "").join(" "));
 }
-
-/** Play one of the legal moves; there are none once the game is over, which ends the case. */
-export const move = choiceKind<ChessGame, Play>({
-	name: "move",
-	menu(game, history) {
-		const before = movesOf(history);
-		const board = replay(game.start, before);
-		if (statusOf(board) !== "playing") return [];
-		return board.moves({ verbose: true }).map((legal) => ({
-			key: `${String(before.length)}:${legal.lan}`,
-			text: describe(legal),
-			arg: { before, lan: legal.lan },
-			data: { from: legal.from, to: legal.to, san: legal.san },
-		}));
-	},
-	run: play,
-});

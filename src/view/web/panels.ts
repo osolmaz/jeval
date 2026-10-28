@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 /** The parts of the viewer's page, drawn from a session; `app.ts` puts them together and keeps them current. */
-import { answerText, confidence, type Moment, percent, plain, ranked, type Session } from "./model.ts";
+import { answerText, changesOf, confidence, type Moment, percent, plain, ranked, type Session } from "./model.ts";
 
-/** How many of the likeliest choices the menu lists; the chosen one always shows. */
+/** How many of the likeliest choices the list shows; the picked one always shows. */
 const LISTED = 8;
 const SPEEDS = ["0.5", "1", "2", "4"];
 
@@ -22,7 +22,7 @@ export const button = (label: string, name: string, text: string): HTMLButtonEle
 
 function choiceList(moment: Moment): HTMLElement {
 	const choices = ranked(moment.frame?.choices ?? []);
-	const listed = choices.filter((choice, rank) => rank < LISTED || choice.chosen);
+	const listed = choices.filter((choice, rank) => rank < LISTED || choice.picked);
 	const rows = listed.map((choice) => {
 		const share = choice.probability ?? 0;
 		const bar = h("span", { class: "track", "aria-hidden": "true" }, h("span", { style: `--p:${share.toFixed(4)}` }));
@@ -30,11 +30,11 @@ function choiceList(moment: Moment): HTMLElement {
 			"span",
 			{ class: "text" },
 			choice.text,
-			choice.chosen ? h("span", { class: "hidden" }, " (chosen)") : "",
+			choice.picked ? h("span", { class: "hidden" }, " (picked)") : "",
 		);
 		return h(
 			"li",
-			choice.chosen ? { class: "chosen" } : {},
+			choice.picked ? { class: "picked" } : {},
 			text,
 			bar,
 			h("span", { class: "p" }, percent(choice.probability)),
@@ -44,22 +44,32 @@ function choiceList(moment: Moment): HTMLElement {
 	return h(
 		"div",
 		{},
-		h("ol", { class: "menu" }, ...rows),
+		h("ol", { class: "choices" }, ...rows),
 		rest > 0 ? h("p", { class: "quiet" }, `and ${String(rest)} more`) : "",
 	);
 }
 
-/** A step's menu with the model's probabilities, what its choice found and its notes; `note` follows its label. */
+/** What a step changed in the state, one line for each change; nothing after stop or a failed pick. */
+function changes(moment: Moment): HTMLElement[] {
+	const after = moment.frame?.after ?? null;
+	if (after === null) return [];
+	const lines = changesOf(moment.frame?.before ?? null, after).map((line) => h("p", { class: "found" }, line));
+	return [
+		h("h3", {}, "What changed"),
+		...(lines.length > 0 ? lines : [h("p", { class: "quiet" }, "Nothing changed.")]),
+	];
+}
+
+/** A step's choices with the model's probabilities, what the pick changed and its notes; `note` follows its label. */
 export function decisionPanel(moment: Moment, note = ""): HTMLElement {
-	if (moment.kind !== "step" || moment.frame === null) {
-		const texts = moment.kind === "start" ? "Before the first choice." : "The case is over.";
+	if (moment.type !== "step" || moment.frame === null) {
+		const texts = moment.type === "start" ? "Before the first pick." : "The case is over.";
 		return h("section", { class: "decision" }, h("h2", {}, moment.label), h("p", { class: "quiet" }, texts));
 	}
 	const { frame } = moment;
-	const choosing = frame.chosen === null && frame.notes.length === 0;
-	const title = choosing ? "The model is choosing from the menu…" : "The menu";
-	const found =
-		frame.after === null ? [] : [h("h3", {}, "What happened"), h("p", { class: "found" }, frame.after.text)];
+	const picking = frame.picked === null && frame.notes.length === 0;
+	const title = picking ? "The model is picking from the choices…" : "The choices";
+	const found = changes(moment);
 	const notes = frame.notes.map((text) => h("p", { class: "quiet" }, text));
 	return h(
 		"section",
@@ -113,7 +123,7 @@ export function resultPanel(
 	);
 }
 
-/** The chosen choice's probability over the steps as a filled graph, with the current step marked. */
+/** The picked choice's probability over the steps as a filled graph, with the current step marked. */
 export function confidenceChart(session: Session, index: number): HTMLElement[] {
 	const series = confidence(session.story);
 	if (series.length < 2) return [];
@@ -138,9 +148,9 @@ export interface Parts {
 	readonly bottom: HTMLElement;
 	readonly chart: HTMLElement;
 	readonly side: HTMLElement;
-	/** The title of the steps list, which a domain's part names, such as Moves. */
+	/** The title of the steps list, which a domain's part names. */
 	readonly stepsTitle: HTMLElement;
-	readonly moves: HTMLElement;
+	readonly steps: HTMLElement;
 	readonly result: HTMLElement;
 	readonly live: HTMLElement;
 	/** The header's name and case title, a link to the run's cases when the page has a server. */
@@ -165,13 +175,13 @@ function speedSelect(): HTMLSelectElement {
 
 export function layout(root: HTMLElement): Parts {
 	const parts = {
-		top: h("div", { class: "player-slot" }),
+		top: h("div", { class: "bar-slot" }),
 		stage: h("div", { class: "stage-slot" }),
-		bottom: h("div", { class: "player-slot" }),
+		bottom: h("div", { class: "bar-slot" }),
 		chart: h("section", { class: "card chart" }),
 		side: h("div", { class: "card side-slot" }),
 		stepsTitle: h("h2", {}, "Result"),
-		moves: h("section", { class: "moves", "aria-label": "Steps" }),
+		steps: h("section", { class: "steps", "aria-label": "Steps" }),
 		result: h("div", { class: "result-slot" }),
 		live: h("span", { class: "live", hidden: "" }, "Live"),
 		home: h("a", { class: "home" }) as HTMLAnchorElement,
@@ -199,8 +209,8 @@ export function layout(root: HTMLElement): Parts {
 		parts.download,
 	);
 	const stage = h("section", { class: "stage", "aria-label": "The case" }, parts.top, parts.stage, parts.bottom);
-	const history = h("div", { class: "card history" }, parts.stepsTitle, parts.moves, parts.result, parts.controls);
-	const side = h("aside", { class: "side" }, parts.chart, parts.side, history);
+	const timeline = h("div", { class: "card timeline" }, parts.stepsTitle, parts.steps, parts.result, parts.controls);
+	const side = h("aside", { class: "side" }, parts.chart, parts.side, timeline);
 	root.replaceChildren(h("div", { class: "app" }, header, h("main", { class: "layout" }, stage, side)));
 	return parts;
 }

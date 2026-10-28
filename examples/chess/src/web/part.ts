@@ -2,8 +2,8 @@
 /** The chess part of the page: the board with its moves and sounds, the players' bars, the move list and the PGN. */
 import { type DomainPart, type Moment, type PartContext, registerPart, type Session } from "@osolmaz/switch/page";
 import { type BoardView, createBoard } from "./board.ts";
-import { chessStep } from "./data.ts";
-import { pgnOf, scoreOf } from "./model.ts";
+import { chessState, movesOfStep } from "./data.ts";
+import { initialOf, pgnOf, scoreOf } from "./model.ts";
 import { moveList, playerRow, positionOf, turnOf } from "./panels.ts";
 import { endingOf, type SoundSet, soundOf, Sounds } from "./sound.ts";
 
@@ -27,15 +27,15 @@ function chessConfig(config: Readonly<Record<string, unknown>>): ChessConfig {
 /** The model's and the opponent's names. */
 function namesOf(session: Session): { model: string; opponent: string } {
 	const { model } = session.story;
-	const opponent = chessStep(session.story.opening.at(-1)?.data)?.opponent;
+	const opponent = initialOf(session.story)?.opponent;
 	if (opponent === "itself") return { model, opponent: model };
 	return { model, opponent: opponent ?? "opponent" };
 }
 
-/** The moves that lead from a step's decision to the next moment: the model's move and the reply. */
+/** The moves that lead from a step's pick to the next moment: the model's move and the reply. */
 function movesAfter(moment: Moment): { readonly uci: readonly string[]; readonly san: readonly string[] } {
-	const step = chessStep(moment.frame?.after?.data);
-	return { uci: step?.moves ?? [], san: step?.san ?? [] };
+	const { lan, san } = movesOfStep(chessState(moment.frame?.before), chessState(moment.frame?.after));
+	return { uci: lan, san };
 }
 
 /** The chess part for one page: it keeps one board, which moves from position to position. */
@@ -67,15 +67,15 @@ export function chessPart(context: PartContext): DomainPart {
 			return board.element;
 		},
 		bars(moment, session) {
-			const step = chessStep(moment.seen?.data);
-			if (step === null) return { top: null, bottom: null };
+			const state = chessState(moment.state);
+			if (state === null) return { top: null, bottom: null };
 			const { model, opponent } = namesOf(session);
 			// The model's side is at the bottom; in self-play it plays both, with white at the bottom.
-			const mine = step.you === "black" ? "b" : "w";
+			const mine = state.you === "black" ? "b" : "w";
 			const theirs = mine === "w" ? "b" : "w";
 			return {
-				top: playerRow(opponent, theirs, step.fen, pieces),
-				bottom: playerRow(model, mine, step.fen, pieces),
+				top: playerRow(opponent, theirs, state.fen, pieces),
+				bottom: playerRow(model, mine, state.fen, pieces),
 			};
 		},
 		stepNote: turnOf,

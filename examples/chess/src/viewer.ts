@@ -51,8 +51,12 @@ export function soundSet(): Promise<SoundSet> {
 export const chessModules = (moduleUrl: string = import.meta.url): URL[] =>
 	modulesNear(moduleUrl, "./web", ["data", "model", "board", "sound", "panels", "part"]);
 
-/** The chess part of the viewer: the board, the players' bars, the move list, the sounds and the PGN download. */
+/**
+ * The chess part of the viewer: the board, the players' bars, the move list, the sounds and the PGN download, with
+ * the styles that draw them.
+ */
 export const chessViewer: DomainViewer = {
 	modules: chessModules(),
+	styles: [new URL("./web/chess.css", import.meta.url)],
 	config: async () => ({ pieces: await pieceImages(), sounds: await soundSet() }),
 };

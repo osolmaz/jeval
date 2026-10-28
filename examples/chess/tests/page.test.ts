@@ -84,9 +84,9 @@ describe("the chess part of the page", () => {
 			expect(label(root)).toBe("Step 1 of 2");
 		});
 		expect(root.querySelectorAll("polygon.arrow")).toHaveLength(5);
-		expect(text(root, ".decision h2")).toBe("The menu");
+		expect(text(root, ".decision h2")).toBe("The choices");
 		expect(text(root, ".decision .step")).toBe("Step 1 of 2 · white to move");
-		expect(root.querySelector(".menu .chosen")?.textContent).toContain("(chosen)");
+		expect(root.querySelector(".choices .picked")?.textContent).toContain("(picked)");
 		click(root, "button.latest");
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("End");
@@ -162,17 +162,17 @@ describe("the chess part of the page", () => {
 	it("names its list of steps Moves, and hides the final position from the result", async () => {
 		const { root } = mount({ ...QUICK, session: await chessSession({ steps: 1 }) });
 		await vi.waitFor(() => {
-			expect(text(root, ".history h2")).toBe("Moves");
+			expect(text(root, ".timeline h2")).toBe("Moves");
 		});
 		expect(text(root, ".facts")).toContain("material");
 		expect(text(root, ".facts")).not.toContain("fen");
 	});
 
-	it("shows the plain text of a moment without chess data", async () => {
+	it("shows the plain view of a moment without a chess state", async () => {
 		const session = await chessSession({ steps: 1 });
-		const { root } = mount({ ...QUICK, session: { ...session, story: { ...session.story, opening: [] } } });
+		const { root } = mount({ ...QUICK, session: { ...session, story: { ...session.story, initial: null } } });
 		await vi.waitFor(() => {
-			expect(text(root, ".found-card")).toBe("Nothing seen yet.");
+			expect(text(root, ".found-card")).toBe("No state yet.");
 		});
 		expect(root.querySelectorAll(".player")).toHaveLength(0);
 		click(root, "button.next");
@@ -230,21 +230,21 @@ describe("a running case", () => {
 		expect(label(root)).toBe("Start");
 	});
 
-	it("shows the choices without probabilities or arrows while the model is choosing", async () => {
+	it("shows the choices without probabilities or arrows while the model is picking", async () => {
 		const session = await chessSession({ steps: 1, finished: false });
 		const frame = session.story.frames[0];
 		if (frame === undefined) throw new Error("no step");
 		const thinking = {
 			...frame,
-			chosen: null,
+			picked: null,
 			after: null,
-			choices: frame.choices.map((choice) => ({ ...choice, probability: null, chosen: false })),
+			choices: frame.choices.map((choice) => ({ ...choice, probability: null, picked: false })),
 		};
 		const story = { ...session.story, frames: [thinking] };
 		const { root } = mount({ ...QUICK, session: { ...session, story } });
 		click(root, "button.latest");
 		await vi.waitFor(() => {
-			expect(text(root, ".decision h2")).toBe("The model is choosing from the menu…");
+			expect(text(root, ".decision h2")).toBe("The model is picking from the choices…");
 		});
 		expect(root.querySelectorAll("polygon")).toHaveLength(0);
 	});

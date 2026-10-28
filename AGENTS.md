@@ -12,12 +12,14 @@
 
 ## Terms
 
-- Use the terms of switch, as the README's "How it works" defines them, in code and docs: world, history, step, menu,
-  choice, kind, observation, view, state, instructions, question and answer. The menu is the domain's function from the
-  world and the history to the choices of the current step.
-- Do not use their old names: workspace, log, entry for a step, option and action. Use judge only inside legal-judge,
-  for its own judge files. "Entry" still means one line of a trace, and "options" still means a settings object, such
-  as `RunOptions`.
+- Use the terms of switch, as the README's "How it works" defines them, in code and docs: state, initial state, choice
+  function, choice, pick, transition function, step, view, instructions, question, answer, trace and type. A case is a
+  state machine: an initial state, a choice function from the latest state to its choices, and a transition function
+  from the state and the picked choice to the next state. "State" means only that state; the JSON that the model reads
+  is the view's `json`.
+- Do not use their old names: world, history, observation, menu, kind, workspace, log, entry for a step, option and
+  action. Use judge only inside legal-judge, for its own judge files. "Entry" still means one line of a trace, and
+  "options" still means a settings object, such as `RunOptions`.
 
 ## Code
 
@@ -43,10 +45,10 @@
 `slophammer.yml` enforces these:
 
 - `src/` is switch, and imports no domain. `src/core` imports nothing else from `src`. It holds the building blocks, the
-  loop, the menu, the trace, replay and the setup type that runs a domain on case folders.
+  loop, the choice checks, the trace, replay and the domain type that runs a domain on case folders.
 - `src/models`, `src/view` and `src/testing` import only `src/core`. `src/view` turns a trace into a web page that
   shows any domain's run. A domain may give its own part of the page, such as the chess board: browser modules that
-  register hooks with `registerPart`, and a `DomainViewer` that names them.
+  register hooks with `registerPart`, and a `DomainViewer` that names them and their stylesheets.
 - The page joins switch's browser modules in `src/view/web/` and then each part's modules into one script. They import
   each other with plain relative `import { … } from "…/name.ts"` lines and switch's page with
   `import { … } from "@osolmaz/switch/page"`, which the script drops. They take only types from other code, and keep
@@ -57,9 +59,11 @@
   imports switch only by the package's name and entry points, such as `@osolmaz/switch/cli`, never by a path out of
   its folder. In this repository the `switch-source` condition points those names at switch's TypeScript sources:
   `tsconfig.json`, the Vitest configs and each example's `src/main.ts` shebang set it.
-- A domain's choices only read the world; file and process work stays in its `ingest/` folder, `load.ts`, `setup.ts`
-  and `viewer.ts`. A world may hold a handle to a program outside, such as the chess engine that `load.ts` starts: a
-  replay takes each step's recorded observation and runs no choice again.
+- A domain's choice function reads only the state and the case's fixed data. In a run, only `load`, the initial state,
+  the transition and the view's reads of the case's own files read files or start programs; the rest of the file and
+  process work stays in the domain's `ingest/` folder, `load.ts`, `setup.ts` and `viewer.ts`. A state machine may hold
+  a handle to a program outside, such as the chess engine that `load.ts` starts: a replay takes each recorded state and
+  runs no transition again.
 - Each domain's `setup.ts` exports the function that sets the domain up from a definition file: it loads case folders
   and reports a case. The example's `src/main.ts` passes it to `commandLine`.
 

@@ -64,7 +64,7 @@ describe("runCases", () => {
 			switch: { version: expect.any(String) as unknown },
 			finished: expect.stringMatching(/^\d{4}-/) as unknown,
 			set: { name: "s", file: "set.json" },
-			stepsFrom: null,
+			stateFrom: null,
 			totals: { cases: 2, failed: 0, calls: 4 },
 		});
 		const result = resultSchema.parse(JSON.parse(await readFile(caseFile("out", "c1", "result.json"), "utf8")));
@@ -104,7 +104,7 @@ describe("runCases", () => {
 		expect(replayed.result.answers).toEqual(result.answers);
 	});
 
-	it("answers a run's cases again over the steps of another run, and records that run", async () => {
+	it("answers a run's cases again over the states of another run, and records that run", async () => {
 		const domain = await factsSetup(undefined);
 		const cases = [await factsFolder(folder, "c1")];
 		const options = { concurrency: 1, log: () => undefined };
@@ -115,19 +115,19 @@ describe("runCases", () => {
 		await runCases(domain, cases, second, {
 			...options,
 			out: join(folder, "second"),
-			stepsFrom: join(folder, "first"),
+			stateFrom: join(folder, "first"),
 		});
 
-		// Only the questions went to the model: the steps were repeated from the first run.
+		// Only the questions went to the model: the picks and states were repeated from the first run.
 		expect(second.requests.map((request) => request.questions[0]?.id)).toEqual(["a"]);
 		const run = runRecordSchema.parse(JSON.parse(await readFile(join(folder, "second", "run.json"), "utf8")));
-		expect(run).toMatchObject({ stepsFrom: join(folder, "first"), totals: { calls: 1 } });
-		const keys = async (name: string) =>
+		expect(run).toMatchObject({ stateFrom: join(folder, "first"), totals: { calls: 1 } });
+		const states = async (name: string) =>
 			parseTrace(await readFile(caseFile(name, "c1", "trace.jsonl"), "utf8")).flatMap((entry) =>
-				entry.type === "observation" ? [entry.key] : [],
+				entry.type === "state" ? [entry.state] : [],
 			);
-		expect(await keys("second")).toEqual(await keys("first"));
-		expect(await keys("first")).toEqual(["look-up:a"]);
+		expect(await states("second")).toEqual(await states("first"));
+		expect((await states("first")).at(-1)).toEqual({ looked: ["a"], found: ["fact a"] });
 	});
 
 	it("records a failed case's error", async () => {

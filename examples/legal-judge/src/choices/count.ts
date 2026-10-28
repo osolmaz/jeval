@@ -1,6 +1,6 @@
-import { choiceKind } from "@osolmaz/switch";
-import type { CaseFile } from "../case.ts";
-import type { World } from "../world.ts";
+import { choiceType } from "@osolmaz/switch";
+import type { CaseFile, LegalCase } from "../case.ts";
+import { found, type LegalState, withEvidence } from "../state.ts";
 
 const LENGTH = /\bwords?\b|word count|length|\bpages?\b|sentences?|concise/i;
 const HEADING = /^(#{1,6}\s+.+|\*\*[^*]{2,80}\*\*\s*$|P\d+ \[Heading[^\]]*\]: .+)$/;
@@ -29,16 +29,21 @@ export function countWords(file: CaseFile): string {
 	return out.join("\n");
 }
 
-/** Count the answer's words, offered when a rubric item is about length. */
-export const count = choiceKind<World, null>({
-	name: "count",
-	when: (world) => world.case.items.some((item) => LENGTH.test(item.text)),
-	menu: () => [{ key: "words", text: "Count the words of the answer, in total and for each section", arg: null }],
-	run: (world) => ({
-		source: "word counts of the answer",
-		text: world.case.files
-			.filter((file) => file.role === "answer" && file.kind !== "image")
-			.map(countWords)
-			.join("\n"),
-	}),
-});
+/** Count the answer's words once, offered when a rubric item is about length. */
+export const count = (legalCase: LegalCase) =>
+	choiceType<LegalState, null>({
+		type: "count",
+		choices: (state) =>
+			legalCase.items.some((item) => LENGTH.test(item.text)) && !found(state, "count:words")
+				? [{ key: "words", text: "Count the words of the answer, in total and for each section", arg: null }]
+				: [],
+		transition: (state) =>
+			withEvidence(state, {
+				key: "count:words",
+				source: "word counts of the answer",
+				text: legalCase.files
+					.filter((file) => file.role === "answer" && file.kind !== "image")
+					.map(countWords)
+					.join("\n"),
+			}),
+	});

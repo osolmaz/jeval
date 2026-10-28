@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { type Answer, run, STOP_KEY } from "@osolmaz/switch";
 import { answering, fakeDecider } from "@osolmaz/switch/testing";
 import { itemQuestions, itemVerdict } from "../src/definition.ts";
-import { DEFAULT_JUDGE, judgeOf, legalJudge, loadJudge } from "../src/index.ts";
+import { DEFAULT_JUDGE, judgeOf, legalJudge, legalMachine, loadJudge } from "../src/index.ts";
 import { combine } from "../src/judge.ts";
 import { openAnswer } from "../src/start.ts";
+import { LIMITS } from "../src/state.ts";
 import { searchTerms, termsIn } from "../src/terms.ts";
 import { fitEvidence, view } from "../src/view.ts";
-import { LIMITS } from "../src/world.ts";
-import { file, legalCase, worldOf } from "./helpers/cases.ts";
+import { evidence, file, folderOf, legalCase, stateOf } from "./helpers/cases.ts";
 
 const judge = await loadJudge(DEFAULT_JUDGE);
 const texts = judge.definition.texts;
@@ -49,7 +49,7 @@ describe("terms", () => {
 });
 
 describe("openAnswer", () => {
-	it("reads the answer's text, looks at its images and lists its Word formatting before the first choice", async () => {
+	it("reads the answer's text, looks at its images and lists its Word formatting before the first pick", () => {
 		const answer = legalCase({
 			files: [
 				file("a1", "output/memo.docx", "answer", ["P1: Memo text."], {
@@ -63,31 +63,29 @@ describe("openAnswer", () => {
 				file("a3", "output/broken.pdf", "answer", [], { error: "PDF error" }),
 			],
 		});
-		const steps = await openAnswer(worldOf(answer));
-		expect(steps.map((step) => step.key)).toEqual(["read:a1:0-0", "changes:a1", "look:a2:0", "unreadable:a3"]);
-		expect(steps[3]?.observation.text).toBe("[the file could not be read: PDF error]");
+		const { evidence: found } = openAnswer(answer);
+		expect(found.map((entry) => entry.key)).toEqual(["read:a1:0-0", "changes:a1", "look:a2:0", "unreadable:a3"]);
+		expect(found[2]).toMatchObject({ source: "output/chart.png", image: { path: "images/a2-1.png" } });
+		expect(found[3]?.text).toBe("[the file could not be read: PDF error]");
 	});
 
-	it("stops reading the answer at its budget", async () => {
+	it("stops reading the answer at its budget, and looks at no more images than the case may see", () => {
 		const page = "word ".repeat(10_000);
 		const long = legalCase({ files: [file("a1", "output/long.md", "answer", [page, page, page, page])] });
-		const steps = await openAnswer(worldOf(long));
-		expect(steps.length).toBeLessThan(4);
+		expect(openAnswer(long).evidence.length).toBeLessThan(4);
+		const render = { label: "image", path: "images/a1.png", mimeType: "image/png" };
+		const many = Array.from({ length: LIMITS.images + 2 }, () => render);
+		const images = legalCase({ files: [file("a1", "output/a.png", "answer", [], { kind: "image", renders: many })] });
+		expect(openAnswer(images).evidence).toHaveLength(LIMITS.images);
 	});
 });
 
 describe("view", () => {
-	it("shows the rubric, the files and the steps for a choice, and only the request and evidence for the answers", () => {
-		const world = worldOf(legalCase());
-		const history = [
-			{
-				kind: "read",
-				key: "read:d1:0-0",
-				observation: { source: "documents/lease.pdf, page 1", text: "Section 4.2" },
-			},
-		];
-		const chosen = view(texts, world, history, "choose", 50_000);
-		expect(Object.keys(chosen.state)).toEqual([
+	it("shows the rubric, the files and the steps for a pick, and only the request and evidence for the answers", async () => {
+		const folder = folderOf(legalCase());
+		const state = stateOf({ ...evidence("read:d1:0-0", "Section 4.2"), source: "documents/lease.pdf, page 1" });
+		const picking = await view(texts, folder, state, "choose", 50_000);
+		expect(Object.keys(picking.json)).toEqual([
 			"process",
 			"stage",
 			"request",
@@ -96,10 +94,18 @@ describe("view", () => {
 			"steps_taken",
 			"evidence",
 		]);
-		expect(chosen.state["files"]).toEqual(
+		expect(picking.json["files"]).toEqual(
 			expect.arrayContaining([expect.objectContaining({ path: "documents/lease.pdf", read: "1 of 2 parts" })]),
 		);
-		expect(Object.keys(view(texts, world, history, "answer", 50_000).state)).toEqual(["request", "evidence"]);
+		expect(picking.json["evidence"]).toEqual([{ source: "documents/lease.pdf, page 1", text: "Section 4.2" }]);
+		expect(Object.keys((await view(texts, folder, state, "answer", 50_000)).json)).toEqual(["request", "evidence"]);
+	});
+
+	it("loads the images that the evidence names from the case folder", async () => {
+		const render = { label: "page 1 image", path: "images/d1-1.png", mimeType: "image/png" };
+		const state = stateOf(evidence("read:a1:0-0"), evidence("look:d1:0", "[image]", { image: render }));
+		const seen = await view(texts, folderOf(legalCase()), state, "answer", 50_000);
+		expect(seen.images).toEqual([{ label: "page 1 image", mimeType: "image/png", data: "data:images/d1-1.png" }]);
 	});
 
 	it("cuts the longest evidence first to fit, and says so", () => {
@@ -128,11 +134,13 @@ describe("legalJudge", () => {
 			instructions: "Rubric item S-1 (form):\nPASS if x.",
 		});
 		const domain = legalJudge(judge);
-		expect(domain.version).toBe(`0.3.0 legal-judge@${judge.hash.slice(0, 12)}`);
+		expect(domain.version).toBe(`0.4.0 legal-judge@${judge.hash.slice(0, 12)}`);
 		let calls = 0;
 		const decider = fakeDecider(answering(0.9, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
-		const result = await run(domain, worldOf(legalCase()), decider, { case: "case-1" });
+		const result = await run(domain, legalMachine(judge.definition, folderOf(legalCase())), decider);
 		expect(result.steps).toBe(2);
+		expect(result.state.evidence.map((entry) => entry.key)).toEqual(["read:a1:0-0", "read:d1:0-1"]);
+		expect(result.trace.entries.filter((entry) => entry.type === "stage")).toHaveLength(1);
 		expect(decider.requests[0]?.questions[0]?.instructions).toBe(`${texts.gather} ${texts.choose}`);
 		const last = decider.requests.at(-1);
 		expect(last?.questions.map((question) => question.id)).toEqual([
@@ -141,7 +149,7 @@ describe("legalJudge", () => {
 			"F-001/meets",
 			"F-001/misses",
 		]);
-		expect(last?.state).toMatchObject({ process: texts.process, stage: texts.check, rules: texts.rules });
+		expect(last?.json).toMatchObject({ process: texts.process, stage: texts.check, rules: texts.rules });
 		// Every question answered 0.9: the answer meets each item, but also misses something, so both fail.
 		expect(result.answers).toEqual({
 			"S-001": { type: "bool", probability: expect.closeTo(0.1) as unknown },

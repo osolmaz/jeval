@@ -10,10 +10,12 @@ const MODULES = ["model", "panels", "part", "app"] as const;
 const LOCAL_IMPORT = /^import\s[^;]*?\sfrom\s+"(?:(?:\.{1,2}\/)+[\w./-]+\.(?:ts|js)|@osolmaz\/switch\/page)";[ \t]*$/gm;
 const EXPORT = /^export\s+(?=(?:async\s+)?(?:function|const|let|class)\b)/gm;
 
-/** A domain's part of the viewer, as the server sees it: its browser modules and what they start with. */
+/** A domain's part of the viewer, as the server sees it: its browser modules, its styles and what they start with. */
 export interface DomainViewer {
 	/** The part's browser modules, each after the ones it uses; the script has them after the viewer's own. */
 	readonly modules: readonly URL[];
+	/** The part's stylesheets; the page has them after its own styles. */
+	readonly styles?: readonly URL[];
 	/** The part's config, such as the images it draws with: JSON, so that a saved page needs no other file. */
 	config(): Promise<Readonly<Record<string, unknown>>>;
 }
@@ -53,6 +55,12 @@ export function viewerScript(parts: readonly URL[] = []): Promise<string> {
 		built.set(key, script);
 	}
 	return script;
+}
+
+/** Every part's stylesheets, in the order of the parts, as one text. */
+export async function partStyles(viewers: Readonly<Record<string, DomainViewer>>): Promise<string> {
+	const files = Object.values(viewers).flatMap((viewer) => viewer.styles ?? []);
+	return (await Promise.all(files.map((url) => readFile(url, "utf8")))).join("\n");
 }
 
 /** Each part's config by the domain's name, as the page's `parts` config takes them. */

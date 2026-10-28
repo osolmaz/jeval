@@ -1,11 +1,11 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { hashOf, SetupError } from "@osolmaz/switch";
+import { DefinitionError, hashOf } from "@osolmaz/switch";
 import { resultSchema, route, runCases, runRecordSchema } from "@osolmaz/switch/cli";
 import { fakeDecider } from "@osolmaz/switch/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { chess, LIMITS } from "../src/index.ts";
+import { CHESS, LIMITS } from "../src/index.ts";
 import { chessSetup } from "../src/setup.ts";
 import { chessViewer } from "../src/viewer.ts";
 import { picking } from "./helpers/chess.ts";
@@ -43,8 +43,8 @@ async function chessRun(ids: readonly string[]): Promise<string> {
 
 describe("the chess harness", () => {
 	it("takes no definition file", async () => {
-		await expect(chessSetup("judge.json")).rejects.toThrow(SetupError);
-		await expect(chessSetup("judge.json")).rejects.toThrow(/takes no definition file/);
+		await expect(chessSetup("definition.json")).rejects.toThrow(DefinitionError);
+		await expect(chessSetup("definition.json")).rejects.toThrow(/takes no definition file/);
 	});
 
 	it("records a game's outcome, and its texts and limits as its definition", async () => {
@@ -54,12 +54,12 @@ describe("the chess harness", () => {
 		const { definition } = runRecordSchema.parse(JSON.parse(await readFile(join(out, "run.json"), "utf8")));
 		expect(definition).toEqual({
 			name: "chess",
-			hash: hashOf({ stop: chess.stop, instructions: chess.instructions, limits: LIMITS }),
-			content: { stop: "Resign the game", instructions: chess.instructions, limits: { ...LIMITS } },
+			hash: hashOf({ stop: CHESS.stop, instructions: CHESS.instructions, limits: LIMITS }),
+			content: { stop: "Resign the game", instructions: CHESS.instructions, limits: { ...LIMITS } },
 		});
 	});
 
-	it("serves a game's page with the chess part, its pieces and its outcome in the index", async () => {
+	it("serves a game's page with the chess part, its pieces, its styles and its outcome in the index", async () => {
 		const out = await chessRun(["g1", "g 2"]);
 		expect((await route(out, "/")).body).toContain(
 			'<a href="/case/g%202">g 2</a> <span class="meta">loss, resignation</span>',
@@ -67,6 +67,9 @@ describe("the chess harness", () => {
 		const page = await route(out, "/case/g1", { chess: chessViewer });
 		expect(page.body).toContain('registerPart("chess", chessPart)');
 		expect(page.body).toContain("data:image/svg+xml;base64,");
-		expect((await route(out, "/case/g1")).body).not.toContain("data:image/svg+xml;base64,");
+		expect(page.body).toContain(".board {");
+		const plain = (await route(out, "/case/g1")).body;
+		expect(plain).not.toContain("data:image/svg+xml;base64,");
+		expect(plain).not.toContain(".board");
 	});
 });

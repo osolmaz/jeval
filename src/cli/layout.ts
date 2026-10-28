@@ -12,7 +12,7 @@ export interface CaseFiles {
 	readonly folder: string;
 	/** The case's answers and outcome. */
 	readonly result: string;
-	/** Every menu, choice, observation and answer, in order. */
+	/** Every state, the choices and the pick of each step, and the answers, in order. */
 	readonly trace: string;
 	/** Every request sent to the decision model for the case, as sent, with its result. */
 	readonly requests: string;

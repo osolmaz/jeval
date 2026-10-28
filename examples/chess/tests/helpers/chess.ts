@@ -1,8 +1,7 @@
 import { Chess } from "chess.js";
-import type { Step } from "@osolmaz/switch";
 import type { Policy } from "@osolmaz/switch/testing";
-import { stepDataOf } from "../../src/game.ts";
-import { type ChessCase, caseSchema } from "../../src/index.ts";
+import { stateAfter } from "../../src/game.ts";
+import { type ChessCase, type ChessState, caseSchema, STANDARD_START } from "../../src/index.ts";
 
 const USAGE = { inputTokens: 10, milliseconds: 1 } as const;
 
@@ -27,9 +26,24 @@ export function picking(wanted: RegExp | "stop" | null = null): Policy {
 	};
 }
 
-/** A history of one step that played `moves` from the standard start, as the model on `side`. */
-export function historyOf(side: ChessCase["side"], moves: readonly string[]): Step[] {
-	const board = new Chess();
+/** The state after `moves` from `start`, with the model on `you` against the random opponent with seed 7. */
+export function stateOf(
+	moves: readonly string[],
+	you: ChessState["you"] = "white",
+	start = STANDARD_START,
+): ChessState {
+	const board = new Chess(start);
 	const played = moves.map((move) => board.move(move));
-	return [{ kind: "start", key: "start", observation: { text: "", data: stepDataOf(side, board, played) } }];
+	const before: ChessState = {
+		you,
+		opponent: "random legal moves, seed 7",
+		start,
+		moves: [],
+		san: [],
+		fen: start,
+		status: "playing",
+		check: false,
+		last: "",
+	};
+	return stateAfter(before, board, played, "");
 }

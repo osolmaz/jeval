@@ -1,15 +1,5 @@
 import { STOP_KEY, type TraceEntry } from "./trace.ts";
-import type {
-	Answer,
-	Choice,
-	ChoiceQuestion,
-	Decider,
-	DecisionRequest,
-	DecisionResult,
-	Domain,
-	Observation,
-	Step,
-} from "./types.ts";
+import type { Answer, ChoiceQuestion, Decider, DecisionRequest, DecisionResult, JsonObject } from "./types.ts";
 
 export class ReplayError extends Error {
 	override readonly name = "ReplayError";
@@ -17,107 +7,53 @@ export class ReplayError extends Error {
 
 const NO_USAGE = { inputTokens: 0, milliseconds: 0 } as const;
 
-type ObservationEntry = Extract<TraceEntry, { type: "observation" }>;
-
-/** What a run takes again from a trace: the observations of the start and of the first `steps` steps. */
+/** What a run takes again from a trace: the recorded states up to step `steps`. */
 export interface Replay {
 	readonly steps: number;
-	/** The recorded observations by step; step 0 holds the start's. */
-	readonly observations: ReadonlyMap<number, readonly ObservationEntry[]>;
+	/** The recorded states by step: the initial state first. */
+	readonly states: readonly JsonObject[];
 }
 
 /**
- * Repeats a recorded trace. The decider repeats its choices and the replay gives the run its observations, so no choice
+ * Repeats a recorded trace. The decider repeats its picks and the replay gives the run its states, so no transition
  * runs again. With `fork`, both stop after `fork.steps` steps, and `fork.then` decides and answers from there: a fork
  * of the trace at that step. Without it, the decider also repeats the recorded answers.
  */
 export function replayOf(entries: readonly TraceEntry[], fork?: Fork): { decider: Decider; replay: Replay } {
 	const decider = replayDecider(entries, fork);
-	const observations = new Map<number, ObservationEntry[]>();
+	const states = statesOf(entries);
+	const steps = fork?.steps ?? entries.filter((entry) => entry.type === "pick").length;
+	return { decider, replay: { steps, states } };
+}
+
+/** The recorded states in order of their steps; each step from 0 on must have one. */
+function statesOf(entries: readonly TraceEntry[]): JsonObject[] {
+	const states: JsonObject[] = [];
 	for (const entry of entries) {
-		if (entry.type === "observation") observations.set(entry.step, [...(observations.get(entry.step) ?? []), entry]);
+		if (entry.type !== "state") continue;
+		if (entry.step !== states.length) throw new ReplayError(`the trace's states skip to step ${String(entry.step)}`);
+		states.push(entry.state);
 	}
-	const steps = fork?.steps ?? entries.filter((entry) => entry.type === "choice").length;
-	return { decider, replay: { steps, observations } };
+	return states;
+}
+
+/** The recorded state after `step` steps. */
+export function recordedState(replay: Replay, step: number): JsonObject {
+	const state = replay.states[step];
+	if (state === undefined) throw new ReplayError(`the trace has no state after step ${String(step)}`);
+	return state;
 }
 
 /**
- * The steps a run starts with: the recorded ones while it replays a trace. A trace keeps only the labels of images, so
- * when the recorded start has images, the domain's start runs again and must find the same.
- */
-export async function startOf<W>(domain: Domain<W>, world: W, replay: Replay | undefined): Promise<readonly Step[]> {
-	if (replay === undefined) return domain.start(world);
-	const recorded = replay.observations.get(0) ?? [];
-	if (recorded.every((entry) => entry.images.length === 0)) {
-		return recorded.map((entry) => ({ kind: entry.kind, key: entry.key, observation: observationOf(entry) }));
-	}
-	const again = await domain.start(world);
-	if (again.length !== recorded.length) throw new ReplayError("the start found other observations than the trace");
-	again.forEach((step, index) => {
-		assertSame(recorded[index], step);
-	});
-	return again;
-}
-
-/**
- * What a chosen choice finds. A step that repeats a trace takes the recorded observation, or, when that has images, runs
- * the choice again and must find the same.
- */
-export async function observe(choice: Choice, step: number, replay: Replay | undefined): Promise<Observation> {
-	if (replay === undefined || step > replay.steps) return choice.run();
-	const recorded = recordedStep(replay, step, choice.key);
-	if (recorded.images.length === 0) return observationOf(recorded);
-	const observation = await choice.run();
-	assertSame(recorded, { kind: choice.kind, key: choice.key, observation });
-	return observation;
-}
-
-/** The recorded observation of `step`, which must belong to the choice with `key`. */
-function recordedStep(replay: Replay, step: number, key: string): ObservationEntry {
-	const [recorded] = replay.observations.get(step) ?? [];
-	if (recorded?.key !== key) {
-		throw new ReplayError(`step ${String(step)} took ${key}; the trace took ${recorded?.key ?? "no step"}`);
-	}
-	return recorded;
-}
-
-function observationOf(entry: ObservationEntry): Observation {
-	return {
-		...(entry.source === undefined ? {} : { source: entry.source }),
-		text: entry.text,
-		...(entry.data === undefined ? {} : { data: entry.data }),
-	};
-}
-
-/** Refuses an observation that differs from the recorded one in its step, source, text, image labels or data. */
-function assertSame(recorded: ObservationEntry | undefined, { kind, key, observation }: Step): void {
-	const facts = (source: string | undefined, text: string, images: readonly string[], data: unknown) =>
-		JSON.stringify([source ?? null, text, images, data ?? null]);
-	const found = facts(
-		observation.source,
-		observation.text,
-		(observation.images ?? []).map((image) => image.label),
-		observation.data,
-	);
-	if (
-		recorded?.kind !== kind ||
-		recorded.key !== key ||
-		facts(recorded.source, recorded.text, recorded.images, recorded.data) !== found
-	) {
-		throw new ReplayError(`${key} found something other than what the trace recorded`);
-	}
-}
-
-/**
- * A decider that repeats the choices of a recorded trace. With `then`, the replay stops after `steps` choices and
- * `then` decides from there on, and answers the questions. Without `then`, it also repeats the recorded answers.
+ * A decider that repeats the picks of a recorded trace. With `then`, the replay stops after `steps` picks and `then`
+ * decides from there on, and answers the questions. Without `then`, it also repeats the recorded answers.
  */
 function replayDecider(entries: readonly TraceEntry[], fork?: Fork): Decider {
 	const first = entries[0];
-	if (first?.type !== "case") throw new ReplayError("a trace starts with its case entry");
+	if (first?.type !== "start") throw new ReplayError("a trace starts with its start entry");
 	const recording = recordingOf(entries);
 	if (fork === undefined) {
-		const progress = { made: 0, limit: recording.chosen.length };
+		const progress = { made: 0, limit: recording.picks.length };
 		return {
 			model: first.model,
 			window: Number.MAX_SAFE_INTEGER,
@@ -136,26 +72,26 @@ function replayDecider(entries: readonly TraceEntry[], fork?: Fork): Decider {
 }
 
 function recordingOf(entries: readonly TraceEntry[]): Recording {
-	const stages = entries.filter((entry) => entry.type === "asked" || entry.type === "answers");
+	const stages = entries.filter((entry) => entry.type === "stage" || entry.type === "answers");
 	return {
-		menus: entries.filter((entry) => entry.type === "menu"),
-		chosen: entries.filter((entry) => entry.type === "choice"),
+		choices: entries.filter((entry) => entry.type === "choices"),
+		picks: entries.filter((entry) => entry.type === "pick"),
 		answers: stages.length === 0 ? null : new Map(stages.flatMap((entry) => Object.entries(entry.answers))),
 	};
 }
 
 export interface Fork {
-	/** How many recorded choices to repeat before `then` decides. */
+	/** How many recorded picks to repeat before `then` decides. */
 	readonly steps: number;
 	readonly then: Decider;
 }
 
-type MenuEntry = Extract<TraceEntry, { type: "menu" }>;
-type ChoiceEntry = Extract<TraceEntry, { type: "choice" }>;
+type ChoicesEntry = Extract<TraceEntry, { type: "choices" }>;
+type PickEntry = Extract<TraceEntry, { type: "pick" }>;
 interface Recording {
-	readonly menus: readonly MenuEntry[];
-	readonly chosen: readonly ChoiceEntry[];
-	/** Every recorded answer by question id, from every answer stage. */
+	readonly choices: readonly ChoicesEntry[];
+	readonly picks: readonly PickEntry[];
+	/** Every recorded answer by question id, from every answer stage and the final answers. */
 	readonly answers: ReadonlyMap<string, Answer> | null;
 }
 
@@ -174,22 +110,23 @@ function replay(
 	if (next !== null && progress.made < progress.limit) {
 		progress.made += 1;
 		return Promise.resolve(
-			repeatChoice(next, recording.menus[progress.made - 1], recording.chosen[progress.made - 1]),
+			repeatPick(next, recording.choices[progress.made - 1], recording.picks[progress.made - 1]),
 		);
 	}
 	if (then !== undefined) return then.decide(request);
-	return Promise.resolve(next === null ? repeatAnswers(request, recording.answers) : stopChoice(next));
+	return Promise.resolve(next === null ? repeatAnswers(request, recording.answers) : stopPick(next));
 }
 
-function repeatChoice(
+/** The recorded pick, as an answer to the run's own pick question; the pick must be among the choices again. */
+function repeatPick(
 	question: ChoiceQuestion,
-	menu: MenuEntry | undefined,
-	chosen: ChoiceEntry | undefined,
+	choices: ChoicesEntry | undefined,
+	pick: PickEntry | undefined,
 ): DecisionResult {
-	if (menu === undefined || chosen === undefined) throw new ReplayError("the trace has fewer choices than the run");
-	const text = menu.choices.find((choice) => choice.key === chosen.key)?.text;
+	if (choices === undefined || pick === undefined) throw new ReplayError("the trace has fewer picks than the run");
+	const text = choices.choices.find((choice) => choice.key === pick.key)?.text;
 	const label = Object.entries(question.choices).find(([, choiceText]) => choiceText === text)?.[0];
-	if (label === undefined) throw new ReplayError(`the recorded choice ${chosen.key} is not on the menu any more`);
+	if (label === undefined) throw new ReplayError(`the recorded pick ${pick.key} is not among the choices any more`);
 	return {
 		ok: true,
 		answers: { [question.id]: { type: "choice", choice: label, probabilities: { [label]: 1 } } },
@@ -197,7 +134,7 @@ function repeatChoice(
 	};
 }
 
-function stopChoice(question: ChoiceQuestion): DecisionResult {
+function stopPick(question: ChoiceQuestion): DecisionResult {
 	return {
 		ok: true,
 		answers: { [question.id]: { type: "choice", choice: STOP_KEY, probabilities: { [STOP_KEY]: 1 } } },

@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 describe("the viewer, for a domain without a part", () => {
-	it("opens a saved case at its start, with the plain text of what the model saw and the result", async () => {
+	it("opens a saved case at its start, with the initial state as JSON and the result", async () => {
 		const { root } = mount({ ...QUICK, session: await factsSession() });
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("Start");
@@ -47,8 +47,8 @@ describe("the viewer, for a domain without a part", () => {
 		]);
 		// A saved page has no server, so its header links nowhere.
 		expect(root.querySelector("a.home")?.hasAttribute("href")).toBe(false);
-		expect(text(root, ".found-card")).toBe("Nothing seen yet.");
-		expect(text(root, ".history h2")).toBe("Result");
+		expect(JSON.parse(text(root, ".found-card"))).toEqual({ looked: [], found: [] });
+		expect(text(root, ".timeline h2")).toBe("Result");
 		expect(text(root, ".banner")).toBe("answered · the model stopped");
 		expect(text(root, ".facts")).toContain("looked2");
 		expect(text(root, ".facts")).toContain("ayes 70.0%");
@@ -60,13 +60,17 @@ describe("the viewer, for a domain without a part", () => {
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("Step 1 of 3");
 		});
-		expect(text(root, ".decision h2")).toBe("The menu");
+		expect(text(root, ".decision h2")).toBe("The choices");
 		expect(text(root, ".decision .step")).toBe("Step 1 of 3");
-		expect(root.querySelector(".menu .chosen")?.textContent).toContain("(chosen)");
-		expect(text(root, ".found")).toBe("fact a");
+		expect(root.querySelector(".choices .picked")?.textContent).toContain("(picked)");
+		expect(text(root, ".decision h3")).toBe("What changed");
+		expect(Array.from(root.querySelectorAll(".found")).map((line) => line.textContent)).toEqual([
+			"looked + a",
+			"found + fact a",
+		]);
 		click(root, "button.next");
 		await vi.waitFor(() => {
-			expect(text(root, ".found-card")).toBe("fact a");
+			expect(JSON.parse(text(root, ".found-card"))).toEqual({ looked: ["a"], found: ["fact a"] });
 		});
 		click(root, "button.latest");
 		await vi.waitFor(() => {
@@ -163,23 +167,23 @@ describe("a running case", () => {
 		expect(label(root)).toBe("Start");
 	});
 
-	it("shows the choices without probabilities while the model is choosing, and a case without an outcome", async () => {
+	it("shows the choices without probabilities while the model is picking, and a case without an outcome", async () => {
 		const session = await factsSession({ steps: 1, finished: false });
 		const frame = session.story.frames[0];
 		if (frame === undefined) throw new Error("no step");
 		const thinking = {
 			...frame,
-			chosen: null,
+			picked: null,
 			after: null,
-			choices: frame.choices.map((choice) => ({ ...choice, probability: null, chosen: false })),
+			choices: frame.choices.map((choice) => ({ ...choice, probability: null, picked: false })),
 		};
 		const story = { ...session.story, frames: [thinking] };
 		const { root } = mount({ ...QUICK, session: { ...session, finished: true, story } });
 		click(root, "button.next");
 		await vi.waitFor(() => {
-			expect(text(root, ".decision h2")).toBe("The model is choosing from the menu…");
+			expect(text(root, ".decision h2")).toBe("The model is picking from the choices…");
 		});
-		expect(Array.from(root.querySelectorAll(".menu .p")).map((p) => p.textContent)).toEqual(["–", "–", "–", "–"]);
+		expect(Array.from(root.querySelectorAll(".choices .p")).map((p) => p.textContent)).toEqual(["–", "–", "–", "–"]);
 		expect(text(root, ".result-slot")).toBe("The case ended without an outcome.");
 	});
 });
@@ -193,7 +197,7 @@ registerPart("fake", (given) => {
 	return {
 		stage: (moment: Moment, from: Moment | null) => {
 			asked.push(`stage ${moment.label}${from === null ? "" : ` from ${from.label}`}`);
-			return Promise.resolve(moment.kind === "end" ? null : h("div", { class: "drawn" }, moment.label));
+			return Promise.resolve(moment.type === "end" ? null : h("div", { class: "drawn" }, moment.label));
 		},
 		bars: (moment: Moment) => ({ top: h("p", { class: "top" }, `above ${moment.label}`), bottom: null }),
 		stepNote: () => " · a note",
@@ -251,7 +255,7 @@ describe("a domain's part of the page", () => {
 		expect(context?.config).toEqual({ color: "blue" });
 		expect([context?.motion(), context?.gap()]).toEqual([0, 0]);
 		expect(text(root, ".top")).toBe("above Start");
-		expect(text(root, ".history h2")).toBe("Facts");
+		expect(text(root, ".timeline h2")).toBe("Facts");
 		expect(text(root, ".banner")).toBe("9-9answered · the model stopped");
 		expect(text(root, ".facts")).not.toContain("looked");
 		expect([hidden(root, "button.download"), text(root, "button.download")]).toEqual([false, "Facts"]);
@@ -268,7 +272,7 @@ describe("a domain's part of the page", () => {
 		expect(root.querySelector(".current .jump2")).not.toBeNull();
 		click(root, "button.latest");
 		await vi.waitFor(() => {
-			expect(text(root, ".found-card")).toBe("fact b");
+			expect(JSON.parse(text(root, ".found-card"))).toEqual({ looked: ["a", "b"], found: ["fact a", "fact b"] });
 		});
 	});
 

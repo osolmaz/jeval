@@ -1,5 +1,5 @@
-import { definitionOf, type Runner, runnerOf, SetupError } from "@osolmaz/switch";
-import { chess, LIMITS, outcomeOf } from "./index.ts";
+import { DefinitionError, definitionOf, type Runner, runnerOf } from "@osolmaz/switch";
+import { CHESS, chessMachine, LIMITS, outcomeOf } from "./index.ts";
 import { loadCase, loadGame } from "./load.ts";
 
 /**
@@ -7,19 +7,19 @@ import { loadCase, loadGame } from "./load.ts";
  * counts the stop choice as a resignation.
  */
 export function chessSetup(file: string | undefined): Promise<Runner> {
-	if (file !== undefined) return Promise.reject(new SetupError("the chess domain takes no definition file"));
+	if (file !== undefined) return Promise.reject(new DefinitionError("the chess domain takes no definition file"));
 	return Promise.resolve(
 		runnerOf({
-			domain: chess,
-			definition: definitionOf(chess.name, {
-				stop: chess.stop,
-				instructions: chess.instructions,
+			...CHESS,
+			definition: definitionOf(CHESS.name, {
+				stop: CHESS.stop,
+				instructions: CHESS.instructions,
 				limits: { ...LIMITS },
 			}),
 			limits: LIMITS,
 			caseId: async (folder) => (await loadCase(folder)).id,
-			load: (folder) => loadGame(folder),
-			outcome: (game, result) => outcomeOf(game, result.history, result.ended === "stop"),
+			load: async (folder) => chessMachine(await loadGame(folder)),
+			outcome: (state, result) => outcomeOf(state, result.ended === "stop"),
 		}),
 	);
 }

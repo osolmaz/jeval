@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { DEFAULT_LIMITS, definitionOf, type Runner, runnerOf, SetupError } from "../../src/core/index.ts";
-import { type Facts, factsDomain } from "./fakes.ts";
+import { DEFAULT_LIMITS, DefinitionError, definitionOf, type Runner, runnerOf } from "../../src/core/index.ts";
+import { factsMachine, factsTexts } from "./fakes.ts";
 
 const caseSchema = z.object({ id: z.string(), facts: z.record(z.string(), z.string()) });
 const readCase = async (folder: string) =>
@@ -20,17 +20,17 @@ export async function factsFolder(
 	return folder;
 }
 
-/** The test domain's setup: it takes no definition file, and a case's outcome says how the steps ended. */
+/** The test domain: it takes no definition file, and a case's outcome says how the steps ended. */
 export function factsSetup(file: string | undefined): Promise<Runner> {
-	if (file !== undefined) return Promise.reject(new SetupError("the facts domain takes no definition file"));
+	if (file !== undefined) return Promise.reject(new DefinitionError("the facts domain takes no definition file"));
 	return Promise.resolve(
-		runnerOf<Facts>({
-			domain: factsDomain,
-			definition: definitionOf("facts", { stop: factsDomain.stop, instructions: factsDomain.instructions }),
+		runnerOf({
+			...factsTexts,
+			definition: definitionOf("facts", { stop: factsTexts.stop, instructions: factsTexts.instructions }),
 			limits: DEFAULT_LIMITS,
 			caseId: async (folder) => (await readCase(folder)).id,
-			load: async (folder) => ({ facts: (await readCase(folder)).facts }),
-			outcome: (_world, result) => ({ result: "answered", reason: result.ended, looked: result.history.length }),
+			load: async (folder) => factsMachine({ facts: (await readCase(folder)).facts }),
+			outcome: (state, result) => ({ result: "answered", reason: result.ended, looked: state.looked.length }),
 		}),
 	);
 }

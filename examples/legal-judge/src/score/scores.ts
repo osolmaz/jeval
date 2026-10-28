@@ -31,10 +31,10 @@ async function readLabels(path: string): Promise<Label[]> {
 async function categoriesOf(set: EvalSet, results: readonly CaseResult[]): Promise<Map<string, string>> {
 	const ran = new Set(results.map((result) => result.case));
 	const folders = set.folders.filter((folder) => ran.has(basename(folder)));
-	const worlds = await Promise.all(folders.map((folder) => loadCase(folder)));
+	const loaded = await Promise.all(folders.map((folder) => loadCase(folder)));
 	return new Map(
-		worlds.flatMap((world) =>
-			world.case.items.map((item) => [`${world.case.id}/${item.id}`, item.category ?? "unknown"] as const),
+		loaded.flatMap(({ case: legalCase }) =>
+			legalCase.items.map((item) => [`${legalCase.id}/${item.id}`, item.category ?? "unknown"] as const),
 		),
 	);
 }
@@ -66,7 +66,7 @@ export interface ComparedRun {
 	/** The run's definition as `name@hash`, with the first 12 characters of the hash. */
 	readonly definition: string;
 	readonly model: string;
-	readonly stepsFrom: string | null;
+	readonly stateFrom: string | null;
 	readonly report: Report;
 	readonly calls: number | null;
 	readonly inputTokens: number | null;
@@ -85,7 +85,7 @@ function metricsLine({ report, calls, inputTokens }: ComparedRun): string {
 function formatComparison(cases: number, runs: readonly ComparedRun[]): string {
 	const lines = [`${String(cases)} cases that every run answered`];
 	for (const run of runs) {
-		const source = run.stepsFrom === null ? "" : `, steps of ${run.stepsFrom}`;
+		const source = run.stateFrom === null ? "" : `, state of ${run.stateFrom}`;
 		lines.push(`${run.run}: ${run.definition}, ${run.model}${source}`, metricsLine(run));
 	}
 	return lines.join("\n");
@@ -116,7 +116,7 @@ export async function compareRuns(
 		run,
 		definition: `${record.definition.name}@${record.definition.hash.slice(0, 12)}`,
 		model: record.model,
-		stepsFrom: record.stepsFrom,
+		stateFrom: record.stateFrom,
 		report: reportOn(results, labels, common, categories),
 		calls: record.totals?.calls ?? null,
 		inputTokens: record.totals?.inputTokens ?? null,

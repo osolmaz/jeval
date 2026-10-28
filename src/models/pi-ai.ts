@@ -64,10 +64,11 @@ export function piAiDecider(name: string, options: PiAiDeciderOptions): Decider 
 	};
 }
 
+/** The API's request: the API calls the JSON that the model reads `state`. */
 function toContext(request: DecisionRequest): ClassifierContext {
 	const questions = Object.fromEntries(request.questions.map((question) => [question.id, toQuestion(question)]));
 	const images = request.images.map(({ data, mimeType }) => ({ type: "image" as const, data, mimeType }));
-	return { state: request.state, questions, ...(images.length > 0 ? { images } : {}) };
+	return { state: request.json, questions, ...(images.length > 0 ? { images } : {}) };
 }
 
 /** The API's question for switch's: the same `type` and instructions, with switch's texts as the API's `criteria`. */

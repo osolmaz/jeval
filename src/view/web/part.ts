@@ -8,7 +8,7 @@ export interface PartContext {
 	readonly config: Readonly<Record<string, unknown>>;
 	/** Milliseconds one move on the stage takes at the page's speed; 0 when the viewer asks for less motion. */
 	motion(): number;
-	/** Milliseconds between the moves of one step while the page plays; 0 when it does not play. */
+	/** Milliseconds between the motions of one step while the page plays; 0 when it does not play. */
 	gap(): number;
 }
 
@@ -36,16 +36,16 @@ export interface DomainPart {
 	stage?(moment: Moment, from: Moment | null): Promise<HTMLElement | null>;
 	/** What goes above and below the stage. */
 	bars?(moment: Moment, session: Session): { readonly top: HTMLElement | null; readonly bottom: HTMLElement | null };
-	/** Text after a step's label, such as " · white to move". */
+	/** Text after a step's label, which starts with its own separator. */
 	stepNote?(moment: Moment): string;
-	/** A list of the steps beside the stage, with its title, such as the moves of a game; each entry opens a moment. */
+	/** A list of the steps beside the stage, with its title; each entry opens a moment. */
 	readonly steps?: {
 		readonly title: string;
 		list(session: Session, index: number, open: (moment: number) => void): HTMLElement[];
 	};
-	/** A short result for the result's banner, such as 1-0; null when there is none. */
+	/** A short result for the result's banner; null when there is none. */
 	score?(session: Session): string | null;
-	/** Fields of the outcome that the result leaves out, such as a game's final position. */
+	/** Fields of the outcome that the result leaves out. */
 	readonly hidden?: readonly string[];
 	/** The download button's label and text, and the file it gives. */
 	readonly download?: { readonly label: string; readonly text: string; file(session: Session): Download };

@@ -78,7 +78,7 @@ describe("the legal-judge harness", () => {
 		const run = runRecordSchema.parse(JSON.parse(await readFile(join(folder, "out", "run.json"), "utf8")));
 		expect(run).toMatchObject({
 			domain: "legal-judge",
-			version: `0.3.0 legal-judge@${legalJudge.definition.hash.slice(0, 12)}`,
+			version: `0.4.0 legal-judge@${legalJudge.definition.hash.slice(0, 12)}`,
 			definition: { name: "legal-judge", hash: legalJudge.definition.hash, content: { domain: "legal-judge" } },
 			model: "fake/decider",
 			limits: DEFAULT_LIMITS,
@@ -93,13 +93,13 @@ describe("the legal-judge harness", () => {
 			.split("\n")
 			.filter(Boolean)
 			.map(
-				(line) => JSON.parse(line) as { request: { state: Record<string, unknown>; questions: { id: string }[] } },
+				(line) => JSON.parse(line) as { request: { json: Record<string, unknown>; questions: { id: string }[] } },
 			);
 		expect(requests.map((exchange) => exchange.request.questions.map((question) => question.id))).toEqual([
 			["next"],
 			["S-1/meets", "S-1/misses"],
 		]);
-		expect(requests[1]?.request.state).toMatchObject({ rules: expect.any(String) as unknown });
+		expect(requests[1]?.request.json).toMatchObject({ rules: expect.any(String) as unknown });
 		expect(lines).toEqual(
 			expect.arrayContaining(["c1: stop", "c2: stop", expect.stringMatching(/^missing: FAILED/)]),
 		);
@@ -153,23 +153,23 @@ describe("the legal-judge harness", () => {
 		await runCases(await legalJudgeSetup(strict), cases, second, {
 			...options,
 			out,
-			stepsFrom: join(folder, "first"),
+			stateFrom: join(folder, "first"),
 		});
 
-		// Only the questions went to the model: the steps were repeated from the first run.
+		// Only the questions went to the model: the picks and states were repeated from the first run.
 		expect(second.requests.map((request) => request.questions[0]?.id)).toEqual(["S-1/meets", "S-1/meets"]);
 		const run = runRecordSchema.parse(JSON.parse(await readFile(join(out, "run.json"), "utf8")));
 		expect(run).toMatchObject({
 			definition: { name: "strict" },
-			stepsFrom: join(folder, "first"),
+			stateFrom: join(folder, "first"),
 			totals: { calls: 2 },
 		});
-		const observations = async (name: string) =>
-			parseTrace(await readFile(join(folder, name, "cases", "c1", "trace.jsonl"), "utf8"))
-				.filter((entry) => entry.type === "observation")
-				.map((entry) => entry.key);
-		expect(await observations("second")).toEqual(await observations("first"));
-		expect((await observations("first")).length).toBeGreaterThan(1);
+		const states = async (name: string) =>
+			parseTrace(await readFile(join(folder, name, "cases", "c1", "trace.jsonl"), "utf8")).flatMap((entry) =>
+				entry.type === "state" ? [entry.state] : [],
+			);
+		expect(await states("second")).toEqual(await states("first"));
+		expect((await states("first")).length).toBeGreaterThan(1);
 
 		const set = await loadLabelledSet(await setOf(["c1", "c2", "c3"], { c1: true, c2: true, c3: true }));
 		const compared = await compareRuns([join(folder, "first"), out], set);
@@ -180,7 +180,7 @@ describe("the legal-judge harness", () => {
 			["strict", 0],
 		]);
 		expect(compared.text).toMatch(/^2 cases that every run answered/);
-		expect(compared.text).toContain(`steps of ${join(folder, "first")}`);
+		expect(compared.text).toContain(`state of ${join(folder, "first")}`);
 	});
 
 	it("records a failed case's error", async () => {

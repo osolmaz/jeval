@@ -57,7 +57,7 @@ interface RunFlags {
 	readonly model: string;
 	readonly apiKeyEnv?: string;
 	readonly concurrency: number;
-	readonly stepsFrom?: string;
+	readonly stateFrom?: string;
 	readonly view?: number | true;
 }
 
@@ -70,14 +70,11 @@ function runCommand(domains: Domains, viewers: Viewers): Command {
 		.option("--set <file>", "an eval set file; its scheduled cases are run")
 		.requiredOption("--out <folder>", "the run folder; a stopped run goes on in its own folder")
 		.option("--domain <name>", DOMAIN)
-		.option("--definition <file>", "the domain's definition, such as a legal judge file; the domain's own by default")
+		.option("--definition <file>", "the domain's definition file; the domain's own by default")
 		.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
 		.option("--api-key-env <variable>", "the environment variable that holds the API key")
 		.option("--concurrency <n>", "cases at once", positive, 4)
-		.option(
-			"--steps-from <run>",
-			"take each case's steps and observations again from this run, and only ask the questions again",
-		)
+		.option("--state-from <run>", "take each case's states again from this run, and only ask the questions again")
 		.option("--view [port]", "watch the cases in the browser while they run, on this local port", positive)
 		.action(async (cases: string[], options: RunFlags) => {
 			const { folders, set } = await casesOf(cases, options.set);
@@ -93,7 +90,7 @@ function runCommand(domains: Domains, viewers: Viewers): Command {
 				concurrency: options.concurrency,
 				log,
 				...(set === undefined ? {} : { set }),
-				...(options.stepsFrom === undefined ? {} : { stepsFrom: options.stepsFrom }),
+				...(options.stateFrom === undefined ? {} : { stateFrom: options.stateFrom }),
 			});
 			if (options.view !== undefined) log("The run is done. The viewer stays open until you stop it with Ctrl-C.");
 		});
@@ -110,7 +107,7 @@ interface ReplayFlags {
 function replayCommand(domains: Domains): Command {
 	return new Command("replay")
 		.description(
-			"Run a case again with the steps and observations of its trace; with --fork, the model goes on after the fork",
+			"Run a case again with the picks and states of its trace; with --fork, the model goes on after the fork",
 		)
 		.argument("<case>")
 		.argument("<trace>")
@@ -155,13 +152,13 @@ function viewCommand(viewers: Viewers): Command {
 
 /**
  * The command line of a harness with `domains`: `run`, `replay` and `view`. A harness can add commands of its own
- * before it parses the arguments, such as legal-judge's `ingest`.
+ * before it parses the arguments, such as one that prepares case folders.
  */
 export function commandLine(domains: Domains): Command {
 	const viewers = viewersOf(domains);
 	return new Command()
 		.description(
-			"A switch harness: a decision model works through cases by choosing each step from a menu that code builds.",
+			"A switch harness: a decision model works through cases by picking each step from the choices that code gives.",
 		)
 		.addCommand(runCommand(domains, viewers))
 		.addCommand(replayCommand(domains))

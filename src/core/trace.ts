@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Answer, Choice, Json, Limits, Observation, Usage } from "./types.ts";
+import type { Answer, Choice, Json, JsonObject, Limits, Usage } from "./types.ts";
 
 const usage = z.object({ inputTokens: z.number().nullable(), milliseconds: z.number() });
 export const answerSchema = z.discriminatedUnion("type", [
@@ -15,40 +15,30 @@ export const answerSchema = z.discriminatedUnion("type", [
 const base = { id: z.number().int(), parent: z.number().int().nullable() };
 /** A JSON value, as the core types it. */
 const json: z.ZodType<Json> = z.json();
-/** Facts for tools that read the trace, written only when there are any; a replay gives them back to the domain. */
-const data = z.record(z.string(), json).optional();
+const jsonObject = z.record(z.string(), json);
+/** Facts for tools that read the trace, written only when there are any. */
+const data = jsonObject.optional();
 
 /** One line of a trace. Every entry names its parent, so a trace is a tree: a fork shares the steps before it. */
 export const traceEntrySchema = z.discriminatedUnion("type", [
 	z.object({
 		...base,
-		type: z.literal("case"),
-		case: z.string(),
+		type: z.literal("start"),
 		domain: z.string(),
 		version: z.string(),
 		model: z.string(),
 		limits: z.object({ steps: z.number(), choices: z.number(), windowShare: z.number() }),
 	}),
+	z.object({ ...base, type: z.literal("state"), step: z.number().int(), state: jsonObject }),
 	z.object({
 		...base,
-		type: z.literal("observation"),
+		type: z.literal("choices"),
 		step: z.number().int(),
-		kind: z.string(),
-		key: z.string(),
-		source: z.string().optional(),
-		text: z.string(),
-		images: z.array(z.string()),
-		data,
+		choices: z.array(z.object({ key: z.string(), type: z.string(), text: z.string(), data })),
 	}),
 	z.object({
 		...base,
-		type: z.literal("menu"),
-		step: z.number().int(),
-		choices: z.array(z.object({ key: z.string(), kind: z.string(), text: z.string(), data })),
-	}),
-	z.object({
-		...base,
-		type: z.literal("choice"),
+		type: z.literal("pick"),
 		step: z.number().int(),
 		key: z.string(),
 		probabilities: z.record(z.string(), z.number()),
@@ -57,14 +47,14 @@ export const traceEntrySchema = z.discriminatedUnion("type", [
 	}),
 	z.object({
 		...base,
-		type: z.literal("answers"),
+		type: z.literal("stage"),
+		stage: z.string(),
 		answers: z.record(z.string(), answerSchema),
 		usage: z.array(usage),
 	}),
 	z.object({
 		...base,
-		type: z.literal("asked"),
-		stage: z.string(),
+		type: z.literal("answers"),
 		answers: z.record(z.string(), answerSchema),
 		usage: z.array(usage),
 	}),
@@ -76,7 +66,7 @@ type Body<T extends TraceEntry["type"]> = Omit<Extract<TraceEntry, { type: T }>,
 /** A trace entry without the fields the trace assigns. */
 type Unplaced = TraceEntry extends infer E ? (E extends TraceEntry ? Omit<E, "id" | "parent"> : never) : never;
 
-/** The key and the kind of the stop choice in traces. */
+/** The key and the type of the stop choice in traces. */
 export const STOP_KEY = "stop";
 
 /** Records a run as a chain of entries; `onEntry` sees each one as it is written, for streaming to a file. */
@@ -88,50 +78,50 @@ export class Trace {
 		this.onEntry = onEntry;
 	}
 
-	caseStarted(body: Body<"case">): void {
-		this.push({ type: "case", ...body });
+	started(body: Body<"start">): void {
+		this.push({ type: "start", ...body });
 	}
 
-	observed(step: number, kind: string, key: string, observation: Observation): void {
-		const images = (observation.images ?? []).map((image) => image.label);
-		const { source, text } = observation;
-		const named = source === undefined ? {} : { source };
-		const facts = observation.data === undefined ? {} : { data: observation.data };
-		this.push({ type: "observation", step, kind, key, ...named, text, images, ...facts });
+	/** Records the state after `step` steps: the initial state at step 0. */
+	state(step: number, state: JsonObject): void {
+		this.push({ type: "state", step, state });
 	}
 
-	menu(step: number, menu: readonly Choice[], stop: string): void {
-		const choices = menu.map(({ key, kind, text, data }) => ({
+	/** Records the choices that the model sees at `step`, and the stop choice after them. */
+	choices(step: number, offered: readonly Choice[], stop: string): void {
+		const choices = offered.map(({ key, type, text, data }) => ({
 			key,
-			kind,
+			type,
 			text,
 			...(data === undefined ? {} : { data }),
 		}));
-		choices.push({ key: STOP_KEY, kind: STOP_KEY, text: stop });
-		this.push({ type: "menu", step, choices });
+		choices.push({ key: STOP_KEY, type: STOP_KEY, text: stop });
+		this.push({ type: "choices", step, choices });
 	}
 
-	/** Records the model's choice: its key, the probabilities by key, the model's confidence and the usage. */
-	chose(
+	/** Records the model's pick: its key, the probabilities by key, the model's confidence and the usage. */
+	picked(
 		step: number,
-		chosen: {
+		pick: {
 			readonly key: string;
 			readonly probabilities: Readonly<Record<string, number>>;
 			readonly confidence: number | undefined;
 			readonly usage: Usage;
 		},
 	): void {
-		const { key, probabilities, confidence } = chosen;
+		const { key, probabilities, confidence } = pick;
 		const sure = confidence === undefined ? {} : { confidence };
-		this.push({ type: "choice", step, key, probabilities: { ...probabilities }, ...sure, usage: chosen.usage });
+		this.push({ type: "pick", step, key, probabilities: { ...probabilities }, ...sure, usage: pick.usage });
 	}
 
+	/** Records the answers of one stage of a domain's own answer function. */
+	stage(stage: string, answers: Readonly<Record<string, Answer>>, used: readonly Usage[]): void {
+		this.push({ type: "stage", stage, answers: { ...answers }, usage: [...used] });
+	}
+
+	/** Records the final answer to each question. */
 	answered(answers: Readonly<Record<string, Answer>>, used: readonly Usage[]): void {
 		this.push({ type: "answers", answers: { ...answers }, usage: [...used] });
-	}
-
-	asked(stage: string, answers: Readonly<Record<string, Answer>>, used: readonly Usage[]): void {
-		this.push({ type: "asked", stage, answers: { ...answers }, usage: [...used] });
 	}
 
 	note(message: string): void {
@@ -154,8 +144,11 @@ export function parseTrace(text: string): TraceEntry[] {
 		.map((line) => traceEntrySchema.parse(JSON.parse(line)));
 }
 
-export function limitsOf(entries: readonly TraceEntry[]): Limits {
+/** The first entry of a trace, which says what ran. */
+export function startOf(entries: readonly TraceEntry[]): Extract<TraceEntry, { type: "start" }> {
 	const first = entries[0];
-	if (first?.type !== "case") throw new Error("a trace starts with its case entry");
-	return first.limits;
+	if (first?.type !== "start") throw new Error("a trace starts with its start entry");
+	return first;
 }
+
+export const limitsOf = (entries: readonly TraceEntry[]): Limits => startOf(entries).limits;

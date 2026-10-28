@@ -1,5 +1,5 @@
 import type { CaseFile, LegalCase } from "../../src/case.ts";
-import { makeWorld, type World } from "../../src/world.ts";
+import type { CaseFolder, Evidence, LegalState } from "../../src/state.ts";
 
 export function file(
 	id: string,
@@ -61,7 +61,19 @@ export function legalCase(overrides: Partial<LegalCase> = {}): LegalCase {
 	};
 }
 
-export const worldOf = (legal: LegalCase): World =>
-	makeWorld(legal, (render) =>
-		Promise.resolve({ label: render.label, mimeType: render.mimeType, data: `data:${render.path}` }),
-	);
+/** A case's folder whose images hold their own path as their data. */
+export const folderOf = (legal: LegalCase): CaseFolder => ({
+	case: legal,
+	image: (render) => Promise.resolve({ label: render.label, mimeType: render.mimeType, data: `data:${render.path}` }),
+});
+
+/** Evidence with `key` as its source too. */
+export const evidence = (key: string, text = "x", extra: Partial<Evidence> = {}): Evidence => ({
+	key,
+	source: key,
+	text,
+	...extra,
+});
+
+/** A state that holds `entries`. */
+export const stateOf = (...entries: Evidence[]): LegalState => ({ evidence: entries });

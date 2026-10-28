@@ -1,7 +1,6 @@
 import { Chess, type Color, type Move, type PieceSymbol } from "chess.js";
-import type { JsonObject, Step } from "@osolmaz/switch";
 import type { ChessCase, ChessGame } from "./case.ts";
-import { type ChessStepData, chessStep } from "./web/data.ts";
+import type { ChessState } from "./web/data.ts";
 
 export type Status =
 	"playing" | "checkmate" | "stalemate" | "threefold repetition" | "insufficient material" | "fifty-move rule";
@@ -20,8 +19,8 @@ const PIECE_VALUES: Readonly<Record<PieceSymbol, number>> = { p: 1, n: 3, b: 3, 
 export const colorOf = (side: ChessCase["side"]): Color => (side === "white" ? "w" : "b");
 export const nameOf = (color: Color): "white" | "black" => (color === "w" ? "white" : "black");
 
-/** The side the model plays, as its steps record it: both sides in self-play. */
-export const youOf = (game: ChessCase): ChessStepData["you"] => (game.opponent === "self" ? "both" : game.side);
+/** The side the model plays, as its state records it: both sides in self-play. */
+export const youOf = (game: ChessCase): ChessState["you"] => (game.opponent === "self" ? "both" : game.side);
 
 /** The game after `moves`, given in long algebraic notation, from `start`. */
 export function replay(start: string, moves: readonly string[]): Chess {
@@ -30,10 +29,8 @@ export function replay(start: string, moves: readonly string[]): Chess {
 	return game;
 }
 
-/** Every move played so far, from the data of the steps in the history. */
-export function movesOf(history: readonly Step[]): string[] {
-	return history.flatMap((step) => chessStep(step.observation.data)?.moves ?? []);
-}
+/** The board of a state: its moves played from its start, so that chess.js also sees a repeated position. */
+export const boardOf = (state: ChessState): Chess => replay(state.start, state.moves);
 
 export function statusOf(game: Chess): Status {
 	if (game.isCheckmate()) return "checkmate";
@@ -76,26 +73,23 @@ export function replyOf(game: ChessGame, board: Chess, moves: readonly string[])
 	return game.engine.move(board.fen());
 }
 
-/** The opponent as the steps name it, for the viewer. */
+/** The opponent as the state names it, for the viewer. */
 export function opponentName(game: ChessGame): string {
 	if (game.opponent === "self") return "itself";
 	if (game.opponent === "random") return `random legal moves, seed ${String(game.seed)}`;
 	return `${game.engine?.name ?? "Stockfish"}, ${String(game.movetime / 1000)} s a move`;
 }
 
-/** The step data of `played` moves, which leave `game` where it is now. */
-export function stepDataOf(
-	you: ChessStepData["you"],
-	game: Chess,
-	played: readonly Move[],
-): ChessStepData & JsonObject {
+/** The state after `played` moves, which leave `board` where it is now; `last` says in words what the step did. */
+export function stateAfter(state: ChessState, board: Chess, played: readonly Move[], last: string): ChessState {
 	return {
-		you,
-		moves: played.map((move) => move.lan),
-		san: played.map((move) => move.san),
-		fen: game.fen(),
-		status: statusOf(game),
-		check: game.isCheck(),
+		...state,
+		moves: [...state.moves, ...played.map((move) => move.lan)],
+		san: [...state.san, ...played.map((move) => move.san)],
+		fen: board.fen(),
+		status: statusOf(board),
+		check: board.isCheck(),
+		last,
 	};
 }
 

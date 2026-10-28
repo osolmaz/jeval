@@ -5,6 +5,7 @@ import {
 	type DomainViewer,
 	indexPage,
 	partConfigs,
+	partStyles,
 	plain,
 	type Session,
 	storyOf,
@@ -65,24 +66,27 @@ export async function caseVersion(run: string, id: string): Promise<string> {
 /** A case as the viewer reads it: its story so far, its outcome, and whether it has finished. */
 export async function caseSession(run: string, id: string): Promise<Session> {
 	const version = await caseVersion(run, id);
-	const story = storyOf(parseTrace(await readFile(caseFiles(run, id).trace, "utf8")));
+	const story = storyOf(parseTrace(await readFile(caseFiles(run, id).trace, "utf8")), id);
 	const outcome = await outcomeOf(run, id);
 	return { story, outcome, finished: version.endsWith(":true"), version };
 }
 
-/** The viewer's script with every part's modules, and every part's config. */
-async function pageParts(viewers: Viewers): Promise<{ script: string; parts: Record<string, unknown> }> {
-	const [script, parts] = await Promise.all([
+/** The viewer's script with every part's modules, every part's styles, and every part's config. */
+async function pageParts(
+	viewers: Viewers,
+): Promise<{ script: string; styles: string; parts: Record<string, unknown> }> {
+	const [script, styles, parts] = await Promise.all([
 		viewerScript(Object.values(viewers).flatMap((viewer) => viewer.modules)),
+		partStyles(viewers),
 		partConfigs(viewers),
 	]);
-	return { script, parts };
+	return { script, styles, parts };
 }
 
 /** A case's page with its session in it, which opens without a server. */
 export async function savedPage(run: string, id: string, viewers: Viewers = {}): Promise<string> {
-	const [session, { script, parts }] = await Promise.all([caseSession(run, id), pageParts(viewers)]);
-	return viewerPage({ title: `${id} · switch`, script, config: { session, parts } });
+	const [session, { script, styles, parts }] = await Promise.all([caseSession(run, id), pageParts(viewers)]);
+	return viewerPage({ title: `${id} · switch`, script, styles, config: { session, parts } });
 }
 
 /** Writes a case's page, as it is now, to `file`. */
@@ -93,14 +97,14 @@ export async function writeCasePage(run: string, id: string, file: string, viewe
 /** A case's page that fetches its session from the server and follows the case while it runs. */
 async function livePage(id: string, viewers: Viewers): Promise<string> {
 	const base = `/case/${encodeURIComponent(id)}`;
-	const { script, parts } = await pageParts(viewers);
+	const { script, styles, parts } = await pageParts(viewers);
 	const config = {
 		sessionUrl: `${base}/session.json`,
 		versionUrl: `${base}/version`,
 		indexUrl: "/",
 		parts,
 	};
-	return viewerPage({ title: `${id} · switch`, script, config });
+	return viewerPage({ title: `${id} · switch`, script, styles, config });
 }
 
 async function index(run: string, ids: readonly string[]): Promise<Reply> {

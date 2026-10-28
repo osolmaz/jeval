@@ -1,7 +1,7 @@
-import type { Json, JsonObject, Step, View } from "@osolmaz/switch";
-import type { CaseFile } from "./case.ts";
+import type { Json, JsonObject, View } from "@osolmaz/switch";
+import type { CaseFile, LegalCase } from "./case.ts";
 import type { JudgeDefinition } from "./definition.ts";
-import { LIMITS, readParts, type World } from "./world.ts";
+import { type CaseFolder, type LegalState, LIMITS, readParts } from "./state.ts";
 
 const size = (value: Json): number => Math.ceil(JSON.stringify(value).length / LIMITS.charsPerToken);
 
@@ -10,10 +10,9 @@ function readStatus(file: CaseFile, read: ReadonlySet<number> | undefined): stri
 	return read.size >= file.units.length ? "all" : `${String(read.size)} of ${String(file.units.length)} parts`;
 }
 
-/** The state for a choice from the menu: the rubric, the files and what has been read of them, and the steps so far. */
-function menuState(world: World, history: readonly Step[], texts: JudgeDefinition["texts"]): JsonObject {
-	const legalCase = world.case;
-	const read = readParts(history);
+/** What the model reads for a pick: the rubric, the files and what has been read of them, and the steps so far. */
+function pickJson(legalCase: LegalCase, state: LegalState, texts: JudgeDefinition["texts"]): JsonObject {
+	const read = readParts(state);
 	return {
 		process: texts.process,
 		stage: texts.gather,
@@ -26,7 +25,7 @@ function menuState(world: World, history: readonly Step[], texts: JudgeDefinitio
 			words: file.words,
 			read: readStatus(file, read.get(file.id)),
 		})),
-		steps_taken: history.map((step) => step.observation.source ?? ""),
+		steps_taken: state.evidence.map((entry) => entry.source),
 	};
 }
 
@@ -61,20 +60,23 @@ export function fitEvidence(evidence: readonly Evidence[], room: number): { evid
 	return { evidence: fitted, omitted };
 }
 
-/** The state the model sees: for a choice, the rubric and the files as well; for the answers, the evidence. */
-export function view(
+/**
+ * What the model reads in a state: for a pick, the rubric and the files as well; for the answers, the evidence. The
+ * images that the evidence names are loaded from the case folder.
+ */
+export async function view(
 	texts: JudgeDefinition["texts"],
-	world: World,
-	history: readonly Step[],
+	folder: CaseFolder,
+	state: LegalState,
 	purpose: "choose" | "answer",
 	tokens: number,
-): View {
-	const base = purpose === "choose" ? menuState(world, history, texts) : { request: world.case.request };
-	const evidence = history.map(({ observation }) => ({ source: observation.source ?? "", text: observation.text }));
-	const fitted = fitEvidence(evidence, tokens - size(base));
+): Promise<View> {
+	const base = purpose === "choose" ? pickJson(folder.case, state, texts) : { request: folder.case.request };
+	const fitted = fitEvidence(state.evidence, tokens - size(base));
+	const renders = state.evidence.flatMap((entry) => (entry.image === undefined ? [] : [entry.image]));
 	return {
-		state: { ...base, evidence: fitted.evidence.map(({ source, text }) => ({ source, text })) },
-		images: history.flatMap(({ observation }) => observation.images ?? []),
+		json: { ...base, evidence: fitted.evidence.map(({ source, text }) => ({ source, text })) },
+		images: await Promise.all(renders.map((render) => folder.image(render))),
 		omitted: fitted.omitted,
 	};
 }

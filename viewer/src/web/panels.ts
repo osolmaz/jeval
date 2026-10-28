@@ -50,11 +50,13 @@ function choiceList(moment: Moment): HTMLElement {
 		);
 	});
 	const rest = choices.length - listed.length;
+	const cut = moment.frame?.cut ?? 0;
 	return h(
 		"div",
 		{},
 		h("ol", { class: "choices" }, ...rows),
 		rest > 0 ? h("p", { class: "quiet" }, `and ${String(rest)} more`) : "",
+		cut > 0 ? h("p", { class: "quiet" }, `The limit cut ${String(cut)} more, which the model did not see.`) : "",
 	);
 }
 
@@ -93,9 +95,11 @@ export function decisionPanel(moment: Moment, note = ""): HTMLElement {
 
 /** How the case stands, when there is something to say beyond its facts: running, failed, or ended early. */
 function statusOf(session: Session, facts: number): string | null {
-	const { ended, error } = session.story;
+	const { ended, error, thrown } = session.story;
 	if (!session.finished) return "The case is running.";
-	if (ended === null) return "The case failed before its steps ended.";
+	if (thrown !== null) {
+		return `The case failed ${ended === null ? "before its steps ended" : "after its steps"}: ${thrown}`;
+	}
 	if (error !== null) return `The answers failed: ${error}`;
 	if (ended === "pick failed") return "A pick failed, so the steps ended early.";
 	return facts === 0 ? "The case ended with no outcome and no answers." : null;

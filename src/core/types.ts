@@ -4,8 +4,9 @@
  * the decision model picks from the choices until it picks stop, then it answers the questions.
  *
  * What goes to the decision model and comes back follows pi-ai's classifier interface: its request, questions,
- * answers, result and usage. A field that carries pi-ai's content takes the prefix `decision`, so that "state" in
- * switch means only the state of a case.
+ * answers, result and usage. A field of the decision request or the decision result that carries pi-ai's content takes
+ * the prefix `decision`, so that "state" in switch means only the state of a case. switch's own records, such as the
+ * trace and a case's result, keep the same answers and usage under plain names.
  */
 import type { Trace } from "./trace.ts";
 
@@ -14,8 +15,9 @@ export interface JsonObject {
 	readonly [key: string]: Json;
 }
 
-/** An image that the model reads with the decision state; pi-ai's image, with a label for the requests file. */
+/** An image that the model reads with the decision state: pi-ai's image, with a label for the requests file. */
 export interface Image {
+	readonly type: "image";
 	/** Names the image in the requests file, which keeps no image bytes; the model never sees it. */
 	readonly label: string;
 	readonly mimeType: string;
@@ -43,7 +45,7 @@ export interface BoolQuestion {
 	readonly instructions: string;
 	readonly criteria: { readonly true: string; readonly false: string };
 }
-/** Which of these options fits: `criteria` gives each option's label and the text the model reads for it. */
+/** Which of these fits: `criteria` gives each answer's label and the text the model reads for it. */
 export interface ChoiceQuestion {
 	readonly type: "choice";
 	readonly instructions: string;
@@ -83,8 +85,8 @@ export type Answers = Readonly<Record<string, Answer>>;
 export interface DecisionRequest {
 	/** pi-ai's `state`: what the model reads. */
 	readonly decisionState: JsonObject;
-	/** pi-ai's `images`: what the model sees with it. */
-	readonly decisionImages: readonly Image[];
+	/** pi-ai's `images`: what the model sees with it, when anything. */
+	readonly decisionImages?: readonly Image[];
 	/** pi-ai's `questions`. */
 	readonly decisionQuestions: Questions;
 }
@@ -189,13 +191,16 @@ export interface StateMachine<S extends JsonObject, C extends Choice = Choice> {
 
 export interface Limits {
 	readonly steps: number;
-	/** The most choices that the model sees in one step, stop included. */
+	/** The most choices that the model sees in one step, stop included: at least 2. */
 	readonly choices: number;
 	/** Tokens a request may use, as a share of the model's window. */
 	readonly windowShare: number;
 }
 
-/** Every text a domain gives the model that does not come from a case, and its limits: what a run records. */
+/**
+ * What a domain lets a run vary, such as the texts that tell the model what to do, and the limits: what a run records.
+ * The texts in the domain's code, such as those of its choices, come with the domain's version.
+ */
 export interface Definition {
 	readonly name: string;
 	/** The SHA-256 of `content` as JSON, so formatting does not count. */
@@ -237,6 +242,6 @@ export interface Domain<S extends JsonObject, C extends Choice = Choice> {
 	caseId(folder: string): Promise<string>;
 	/** The state machine of a case folder. */
 	load(folder: string): Promise<StateMachine<S, C>>;
-	/** How the case ended in the domain's own terms, from its last state; none when it is missing. */
-	outcome?(state: S, result: RunResult<S>): JsonObject;
+	/** How the case ended in the domain's own terms, from the run's result and its last state; none when it is missing. */
+	outcome?(result: RunResult<S>): JsonObject;
 }

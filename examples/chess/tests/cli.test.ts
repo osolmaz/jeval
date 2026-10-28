@@ -34,7 +34,7 @@ async function chessRun(ids: readonly string[]): Promise<string> {
 	await runCases(await chessSetup(), folders, fakeDecider(picking("stop")), {
 		out,
 		concurrency: 1,
-		log: (line) => lines.push(line),
+		progress: (line) => lines.push(line),
 	});
 	expect(lines).toEqual(
 		ids.map((id) => expect.stringContaining(`${id}: 1 steps, {"result":"loss","reason":"resignation"`) as unknown),

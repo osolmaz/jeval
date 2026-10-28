@@ -26,8 +26,9 @@ interface Reply {
 	readonly body: string;
 }
 
-export class ViewError extends Error {
-	override readonly name = "ViewError";
+/** The viewer cannot show what it was asked for. */
+export class ViewerError extends Error {
+	override readonly name = "ViewerError";
 }
 
 /** The run's cases so far; none before the run has started. */
@@ -40,7 +41,7 @@ export async function onlyCase(run: string): Promise<string> {
 	const ids = await caseIds(run);
 	const [id] = ids;
 	if (ids.length !== 1 || id === undefined) {
-		throw new ViewError(`the run has ${String(ids.length)} cases; name one with --case`);
+		throw new ViewerError(`the run has ${String(ids.length)} cases; name one with --case`);
 	}
 	return id;
 }
@@ -152,7 +153,7 @@ export async function route(run: string, url: string, viewers: Viewers = {}): Pr
 	return handler(run, target.id, viewers);
 }
 
-async function answer(run: string, url: string, viewers: Viewers): Promise<Reply> {
+async function replyTo(run: string, url: string, viewers: Viewers): Promise<Reply> {
 	try {
 		return await route(run, url, viewers);
 	} catch (error: unknown) {
@@ -174,7 +175,7 @@ export function serveRun(run: string, port: number, viewers: Viewers = {}): Prom
 /** A local server for a run's cases; it reads the run folder on every request, so pages follow running cases. */
 export function viewServer(run: string, viewers: Viewers = {}): Server {
 	return createServer((request, response) => {
-		void answer(run, request.url ?? "/", viewers).then((reply) => {
+		void replyTo(run, request.url ?? "/", viewers).then((reply) => {
 			response.writeHead(reply.status, {
 				"content-type": reply.type,
 				"cache-control": "no-store",

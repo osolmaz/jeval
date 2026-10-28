@@ -186,7 +186,7 @@ describe("a running case", () => {
 		expect(text(root, ".facts")).toContain("ayes 70.0%");
 	});
 
-	it("says when the answers failed, a pick failed, or the case failed before its steps ended", async () => {
+	it("says when the answers failed, a pick failed, or the case failed before or after its steps ended", async () => {
 		const session = await factsSession({ steps: 1 });
 		const show = async (story: Partial<typeof session.story>, finished = true): Promise<string> => {
 			const { root, app } = mount({
@@ -201,9 +201,18 @@ describe("a running case", () => {
 		};
 		expect(await show({ answers: null, error: "too long" })).toContain("The answers failed: too long");
 		expect(await show({ ended: "pick failed" })).toContain("A pick failed, so the steps ended early.");
-		expect(await show({ ended: null, notes: ["the case failed: broken"] })).toContain(
-			"The case failed before its steps ended.the case failed: broken",
-		);
+		expect(await show({ ended: null, thrown: "broken" })).toContain("The case failed before its steps ended: broken");
+		expect(await show({ thrown: "no outcome" })).toContain("The case failed after its steps: no outcome");
+		const frame = session.story.frames[0];
+		if (frame === undefined) throw new Error("no step");
+		const { root: cutRoot } = mount({
+			...QUICK,
+			session: { ...session, story: { ...session.story, frames: [{ ...frame, cut: 2 }] } },
+		});
+		click(cutRoot, "button.next");
+		await vi.waitFor(() => {
+			expect(text(cutRoot, ".decision")).toContain("The limit cut 2 more, which the model did not see.");
+		});
 		const bare = { ...session, outcome: null, summary: null };
 		const { root } = mount({ ...QUICK, session: { ...bare, story: { ...bare.story, answers: {} } } });
 		await vi.waitFor(() => {

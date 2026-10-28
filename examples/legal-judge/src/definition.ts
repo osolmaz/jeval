@@ -18,8 +18,9 @@ const questionSchema = z
 	.strict();
 
 /**
- * A legal judge, complete: the texts the model reads, the questions it answers about each rubric item, and the limits of
- * evidence gathering. Every text the model reads comes from here or from the case.
+ * A legal judge: the texts that tell the model what the task is and how to judge it, the questions it answers about each
+ * rubric item, and the limits of evidence gathering. The texts of the steps, such as each choice's text, come from the
+ * code, with the domain's version.
  */
 export const judgeSchema = z
 	.object({
@@ -28,7 +29,8 @@ export const judgeSchema = z
 		limits: z
 			.object({
 				steps: z.number().int().positive(),
-				choices: z.number().int().positive(),
+				/** Stop and at least one more choice. */
+				choices: z.number().int().min(2),
 				windowShare: z.number().positive().max(1),
 			})
 			.strict(),

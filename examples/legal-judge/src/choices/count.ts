@@ -1,7 +1,9 @@
-import { choiceType } from "@osolmaz/switch";
+import { choiceType, typedKey } from "@osolmaz/switch";
 import type { CaseFile, LegalCase } from "../case.ts";
-import { found, type LegalState, withEvidence } from "../state.ts";
+import { found, type LegalState, TYPES, withEvidence } from "../state.ts";
 
+/** The key of the one count within its type. */
+const WORDS = "words";
 const LENGTH = /\bwords?\b|word count|length|\bpages?\b|sentences?|concise/i;
 const HEADING = /^(#{1,6}\s+.+|\*\*[^*]{2,80}\*\*\s*$|P\d+ \[Heading[^\]]*\]: .+)$/;
 
@@ -32,14 +34,14 @@ export function countWords(file: CaseFile): string {
 /** Count the answer's words once, offered when a rubric item is about length. */
 export const count = (legalCase: LegalCase) =>
 	choiceType<LegalState, null>({
-		type: "count",
+		type: TYPES.count,
 		choices: (state) =>
-			legalCase.items.some((item) => LENGTH.test(item.text)) && !found(state, "count:words")
-				? [{ key: "words", text: "Count the words of the answer, in total and for each section", arg: null }]
+			legalCase.items.some((item) => LENGTH.test(item.text)) && !found(state, typedKey(TYPES.count, WORDS))
+				? [{ key: WORDS, text: "Count the words of the answer, in total and for each section", arg: null }]
 				: [],
-		transition: (state) =>
+		transition: (state, _arg, key) =>
 			withEvidence(state, {
-				key: "count:words",
+				key,
 				source: "word counts of the answer",
 				text: legalCase.files
 					.filter((file) => file.role === "answer" && file.format !== "image")

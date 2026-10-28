@@ -23,14 +23,14 @@ export const nameOf = (color: Color): "white" | "black" => (color === "w" ? "whi
 export const youOf = (game: ChessCase): ChessState["you"] => (game.opponent === "self" ? "both" : game.side);
 
 /** The game after `moves`, given in long algebraic notation, from `start`. */
-export function replay(start: string, moves: readonly string[]): Chess {
+export function gameAfter(start: string, moves: readonly string[]): Chess {
 	const game = new Chess(start);
 	for (const move of moves) game.move(move);
 	return game;
 }
 
 /** The board of a state: its moves played from its start, so that chess.js also sees a repeated position. */
-export const boardOf = (state: ChessState): Chess => replay(state.start, state.moves);
+export const boardOf = (state: ChessState): Chess => gameAfter(state.start, state.moves);
 
 export function statusOf(game: Chess): Status {
 	if (game.isCheckmate()) return "checkmate";
@@ -60,7 +60,7 @@ export function opponentMove(game: Chess, seed: number, moves: readonly string[]
 	return legal[Math.floor(unitOf(`${String(seed)}:${moves.join(" ")}`) * legal.length)];
 }
 
-/** The engine failed: it is missing, did not start, or stopped before it answered. */
+/** The engine failed: it is missing, did not start, or stopped before it replied. */
 export class EngineError extends Error {
 	override readonly name = "EngineError";
 }

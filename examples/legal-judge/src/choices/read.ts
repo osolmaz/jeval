@@ -11,6 +11,7 @@ import {
 	partWords,
 	readable,
 	readParts,
+	TYPES,
 	unreadParts,
 	withEvidence,
 } from "../state.ts";
@@ -41,7 +42,7 @@ function fileChoices(file: CaseFile, read: ReadonlySet<number>, room: number): T
 /** Read a whole file when it is small, otherwise one run of its parts that the evidence does not hold yet. */
 export const read = (legalCase: LegalCase) =>
 	choiceType<LegalState, Part>({
-		type: "read",
+		type: TYPES.read,
 		choices(state) {
 			const room = SIZES.evidenceTokens - evidenceTokens(state);
 			const done = readParts(state);
@@ -49,6 +50,5 @@ export const read = (legalCase: LegalCase) =>
 				.filter(readable)
 				.flatMap((file) => fileChoices(file, done.get(file.id) ?? new Set(), room));
 		},
-		transition: (state, part) =>
-			withEvidence(state, { key: `read:${partKey(part)}`, source: partSource(part), text: partText(part) }),
+		transition: (state, part, key) => withEvidence(state, { key, source: partSource(part), text: partText(part) }),
 	});

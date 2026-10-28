@@ -9,6 +9,7 @@ export async function loadCase(folder: string): Promise<CaseFolder> {
 	return {
 		case: legalCase,
 		image: async (render) => ({
+			type: "image",
 			label: render.label,
 			mimeType: render.mimeType,
 			data: (await readFile(join(folder, render.path))).toString("base64"),

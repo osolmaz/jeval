@@ -1,6 +1,6 @@
-import { choiceType } from "@osolmaz/switch";
+import { choiceType, typedKey } from "@osolmaz/switch";
 import type { CaseFile, LegalCase } from "../case.ts";
-import { found, type LegalState, withEvidence } from "../state.ts";
+import { found, type LegalState, TYPES, withEvidence } from "../state.ts";
 
 const SHOWN = 60;
 const basename = (path: string): string => (path.split("/").at(-1) ?? path).toLowerCase();
@@ -39,19 +39,22 @@ const originalOf = (files: readonly CaseFile[], edited: CaseFile): CaseFile | un
 /** Compare the answer's Word file with the task's document of the same name, once. */
 export const compare = (legalCase: LegalCase) =>
 	choiceType<LegalState, Pair>({
-		type: "compare",
+		type: TYPES.compare,
 		choices: (state) =>
 			legalCase.files
-				.filter((file) => file.role === "answer" && file.format === "docx" && !found(state, `compare:${file.id}`))
+				.filter(
+					(file) =>
+						file.role === "answer" && file.format === "docx" && !found(state, typedKey(TYPES.compare, file.id)),
+				)
 				.flatMap((edited) => {
 					const original = originalOf(legalCase.files, edited);
 					if (original === undefined) return [];
 					const text = `Compare ${edited.path} with the original ${original.path}, paragraph by paragraph`;
 					return [{ key: edited.id, text, arg: { edited, original } }];
 				}),
-		transition: (state, { edited, original }) =>
+		transition: (state, { edited, original }, key) =>
 			withEvidence(state, {
-				key: `compare:${edited.id}`,
+				key,
 				source: `${edited.path} compared with ${original.path}`,
 				text: compareFiles(edited, original),
 			}),

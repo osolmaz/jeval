@@ -3,9 +3,10 @@
 The legal-judge example is a harness on switch with one domain, `legal-judge`. It grades a saved answer to a legal
 task against the task's rubric. The model reads the answer and gathers what it needs from the task's documents one
 step at a time. Then it answers two questions per rubric item: whether the answer meets it, and whether it misses or
-contradicts any requirement. An item passes when both checks pass. Every text the model reads is in a judge file,
-[`judges/legal-judge.json`](judges/legal-judge.json). The judge file is this domain's definition, so a variant of the
-judge is another file passed with `--judge`.
+contradicts any requirement. An item passes when both checks pass. The texts that tell the model what the task is and
+how to judge it are in a judge file, [`judges/legal-judge.json`](judges/legal-judge.json), with the questions and the
+limits. The judge file is this domain's definition, so a variant of the judge is another file passed with `--judge`.
+The texts of the steps, such as each choice's text, are in the code, and come with the domain's version.
 
 The example uses switch only by its package name, `@osolmaz/switch`, as a project outside switch would. Its program
 adds the [viewer](../../viewer/README.md)'s `view` and three commands of its own to switch's `run` and `replay`:
@@ -73,9 +74,9 @@ result. A stopped run goes on in the same folder; a judge file with another hash
 To measure a judge, an eval set file names the case folders and the scheduled case ids. It also points to a labels
 file in JSON Lines (`{"id", "items": [{"id", "pass"}]}`). `score` checks a run against the set's labels, overall and
 by each rubric item's category. `run --state-from <run>` asks another judge file or model over the evidence that an
-earlier run gathered, for about a third of the cost of a new run. It takes the earlier run's states from its traces
-and reads no case file again, except the images that the evidence names. `compare` then scores runs side by side on
-the cases that all of them answered:
+earlier run gathered, for about a third of the cost of a new run. It takes the earlier run's states from its traces.
+Of each case folder, it reads `case.json`, as every command does, and the images that the evidence names.
+`compare` then scores runs side by side on the cases that all of them answered:
 
 ```bash
 examples/legal-judge/src/main.ts run --set sets/quick.json --out results
@@ -131,7 +132,8 @@ The report adds three more numbers:
 ## Replay a case
 
 `replay` runs a case again from its trace, with the judge file that `--judge` names, or the default judge. Give it the
-judge file that the run used, which the run's `run.json` records as its definition. With `--fork <steps>` it takes the
+judge file that the run used, which the run's `run.json` records as its definition; the replay's trace notes it when
+the hashes differ. With `--fork <steps>` it takes the
 state after that many recorded steps and lets the model go on from there. The
 [main README](../../README.md#replay-a-case) says how a replay repeats a case.
 

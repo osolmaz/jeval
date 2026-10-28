@@ -25,7 +25,7 @@ function checkView(definition: JudgeDefinition, folder: CaseFolder, state: Legal
 	return async (tokens, charsPerToken) => {
 		const room = tokens - estimateTokens(texts, charsPerToken);
 		const base = await view(definition.texts, folder, state, "answer", room, charsPerToken);
-		return { decisionState: { ...base.decisionState, ...texts }, decisionImages: base.decisionImages };
+		return { ...base, decisionState: { ...base.decisionState, ...texts } };
 	};
 }
 

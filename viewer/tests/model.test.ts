@@ -51,9 +51,9 @@ describe("text", () => {
 
 describe("changesOf", () => {
 	it("gives the new value of each changed field, and the new entries of a list that only grew", () => {
-		const before = { moves: ["e4"], fen: "a", same: 1, gone: true };
-		const after = { moves: ["e4", "e5", "Nf3"], fen: "b", same: 1, added: { x: 1 } };
-		expect(changesOf(before, after)).toEqual(["moves + e5", "moves + Nf3", "fen: b", "added: x 1", "gone: removed"]);
+		const before = { looked: ["a"], last: "a", same: 1, gone: true };
+		const after = { looked: ["a", "b", "c"], last: "c", same: 1, added: { x: 1 } };
+		expect(changesOf(before, after)).toEqual(["looked + b", "looked + c", "last: c", "added: x 1", "gone: removed"]);
 	});
 
 	it("gives a list's whole value when it changed in another way, and every field when there was no state", () => {

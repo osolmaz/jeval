@@ -1,13 +1,15 @@
+import { typedKey } from "@osolmaz/switch";
 import type { CaseFile, LegalCase } from "./case.ts";
 import { lookedAt } from "./choices/look.ts";
-import { type Evidence, SIZES, type LegalState, partKey, partSource, partText, unreadParts } from "./state.ts";
+import { type Evidence, SIZES, type LegalState, partKey, partSource, partText, TYPES, unreadParts } from "./state.ts";
 
+/** The answer's parts read at the start, as the read choices would read them, so that those are left out. */
 function readAnswerFile(file: CaseFile, room: number): { evidence: Evidence[]; tokens: number } {
 	const evidence: Evidence[] = [];
 	let tokens = 0;
 	for (const part of unreadParts(file, new Set())) {
 		if (tokens + part.tokens > room) break;
-		evidence.push({ key: `read:${partKey(part)}`, source: partSource(part), text: partText(part) });
+		evidence.push({ key: typedKey(TYPES.read, partKey(part)), source: partSource(part), text: partText(part) });
 		tokens += part.tokens;
 	}
 	return { evidence, tokens };
@@ -20,7 +22,7 @@ const unreadable = (file: CaseFile): Evidence => ({
 });
 
 const formatting = (file: CaseFile): Evidence => ({
-	key: `changes:${file.id}`,
+	key: typedKey(TYPES.changes, file.id),
 	source: `${file.path}: formatting`,
 	text: file.formatting ?? "",
 });

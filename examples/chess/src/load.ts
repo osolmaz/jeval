@@ -25,18 +25,19 @@ export async function loadGame(folder: string, environment: NodeJS.ProcessEnv = 
 
 /**
  * A UCI engine at `binary`, with every option at its default, that thinks `movetime` milliseconds about each move.
- * Each question starts the engine afresh, so a game leaves no process behind.
+ * Each query starts the engine afresh, so a game leaves no process behind.
  */
 export async function uciEngine(binary: string, movetime: number): Promise<Engine> {
-	const { name } = await ask(binary, [], movetime);
+	const { name } = await query(binary, [], movetime);
 	return {
 		name,
 		move: async (fen) =>
-			(await ask(binary, [`position fen ${fen}`, `go movetime ${String(movetime)}`], movetime)).move,
+			(await query(binary, [`position fen ${fen}`, `go movetime ${String(movetime)}`], movetime)).move,
 	};
 }
 
-interface Answer {
+/** What the engine tells: its name, and the best move when it searched. */
+interface EngineReply {
 	readonly name: string;
 	readonly move: string;
 }
@@ -49,14 +50,14 @@ function settled(line: string, searching: boolean): string | undefined {
 
 /**
  * Starts the engine, sends `uci` and then `commands`, and reads its name and, when the commands search, its best move.
- * The engine quits once it has answered.
+ * The engine quits once it has replied.
  */
-function ask(binary: string, commands: readonly string[], movetime: number): Promise<Answer> {
+function query(binary: string, commands: readonly string[], movetime: number): Promise<EngineReply> {
 	return new Promise((resolve, reject) => {
 		const child = spawn(binary, [], { stdio: ["pipe", "pipe", "ignore"] });
 		const timer = setTimeout(() => {
 			child.kill();
-			reject(new EngineError(`${binary} gave no answer in ${String(movetime + GRACE)} ms`));
+			reject(new EngineError(`${binary} gave no reply in ${String(movetime + GRACE)} ms`));
 		}, movetime + GRACE);
 		const fail = (message: string): void => {
 			clearTimeout(timer);
@@ -66,8 +67,8 @@ function ask(binary: string, commands: readonly string[], movetime: number): Pro
 			fail(`cannot start ${binary}: ${error.message}`);
 		});
 		child.once("exit", () => {
-			// After an answer this does nothing, as the promise is settled.
-			fail(`${binary} stopped before it answered`);
+			// After a reply this does nothing, as the promise is settled.
+			fail(`${binary} stopped before it replied`);
 		});
 		// A write to an engine that has already stopped fails; the exit above reports it.
 		child.stdin.on("error", () => undefined);

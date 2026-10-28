@@ -14,7 +14,7 @@ import {
 	outcomeOf,
 	STANDARD_START,
 } from "../src/index.ts";
-import { boardOf, materialOf, opponentMove, replay, statusOf, unitOf } from "../src/game.ts";
+import { boardOf, gameAfter, materialOf, opponentMove, statusOf, unitOf } from "../src/game.ts";
 import { describe as describeMove, movesIn } from "../src/move.ts";
 import { chessView, numbered } from "../src/view.ts";
 import { game, picking, stateOf } from "./helpers/chess.ts";
@@ -28,17 +28,17 @@ const FIRST_MOVE: Engine = {
 	move: (fen) => Promise.resolve(new Chess(fen).moves({ verbose: true })[0]?.lan ?? "(none)"),
 };
 
-const initialOf = (world: ChessGame): Promise<ChessState> => chessMachine(world).initial();
+const initialOf = (match: ChessGame): Promise<ChessState> => chessMachine(match).initial();
 
 /** The state after the model played the choice with `key` in `state`. */
-async function played(world: ChessGame, state: ChessState, key: string): Promise<ChessState> {
+async function played(match: ChessGame, state: ChessState, key: string): Promise<ChessState> {
 	const choice = movesIn(state).find((offered) => offered.key === key);
 	if (choice === undefined) throw new Error(`no choice ${key}`);
-	return chessMachine(world).transition(state, choice);
+	return chessMachine(match).transition(state, choice);
 }
 
-const playGame = (world: ChessGame, policy = picking(), steps = LIMITS.steps) =>
-	run(CHESS, chessMachine(world), fakeDecider(policy), { limits: { ...LIMITS, steps } });
+const playGame = (match: ChessGame, policy = picking(), steps = LIMITS.steps) =>
+	run({ ...CHESS, limits: { ...LIMITS, steps } }, chessMachine(match), fakeDecider(policy));
 
 describe("chess cases", () => {
 	it("play white against the random opponent with seed 0 unless the case says otherwise", () => {
@@ -80,12 +80,12 @@ describe("the game", () => {
 
 	it("names how a game ended", () => {
 		expect(statusOf(new Chess())).toBe("playing");
-		expect(statusOf(replay(STANDARD_START, ["f2f3", "e7e5", "g2g4", "d8h4"]))).toBe("checkmate");
+		expect(statusOf(gameAfter(STANDARD_START, ["f2f3", "e7e5", "g2g4", "d8h4"]))).toBe("checkmate");
 		expect(statusOf(new Chess("k7/8/1Q6/8/8/8/8/7K b - - 0 1"))).toBe("stalemate");
 		expect(statusOf(new Chess("k7/8/8/8/8/8/8/7K w - - 0 1"))).toBe("insufficient material");
 		expect(statusOf(new Chess("k7/8/8/8/8/8/R7/7K w - - 100 80"))).toBe("fifty-move rule");
 		const repeated = ["g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8"];
-		expect(statusOf(replay(STANDARD_START, repeated))).toBe("threefold repetition");
+		expect(statusOf(gameAfter(STANDARD_START, repeated))).toBe("threefold repetition");
 	});
 
 	it("counts material, and works out the board of a state from its start and its moves", () => {
@@ -116,19 +116,19 @@ describe("the choice function and the transition function", () => {
 	});
 
 	it("play the move and the opponent's reply, and record both", async () => {
-		const world = game();
-		const state = await played(world, await initialOf(world), "move:0:e2e4");
-		const reply = opponentMove(replay(world.start, ["e2e4"]), world.seed, ["e2e4"]);
+		const match = game();
+		const state = await played(match, await initialOf(match), "move:0:e2e4");
+		const reply = opponentMove(gameAfter(match.start, ["e2e4"]), match.seed, ["e2e4"]);
 		expect(state.last).toBe(`You played e4. The opponent played ${reply?.san ?? "?"}.`);
 		expect(state).toMatchObject({ you: "white", moves: ["e2e4", reply?.lan], status: "playing" });
 		expect(movesIn(state)[0]?.key).toMatch(/^move:2:/);
 	});
 
 	it("play no reply after a move that ends the game", async () => {
-		const world = game({ start: MATE_IN_ONE });
-		const initial = await initialOf(world);
+		const match = game({ start: MATE_IN_ONE });
+		const initial = await initialOf(match);
 		const mate = movesIn(initial).find((choice) => choice.text.includes("checkmate"));
-		const state = await played(world, initial, mate?.key ?? "");
+		const state = await played(match, initial, mate?.key ?? "");
 		expect(state.last).toBe("You played Rd8#. Checkmate: the game is over.");
 		expect(state).toMatchObject({ moves: ["d1d8"], status: "checkmate", check: true });
 	});
@@ -164,7 +164,7 @@ describe("the model's view", () => {
 		expect(view.decisionState["board"]).toContain("4 . . . . P . . .");
 		expect(view.decisionState["your_pieces"]).toContain("Ke1");
 		expect(view.decisionState["opponent_pieces"]).toContain("Pe5");
-		expect(view.decisionImages).toEqual([]);
+		expect(view.decisionImages).toBeUndefined();
 	});
 
 	it("keeps only the latest moves when the whole game does not fit", () => {
@@ -187,20 +187,20 @@ describe("a game", () => {
 		const result = await playGame(game({ start: MATE_IN_ONE }), picking(/checkmate/));
 		expect(result.steps).toBe(1);
 		expect(result.answers).toEqual({});
-		expect(outcomeOf(result.state, result.ended)).toMatchObject({ result: "win", reason: "checkmate", moves: 1 });
+		expect(outcomeOf(result)).toMatchObject({ result: "win", reason: "checkmate", moves: 1 });
 	});
 
 	it("ends in a draw at stalemate, in a loss on resignation, and unfinished at the step limit or a failed pick", async () => {
 		const drawn = await playGame(game({ start: STALEMATE_IN_ONE }), picking(/^Qb6/));
-		expect(outcomeOf(drawn.state, drawn.ended)).toMatchObject({ result: "draw", reason: "stalemate" });
+		expect(outcomeOf(drawn)).toMatchObject({ result: "draw", reason: "stalemate" });
 		const resigned = await playGame(game(), picking("stop"));
-		expect(outcomeOf(resigned.state, resigned.ended)).toMatchObject({
+		expect(outcomeOf(resigned)).toMatchObject({
 			result: "loss",
 			reason: "resignation",
 			moves: 0,
 		});
 		const short = await playGame(game(), picking(), 2);
-		expect(outcomeOf(short.state, short.ended)).toMatchObject({
+		expect(outcomeOf(short)).toMatchObject({
 			result: "unfinished",
 			reason: "step limit",
 			moves: 4,
@@ -209,26 +209,25 @@ describe("a game", () => {
 			CHESS,
 			chessMachine(game()),
 			fakeDecider(() => failing("down")),
-			{ limits: LIMITS },
 		);
-		expect(outcomeOf(lost.state, lost.ended)).toMatchObject({ result: "unfinished", reason: "pick failed" });
+		expect(outcomeOf(lost)).toMatchObject({ result: "unfinished", reason: "pick failed" });
 	});
 
 	it("counts a checkmate against the model as a loss", () => {
 		const state = stateOf(["f2f3", "e7e5", "g2g4", "d8h4"]);
-		expect(outcomeOf(state, "no choices")).toMatchObject({ result: "loss", reason: "checkmate" });
+		expect(outcomeOf({ state, ended: "no choices" })).toMatchObject({ result: "loss", reason: "checkmate" });
 	});
 
 	it("lets the model play both sides in self-play, one move a step, from the side to move", async () => {
-		const world = game({ opponent: "self" });
-		const initial = await initialOf(world);
+		const match = game({ opponent: "self" });
+		const initial = await initialOf(match);
 		expect(initial).toMatchObject({
 			last: "The game starts. You play both sides.",
 			you: "both",
 			opponent: "itself",
 			moves: [],
 		});
-		const first = await played(world, initial, "move:0:e2e4");
+		const first = await played(match, initial, "move:0:e2e4");
 		expect(first).toMatchObject({ last: "White played e4.", you: "both", moves: ["e2e4"] });
 		expect(chessView(first, 10_000, 3).decisionState).toMatchObject({ you: "black", to_move: "black" });
 		expect(movesIn(first).map((choice) => choice.key)).toContain("move:1:e7e5");
@@ -236,14 +235,14 @@ describe("a game", () => {
 
 	it("names the winner in self-play: checkmate, resignation, a draw or the step limit", async () => {
 		const won = await playGame(game({ opponent: "self", start: MATE_IN_ONE }), picking(/checkmate/));
-		expect(outcomeOf(won.state, won.ended)).toMatchObject({ result: "white wins", reason: "checkmate", moves: 1 });
+		expect(outcomeOf(won)).toMatchObject({ result: "white wins", reason: "checkmate", moves: 1 });
 		const open = game({ opponent: "self" });
 		const resigned = await playGame(open, picking("stop"));
-		expect(outcomeOf(resigned.state, resigned.ended)).toMatchObject({ result: "black wins", reason: "resignation" });
+		expect(outcomeOf(resigned)).toMatchObject({ result: "black wins", reason: "resignation" });
 		const drawn = await playGame(game({ opponent: "self", start: STALEMATE_IN_ONE }), picking(/^Qb6/));
-		expect(outcomeOf(drawn.state, drawn.ended)).toMatchObject({ result: "draw", reason: "stalemate" });
+		expect(outcomeOf(drawn)).toMatchObject({ result: "draw", reason: "stalemate" });
 		const short = await playGame(open, picking(), 3);
-		expect(outcomeOf(short.state, short.ended)).toMatchObject({
+		expect(outcomeOf(short)).toMatchObject({
 			result: "unfinished",
 			reason: "step limit",
 			moves: 3,
@@ -251,8 +250,8 @@ describe("a game", () => {
 	});
 
 	it("lets the opponent move first when the model plays black", async () => {
-		const world = game({ side: "black" });
-		const initial = await initialOf(world);
+		const match = game({ side: "black" });
+		const initial = await initialOf(match);
 		expect(initial.last).toMatch(/^The game starts\. You play black\. The opponent played \S+\.$/);
 		expect(initial).toMatchObject({
 			you: "black",
@@ -267,19 +266,19 @@ describe("a game", () => {
 
 describe("a game against an engine", () => {
 	it("plays the engine's reply, and names the engine and its time a move", async () => {
-		const world = { ...game({ opponent: "stockfish", movetime: 500 }), engine: FIRST_MOVE };
-		const initial = await initialOf(world);
+		const match = { ...game({ opponent: "stockfish", movetime: 500 }), engine: FIRST_MOVE };
+		const initial = await initialOf(match);
 		expect(initial).toMatchObject({
 			last: "The game starts. You play white.",
 			you: "white",
 			opponent: "Fake 1, 0.5 s a move",
 			moves: [],
 		});
-		const reply = await FIRST_MOVE.move(replay(world.start, ["e2e4"]).fen());
+		const reply = await FIRST_MOVE.move(gameAfter(match.start, ["e2e4"]).fen());
 		const board = new Chess();
 		board.move("e2e4");
 		const san = board.move(reply).san;
-		expect(await played(world, initial, "move:0:e2e4")).toMatchObject({
+		expect(await played(match, initial, "move:0:e2e4")).toMatchObject({
 			last: `You played e4. The opponent played ${san}.`,
 			you: "white",
 			moves: ["e2e4", reply],
@@ -295,29 +294,26 @@ describe("a game against an engine", () => {
 	});
 
 	it("counts the result for the model, as against the random opponent", async () => {
-		const world = { ...game({ opponent: "stockfish", start: MATE_IN_ONE }), engine: FIRST_MOVE };
-		const won = await playGame(world, picking(/checkmate/));
-		expect(outcomeOf(won.state, won.ended)).toMatchObject({ result: "win", reason: "checkmate" });
+		const match = { ...game({ opponent: "stockfish", start: MATE_IN_ONE }), engine: FIRST_MOVE };
+		const won = await playGame(match, picking(/checkmate/));
+		expect(outcomeOf(won)).toMatchObject({ result: "win", reason: "checkmate" });
 	});
 
 	it("replays the recorded game although the engine's replies change, and asks the engine only after a fork", async () => {
 		const engine = restlessEngine();
-		const world = { ...game({ opponent: "stockfish", side: "black" }), engine };
-		const first = await run(CHESS, chessMachine(world), firstMoves(3), { limits: LIMITS });
+		const match = { ...game({ opponent: "stockfish", side: "black" }), engine };
+		const first = await run(CHESS, chessMachine(match), firstMoves(3));
 		const asked = engine.calls;
 		expect(asked).toBe(4);
 
 		const entries = first.trace.entries;
-		const again = await run(CHESS, chessMachine(world), recordedModel(entries), {
-			limits: LIMITS,
-			replay: replayOf(entries),
-		});
+		const again = await run(CHESS, chessMachine(match), recordedModel(entries), { replay: replayOf(entries) });
 		expect(engine.calls).toBe(asked);
 		expect(again.state.moves).toEqual(first.state.moves);
 		expect(again.ended).toBe("stop");
 
 		const fork = replayOf(entries, { fork: 1 });
-		const forked = await run(CHESS, chessMachine(world), firstMoves(1), { limits: LIMITS, replay: fork });
+		const forked = await run(CHESS, chessMachine(match), firstMoves(1), { replay: fork });
 		expect(engine.calls).toBe(asked + 1);
 		expect(forked.state.moves).toHaveLength(5);
 		expect(forked.state.moves.slice(0, 3)).toEqual(first.state.moves.slice(0, 3));

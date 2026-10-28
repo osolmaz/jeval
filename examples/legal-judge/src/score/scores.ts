@@ -68,7 +68,8 @@ export interface ComparedRun {
 	readonly model: string;
 	readonly stateFrom: string | null;
 	readonly report: Report;
-	readonly calls: number | null;
+	/** The requests to the decision model. */
+	readonly requests: number | null;
 	readonly inputTokens: number | null;
 	/** The cost in US dollars at the model's catalog price. */
 	readonly cost: number | null;
@@ -76,10 +77,10 @@ export interface ComparedRun {
 
 const percent = (value: number): string => `${(value * 100).toFixed(1)}%`;
 
-function metricsLine({ report, calls, inputTokens, cost: dollars }: ComparedRun): string {
+function metricsLine({ report, requests, inputTokens, cost: dollars }: ComparedRun): string {
 	const item = report.itemMetrics;
 	const price = dollars === null ? "-" : `$${dollars.toFixed(4)}`;
-	const cost = `${String(calls ?? "-")} calls, ${String(inputTokens ?? "-")} input tokens, ${price}`;
+	const cost = `${String(requests ?? "-")} requests, ${String(inputTokens ?? "-")} input tokens, ${price}`;
 	if (item === null) return `  no answered items; ${cost}`;
 	const kappa = item.kappa === null ? "-" : item.kappa.toFixed(2);
 	return `  items right ${percent(item.accuracy)}, kappa ${kappa}, false passes ${String(item.falsePasses)}, false fails ${String(item.falseFails)}; ${cost}`;
@@ -121,7 +122,7 @@ export async function compareRuns(
 		model: record.model,
 		stateFrom: record.stateFrom,
 		report: reportOn(results, labels, common, categories),
-		calls: record.totals?.calls ?? null,
+		requests: record.totals?.requests ?? null,
 		inputTokens: record.totals?.usage.input ?? null,
 		cost: record.totals?.usage.cost.total ?? null,
 	}));

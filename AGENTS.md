@@ -22,7 +22,9 @@
   `decisionState`.
 - Do not use their old names: world, history, observation, menu, kind, workspace, log, entry for a step, option and
   action. Use judge only inside legal-judge, for its own judge files. "Entry" still means one line of a trace, and
-  "options" still means a settings object, such as `RunOptions`.
+  "options" still means a settings object, such as `RunOptions`. The viewer and its `view` command show a run in the
+  browser; they are not the view that the model reads. Do not use switch's terms for other things in a domain either,
+  such as "answer" for an engine's reply.
 
 ## Code
 
@@ -40,8 +42,11 @@
 - switch has no user interface. `src/` has no web page, HTTP server, styles or browser code. The web viewer is a
   package of its own in `viewer/`, which uses switch as the examples do.
 - What goes to a decision model and comes back follows pi-ai's classifier interface, as far as switch can use it: the
-  decision request, the questions, the answers, the decision result and its usage. A field that carries pi-ai's content
-  takes the prefix `decision`, such as `decisionState`. switch reshapes pi-ai's data only where it must, and says why in
+  decision request, the questions, the answers, the decision result and its usage. A field of the decision request or
+  the decision result that carries pi-ai's content takes the prefix `decision`, such as `decisionState` or
+  `decisionAnswers`; pi-ai's other result fields, such as `stopReason`, keep their names. switch's own records, such as
+  the trace, a case's result and a run's totals, keep the answers and the usage under the plain names `answers` and
+  `usage`. switch reshapes pi-ai's data only where it must, and says why in
   the code: a result's `tooLong` and `milliseconds`, an image's label, and the pick's short labels.
 
 ## No domain in switch

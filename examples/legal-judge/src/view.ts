@@ -77,8 +77,7 @@ export async function view(
 	const base = purpose === "pick" ? pickJson(folder.case, state, texts) : { request: folder.case.request };
 	const fitted = fitEvidence(state.evidence, tokens - estimateTokens(base, charsPerToken), charsPerToken);
 	const renders = state.evidence.flatMap((entry) => (entry.image === undefined ? [] : [entry.image]));
-	return {
-		decisionState: { ...base, evidence: fitted.map(({ source, text }) => ({ source, text })) },
-		decisionImages: await Promise.all(renders.map((render) => folder.image(render))),
-	};
+	const decisionState = { ...base, evidence: fitted.map(({ source, text }) => ({ source, text })) };
+	if (renders.length === 0) return { decisionState };
+	return { decisionState, decisionImages: await Promise.all(renders.map((render) => folder.image(render))) };
 }

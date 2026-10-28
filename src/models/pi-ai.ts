@@ -67,8 +67,8 @@ function contextOf(request: DecisionRequest): ClassifierContext {
 	const questions = Object.fromEntries(
 		Object.entries(request.decisionQuestions).map(([id, question]) => [id, questionOf(question)]),
 	);
-	const images = request.decisionImages.map(({ data, mimeType }) => ({ type: "image" as const, data, mimeType }));
-	return { state: request.decisionState, questions, ...(images.length > 0 ? { images } : {}) };
+	const images = request.decisionImages?.map(({ type, data, mimeType }) => ({ type, data, mimeType }));
+	return { state: request.decisionState, questions, ...(images === undefined ? {} : { images }) };
 }
 
 /** The same question, as pi-ai's mutable type takes it. */

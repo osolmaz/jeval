@@ -52,14 +52,14 @@ does not need $T$ to be repeatable, because the trace keeps every state that $T$
 
 The model does not read the state itself. It reads the **view**, which a fourth function of the domain, the **view
 function** $V$, makes from the state. $V$ takes the state, the purpose $p$ of the request, which is a pick or the
-answers at the end, and a budget of $\tau$ estimated tokens. It gives a JSON object $J$ and a list of images $I$, which
-are all that the model reads besides the questions:
+answers at the end, a budget of $\tau$ estimated tokens, and $r$, the characters per token at which switch estimates
+sizes. It gives a JSON object $J$ and a list of images $I$, which are all that the model reads besides the questions:
 
-$$V(S, p, \tau) = (J, I)$$
+$$V(S, p, \tau, r) = (J, I)$$
 
 A domain that gives no view function lets the model read the state as it is, with no images:
 
-$$V(S, p, \tau) = (S, \varnothing)$$
+$$V(S, p, \tau, r) = (S, \varnothing)$$
 
 An answer stage of the domain may give a view function of its own for its questions. In chess, the view function
 draws the board as text, lists each side's pieces, and gives the moves so far, or only the latest ones when the whole
@@ -70,16 +70,16 @@ game does not fit $\tau$.
 Before the model sees the choices of a state, switch checks them and cuts them. Let $K_t$ be the keys of the choices
 that the model picked before step $t$, and $L$ the most choices that one step may show, stop included.
 
-First, every key and every text in $C(S_{t-1})$ must differ, and no key may be in $K_t$. Two equal texts would give
-the model two labels that it cannot tell apart, and a key in $K_t$ would let the model pick the same thing twice. The
-state says what is done, so the choice function must leave such a choice out. When it does not, switch stops the run
-with an error. In chess, a move's key holds the number of moves played before it, so the same move in a later position
-is a new choice.
+First, every key and every text in $C(S_{t-1})$ must differ, no key may be in $K_t$, and no choice may have the key or
+the text of stop. Two equal texts would give the model two labels that it cannot tell apart, and a key in $K_t$ would
+let the model pick the same thing twice. The state says what is done, so the choice function must leave such a choice
+out. When it does not, switch stops the run with an error. In chess, a move's key holds the number of moves played
+before it, so the same move in a later position is a new choice.
 
-Second, switch keeps at most $L - 1$ choices. Each choice $c_i$ has a priority $\rho_i$, 0 by default, and its place
-$i$ in the list. switch sorts the choices by the pair $(\rho_i, i)$, keeps the first $L - 1$, and shows them in the
-order that the choice function gave them. A lower priority value thus keeps a choice, and the earlier choice wins a
-tie.
+Second, switch keeps at most $L - 1$ choices, so $L$ is at least 2: stop and one more. Each choice $c_i$ has a
+priority $\rho_i$, 0 by default, and its place $i$ in the list. switch sorts the choices by the pair $(\rho_i, i)$,
+keeps the first $L - 1$, and shows them in the order that the choice function gave them. A lower priority value thus
+keeps a choice, and the earlier choice wins a tie. The trace records how many choices were cut.
 
 Third, switch adds stop, so the model sees at most $L$ choices:
 
@@ -89,8 +89,8 @@ Chess sets $L$ so that no move is ever cut: a chess position has at most 218 leg
 
 ## One pick
 
-The model never writes its pick as text. switch gives the choices of $O_t$ short labels and asks one choice
-question whose answers are those labels. The model gives a score $\ell_i$ for each label, the raw number before any
+The model never writes its pick as text. switch gives each choice of $O_t$ a short label, except stop, which keeps its
+own, and asks one choice question whose answers are those labels. The model gives a score $\ell_i$ for each label, the raw number before any
 normalizing, and a softmax turns the scores into probabilities that add up to 1:
 
 $$p_i = \frac{e^{\ell_i / \theta}}{\sum_{j=1}^{n} e^{\ell_j / \theta}}$$
@@ -135,13 +135,14 @@ With $L_{\text{steps}}$ the most steps that a run may take, a run goes:
 1. Start with $S_0$.
 2. For $t = 1, 2, \dots$: make $O_t$ from $C(S_{t-1})$ by the rules above. If $C(S_{t-1})$ has no choice, end with
    no choices.
-3. Ask the model to pick from $O_t$ over the view $V(S_{t-1}, \text{pick}, \tau)$. The model gives the probabilities
-   $p_t$ and the pick $c_t$.
+3. Ask the model to pick from $O_t$ over the view $V(S_{t-1}, \text{pick}, \tau, r)$. The model gives the
+   probabilities $p_t$ and the pick $c_t$.
 4. If $c_t$ is stop, end with stop. Otherwise $S_t = T(S_{t-1}, c_t)$.
 5. After $L_{\text{steps}}$ picks, end with the step limit. If a request fails, or the model's answer names no label,
    end with a failed pick.
-6. Ask the domain's questions over the view $V(S_N, \text{answer}, \tau)$ of the last state, $S_N$, where $N$ is the
-   number of transitions that ran. The trace ends with why the steps ended, and why the answers failed if they did.
+6. Ask the domain's questions over the view $V(S_N, \text{answer}, \tau, r)$ of the last state, $S_N$, where $N$ is
+   the number of transitions that ran. The trace records why the steps ended before the answers, and ends with the
+   answers, or why they failed.
 
 A run thus takes at most $L_{\text{steps}}$ steps, and never more than the number of different keys that the choice
 function can give.
@@ -156,8 +157,8 @@ A long run of confident picks keeps this high, and one unsure step lowers it by 
 
 ## Why a replay is exact
 
-The trace keeps every state $S_0, S_1, \dots, S_N$, every pick and how the steps ended. A replay walks the same steps
-under the recorded limits:
+The trace keeps every state $S_0, S_1, \dots, S_N$, every pick and how the steps ended, and it starts with the domain,
+the case and the limits. A replay walks the same steps of the same domain and case under the recorded limits:
 
 - At step $t$ it makes $O_t$ from the recorded $S_{t-1}$, finds the recorded $c_t$ among the choices by its key, and
   repeats it with its recorded probabilities.
@@ -167,13 +168,16 @@ under the recorded limits:
 
 So a replay calls no model and runs no $T$, and it gives the recorded run even when $T$ would give another state now.
 In chess, that is the engine's reply, which need not be the same move twice. The check of $c_t$ against $C(S_{t-1})$
-is what a replay tests: whether the domain's code still gives the choices that the run saw.
+is what a replay tests: whether the domain's code still gives the choices that the run saw. A replay fails when it does
+not: when $c_t$ is not among them, when $C(S_{t-1})$ is empty where the run picked, or when it has choices where the
+run's steps ended.
 
 Two variants follow from the same trace:
 
-- A **fork** at step $n$ takes $S_n$ from the trace. From step $n + 1$ the model picks and $T$ runs again.
+- A **fork** at step $n$ takes $S_n$ from the trace. From step $n + 1$ the model picks and $T$ runs again. It needs
+  the first $n$ picks and the states after them, so it cannot fork at a step whose pick failed.
 - Asking the questions again repeats every step and its ending, and takes $S_N$ from the trace, so new answers are a
-  function of $S_N$, the questions and the model.
+  function of $S_N$, the questions and the model. It needs only the steps of the trace to have ended.
 
 ## Fitting a request into the window
 
@@ -196,7 +200,8 @@ each time by a factor $\lambda < 1$:
 
 $$\tau_{a+1} = \lfloor \lambda \, \tau_a \rfloor$$
 
-So the $a$-th request gives the view about $\lambda^{a-1} \tau_1$ tokens.
+So the $a$-th request gives the view about $\lambda^{a-1} \tau_1$ tokens. A domain without a view function sends each
+request once, since its view cannot get smaller.
 
 The questions at the end of a run can be many, so switch splits them into batches. Each batch may take
 $\lfloor q \, w \sigma \rfloor$ tokens of questions, with $q < 1$, which leaves room for the view. switch fills the

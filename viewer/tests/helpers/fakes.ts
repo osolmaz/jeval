@@ -51,8 +51,7 @@ export function factsMachine(
 	return {
 		initial: () => Promise.resolve(initial),
 		...joinTypes(lookUp(facts)),
-		view: (state, purpose, tokens) =>
-			Promise.resolve({ decisionState: { purpose, tokens, seen: [...state.found] }, decisionImages: [] }),
+		view: (state, purpose, tokens) => Promise.resolve({ decisionState: { purpose, tokens, seen: [...state.found] } }),
 		questions: () =>
 			Object.fromEntries(
 				Object.keys(facts.facts).map((name): [string, Question] => [

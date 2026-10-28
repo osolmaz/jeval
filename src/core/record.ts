@@ -4,7 +4,7 @@ import type { Decider, DecisionRequest, DecisionResult, Json } from "./types.ts"
 
 /** One request to the decision model and its result, as a run's requests file keeps them: images by their labels. */
 export interface RecordedRequest {
-	readonly request: Omit<DecisionRequest, "decisionImages"> & { readonly decisionImages: readonly string[] };
+	readonly request: Omit<DecisionRequest, "decisionImages"> & { readonly decisionImages?: readonly string[] };
 	readonly result: DecisionResult;
 }
 
@@ -36,7 +36,7 @@ const questionSchema = z.discriminatedUnion("type", [
 export const recordedRequestSchema = z.object({
 	request: z.object({
 		decisionState: z.record(z.string(), json),
-		decisionImages: z.array(z.string()),
+		decisionImages: z.array(z.string()).optional(),
 		decisionQuestions: z.record(z.string(), questionSchema),
 	}),
 	result: z.object({
@@ -69,8 +69,9 @@ export function recording(decider: Decider, record: (recorded: RecordedRequest) 
 		charsPerToken: decider.charsPerToken,
 		async decide(request) {
 			const result = await decider.decide(request);
-			const decisionImages = request.decisionImages.map((image) => image.label);
-			record({ request: { ...request, decisionImages }, result });
+			const { decisionImages, ...rest } = request;
+			const labels = decisionImages?.map((image) => image.label);
+			record({ request: labels === undefined ? rest : { ...rest, decisionImages: labels }, result });
 			return result;
 		},
 	};

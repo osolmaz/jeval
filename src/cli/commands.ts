@@ -1,10 +1,11 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import type { z } from "zod";
 import {
 	type Decider,
 	type DecisionUsage,
+	type decisionUsageSchema,
 	type Limits,
-	limitsOf,
 	parseRequests,
 	parseTrace,
 	recordedModel,
@@ -21,7 +22,8 @@ import { switchSource } from "./source.ts";
 export interface RunCasesOptions {
 	readonly out: string;
 	readonly concurrency: number;
-	readonly log: (line: string) => void;
+	/** Gets one line of progress for each case as it ends. */
+	readonly progress: (line: string) => void;
 	/**
 	 * A run whose steps each case repeats: the recorded picks and states, under the recorded limits, and how the steps
 	 * ended. Only the questions go to the model again.
@@ -49,11 +51,16 @@ export async function inPool<T>(items: readonly T[], limit: number, work: (item:
 	await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
 }
 
-/** How one case runs: the decider, the limits, and the recorded trace that the case repeats, if any. */
-interface CasePlan {
+/** One case to run: its folder and id, the decider, and the recorded run it repeats, which it reads when it starts. */
+interface CaseJob {
+	readonly domain: Runner;
+	readonly folder: string;
+	readonly id: string;
 	readonly decider: Decider;
+	/** The limits of the run, for the trace of a case that fails before its run starts. */
 	readonly limits: Limits;
-	readonly replay?: Replay;
+	/** Checks the case and reads the recorded run that it repeats, if any; a failure here is the case's failure. */
+	readonly prepare: () => Promise<Replay | undefined>;
 }
 
 /** Where a case writes its trace and requests while it runs. */
@@ -82,70 +89,117 @@ async function writersOf(files: CaseFiles | null, decider: Decider): Promise<Cas
 	};
 }
 
+const baseOf = (job: CaseJob) => ({
+	case: job.id,
+	domain: job.domain.name,
+	version: job.domain.version,
+	model: job.decider.model,
+});
+
+/** What a trace holds of a case's steps and answers so far. */
+function recordedSoFar(trace: Trace): Pick<CaseResult, "steps" | "ended" | "error" | "answers"> {
+	const ended = trace.entries.find((entry) => entry.type === "ended");
+	const final = trace.entries.find((entry) => entry.type === "answers");
+	const steps =
+		ended === undefined
+			? { steps: trace.entries.filter((entry) => entry.type === "choices").length, ended: null }
+			: { steps: ended.steps, ended: ended.ended };
+	const answers =
+		final === undefined ? { error: null, answers: null } : { error: final.error, answers: final.answers };
+	return { ...steps, ...answers };
+}
+
 /**
- * Runs one case by `plan`, into `files` when given: its trace, its requests and its result. A case that fails before
- * its steps end still gets a result, with its error and no ending, and a note at the end of its trace.
+ * The result of a case that threw: the error, and what its trace holds of its steps and answers. A case that threw
+ * before its run started gets the start entry, so that its trace says what failed.
  */
-async function runCase(
-	domain: Runner,
-	folder: string,
-	id: string,
-	plan: CasePlan,
-	files: CaseFiles | null,
-): Promise<CaseResult> {
-	const writers = await writersOf(files, plan.decider);
-	const base = { case: id, domain: domain.name, version: domain.version, model: plan.decider.model };
+function thrownResult(job: CaseJob, trace: Trace, error: unknown): CaseResult {
+	const message = error instanceof Error ? error.message : String(error);
+	if (trace.entries[0]?.type !== "start") {
+		const { domain } = job;
+		const start = { domain: domain.name, version: domain.version, definition: domain.definition.hash };
+		trace.started({ ...start, case: job.id, model: job.decider.model, limits: job.limits });
+	}
+	trace.thrown(message);
+	return { ...baseOf(job), ...recordedSoFar(trace), outcome: null, thrown: message };
+}
+
+/**
+ * Runs one case, into `files` when given: its trace, its requests and its result. A case that runs again first loses
+ * its old result, so that it counts as running. A case that throws still gets a result, with the error.
+ */
+async function runCase(job: CaseJob, files: CaseFiles | null): Promise<CaseResult> {
+	if (files !== null) await rm(files.result, { force: true });
+	const writers = await writersOf(files, job.decider);
 	let record: CaseResult;
 	try {
-		const options = { limits: plan.limits, trace: writers.trace, ...(plan.replay ? { replay: plan.replay } : {}) };
-		const { result, outcome } = await domain.run(folder, writers.decider, options);
+		const replay = await job.prepare();
+		const options = { trace: writers.trace, ...(replay === undefined ? {} : { replay }) };
+		const { result, outcome } = await job.domain.run(job.folder, writers.decider, options);
 		const { steps, ended, error, answers } = result;
-		record = { ...base, steps, ended, error, answers, outcome };
+		record = { ...baseOf(job), steps, ended, error, answers, outcome, thrown: null };
 	} catch (error: unknown) {
-		const message = error instanceof Error ? error.message : String(error);
-		writers.trace.note(`the case failed: ${message}`);
-		const steps = writers.trace.entries.filter((entry) => entry.type === "choices").length;
-		record = { ...base, steps, ended: null, error: message, answers: null, outcome: null };
+		record = thrownResult(job, writers.trace, error);
 	}
 	await writers.done();
 	if (files !== null) await writeFile(files.result, `${JSON.stringify(record, null, 1)}\n`);
 	return record;
 }
 
-/** One line for the log: the picks, or the steps and the outcome, and the failure if any. */
-function storyOf(record: CaseResult, picks: readonly string[]): string {
+/** One line of progress: the picks, or the steps and the outcome, and the failure if any. */
+function progressLine(record: CaseResult, picks: readonly string[]): string {
 	const story =
 		record.outcome === null
 			? picks.join(" > ") || "-"
 			: `${String(record.steps)} steps, ${JSON.stringify(record.outcome)}`;
 	const ending = record.ended === null || record.ended === "stop" ? "" : ` (${record.ended})`;
-	return `${record.case}: ${story}${ending}${record.error === null ? "" : ` | ERROR ${record.error}`}`;
+	const failure = record.thrown ?? record.error;
+	return `${record.case}: ${story}${ending}${failure === null ? "" : ` | ERROR ${failure}`}`;
 }
 
-/** The plan of a case: the run's decider, with the case's recorded steps when the run repeats another run's. */
-async function planOf(domain: Runner, id: string, decider: Decider, stateFrom: string | undefined): Promise<CasePlan> {
-	if (stateFrom === undefined) return { decider, limits: domain.limits };
-	const entries = parseTrace(await readFile(caseFiles(stateFrom, id).trace, "utf8"));
-	return { decider, limits: limitsOf(entries), replay: replayOf(entries, { askAgain: true }) };
+/** What every case of a run shares. */
+interface RunContext {
+	readonly domain: Runner;
+	readonly decider: Decider;
+	readonly limits: Limits;
+	readonly out: string;
+	readonly progress: (line: string) => void;
+	/** Whether the cases come from an eval set, which names each case by its folder. */
+	readonly fromSet: boolean;
+	/** The full path of the run whose steps each case repeats. */
+	readonly stateFrom: string | undefined;
 }
 
-async function runOne(domain: Runner, folder: string, decider: Decider, options: RunCasesOptions): Promise<void> {
-	const id = await domain.caseId(folder);
-	// A case that failed before its steps ended is run again when a stopped run goes on.
-	if ((await readResult(options.out, id))?.ended != null) {
-		options.log(`${id}: already done`);
+/** A set names each case by its folder, so the case in the folder must have that id. */
+async function checkSetId(domain: Runner, folder: string, id: string): Promise<void> {
+	const found = await domain.caseId(folder);
+	if (found !== id) throw new Error(`the case in ${folder} has the id ${found}, but the set names it ${id}`);
+}
+
+async function runOne(run: RunContext, folder: string): Promise<void> {
+	const { domain, stateFrom } = run;
+	// A case whose id cannot be read is recorded under its folder's name, with the error.
+	const id = run.fromSet ? basename(folder) : await domain.caseId(folder).catch(() => basename(folder));
+	// A case that threw is run again when a stopped run goes on.
+	const before = await readResult(run.out, id);
+	if (before !== null && before.thrown === null) {
+		run.progress(`${id}: already done`);
 		return;
 	}
-	const files = caseFiles(options.out, id);
-	const plan = await planOf(domain, id, decider, options.stateFrom);
-	const record = await runCase(domain, folder, id, plan, files);
+	const prepare = async (): Promise<Replay | undefined> => {
+		if (run.fromSet) await checkSetId(domain, folder, id);
+		if (stateFrom === undefined) return undefined;
+		return replayOf(parseTrace(await readFile(caseFiles(stateFrom, id).trace, "utf8")), { askAgain: true });
+	};
+	const files = caseFiles(run.out, id);
+	const record = await runCase({ domain, folder, id, decider: run.decider, limits: run.limits, prepare }, files);
 	const picks = parseTrace(await readFile(files.trace, "utf8")).flatMap((entry) =>
 		entry.type === "pick" ? [entry.choice] : [],
 	);
-	options.log(storyOf(record, picks));
+	run.progress(progressLine(record, picks));
 }
 
-/** A new run record; `limits` are those that the cases run under. */
+/** A new run record; `limits` are those that the cases run under, which take the place of the definition's. */
 async function recordOf(
 	domain: Runner,
 	model: string,
@@ -197,18 +251,23 @@ const noUsage = (): DecisionUsage => ({
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 });
 
-/** The sum of two usages, without the counts that only some providers report; a request without usage adds nothing. */
-function added(
-	sum: DecisionUsage,
-	usage: Omit<DecisionUsage, "cacheWrite1h" | "reasoning"> | undefined,
-): DecisionUsage {
+/** The sum of a count that only some providers report; none while neither usage has it. */
+const optionalSum = (a?: number, b?: number): number | undefined =>
+	a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0);
+
+/** The sum of two usages; a request without usage adds nothing. */
+function added(sum: DecisionUsage, usage: z.infer<typeof decisionUsageSchema> | undefined): DecisionUsage {
 	if (usage === undefined) return sum;
 	const { cost } = usage;
+	const cacheWrite1h = optionalSum(sum.cacheWrite1h, usage.cacheWrite1h);
+	const reasoning = optionalSum(sum.reasoning, usage.reasoning);
 	return {
 		input: sum.input + usage.input,
 		output: sum.output + usage.output,
 		cacheRead: sum.cacheRead + usage.cacheRead,
 		cacheWrite: sum.cacheWrite + usage.cacheWrite,
+		...(cacheWrite1h === undefined ? {} : { cacheWrite1h }),
+		...(reasoning === undefined ? {} : { reasoning }),
 		totalTokens: sum.totalTokens + usage.totalTokens,
 		cost: {
 			input: sum.cost.input + cost.input,
@@ -222,14 +281,14 @@ function added(
 
 /** The totals of every case in the run folder: from their results, and from every request in their requests files. */
 async function totals(out: string): Promise<NonNullable<RunRecord["totals"]>> {
-	let sum = { cases: 0, failed: 0, calls: 0, usage: noUsage() };
+	let sum = { cases: 0, failed: 0, requests: 0, usage: noUsage() };
 	for (const result of await readResults(out)) {
 		const requests = parseRequests(await readFile(caseFiles(out, result.case).requests, "utf8"));
 		const usage = requests.reduce((total, recorded) => added(total, recorded.result.decisionUsage), sum.usage);
 		sum = {
 			cases: sum.cases + 1,
 			failed: sum.failed + (failed(result) ? 1 : 0),
-			calls: sum.calls + requests.length,
+			requests: sum.requests + requests.length,
 			usage,
 		};
 	}
@@ -240,11 +299,6 @@ async function totals(out: string): Promise<NonNullable<RunRecord["totals"]>> {
 async function finishRun(out: string, record: RunRecord): Promise<void> {
 	const finished = { ...record, finished: new Date().toISOString(), totals: await totals(out) };
 	await writeFile(runFile(out), `${JSON.stringify(finished, null, 1)}\n`);
-}
-
-/** The limits of a run that repeats `stateFrom`'s steps: that run's, so that every case repeats its steps exactly. */
-async function limitsFor(domain: Runner, stateFrom: string | undefined): Promise<Limits> {
-	return stateFrom === undefined ? domain.limits : (await readRunRecord(stateFrom)).limits;
 }
 
 /**
@@ -258,15 +312,19 @@ export async function runCases(
 	options: RunCasesOptions,
 ): Promise<void> {
 	await mkdir(casesFolder(options.out), { recursive: true });
-	const limits = await limitsFor(domain, options.stateFrom);
-	const from = { set: options.set ?? null, stateFrom: options.stateFrom ?? null, replay: null };
+	const stateFrom = options.stateFrom === undefined ? undefined : resolve(options.stateFrom);
+	// A run that repeats another run's steps keeps that run's limits, so that every case repeats its steps exactly.
+	const limits = stateFrom === undefined ? domain.limits : (await readRunRecord(stateFrom)).limits;
+	const from = { set: options.set ?? null, stateFrom: stateFrom ?? null, replay: null };
 	const record = await startRun(options.out, await recordOf(domain, decider.model, limits, from));
 	await writeFile(runFile(options.out), `${JSON.stringify(record, null, 1)}\n`);
+	const { out, progress } = options;
+	const run: RunContext = { domain, decider, limits, out, progress, fromSet: options.set !== undefined, stateFrom };
 	await inPool(folders, options.concurrency, async (folder) => {
 		try {
-			await runOne(domain, folder, decider, options);
+			await runOne(run, folder);
 		} catch (error: unknown) {
-			options.log(`${basename(folder)}: FAILED ${error instanceof Error ? error.message : String(error)}`);
+			progress(`${basename(folder)}: FAILED ${error instanceof Error ? error.message : String(error)}`);
 		}
 	});
 	await finishRun(options.out, record);
@@ -283,8 +341,9 @@ export interface ReplayCaseOptions {
 
 /**
  * Runs a case again from its trace, under the trace's limits: every recorded pick, state, ending and answer; or, with
- * a fork, the first `fork` steps, after which `decider` picks and answers. Returns the case's result, and with `out`
- * writes the replay as a run of one case.
+ * a fork, the first `fork` steps, after which `decider` picks and answers. Returns the case's result, whose `thrown`
+ * says why the replay failed, such as a recorded pick that is not among the choices; with `out`, it writes the replay
+ * as a run of one case.
  */
 export async function replayCase(
 	domain: Runner,
@@ -297,14 +356,14 @@ export async function replayCase(
 	const decider = fork === undefined ? recordedModel(entries) : options.decider;
 	if (decider === undefined) throw new Error("a fork needs the decider that goes on after it");
 	const replay = replayOf(entries, fork === undefined ? {} : { fork });
-	const plan = { decider, limits: limitsOf(entries), replay };
 	const id = await domain.caseId(folder);
-	if (options.out === undefined) return runCase(domain, folder, id, plan, null);
+	const job = { domain, folder, id, decider, limits: replay.start.limits, prepare: () => Promise.resolve(replay) };
+	if (options.out === undefined) return runCase(job, null);
 	await mkdir(casesFolder(options.out), { recursive: true });
 	const from = { set: null, stateFrom: null, replay: { trace: resolve(tracePath), fork: fork ?? null } };
-	const record = await startRun(options.out, await recordOf(domain, plan.decider.model, plan.limits, from));
+	const record = await startRun(options.out, await recordOf(domain, decider.model, job.limits, from));
 	await writeFile(runFile(options.out), `${JSON.stringify(record, null, 1)}\n`);
-	const result = await runCase(domain, folder, id, plan, caseFiles(options.out, id));
+	const result = await runCase(job, caseFiles(options.out, id));
 	await finishRun(options.out, record);
 	return result;
 }

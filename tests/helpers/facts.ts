@@ -27,7 +27,7 @@ export function factsSetup(): Promise<Runner> {
 			...FACTS,
 			caseId: async (folder) => (await readCase(folder)).id,
 			load: async (folder) => factsMachine({ facts: (await readCase(folder)).facts }),
-			outcome: (state, result) => ({ result: "answered", reason: result.ended, looked: state.looked.length }),
+			outcome: (result) => ({ result: "answered", reason: result.ended, looked: result.state.looked.length }),
 		}),
 	);
 }

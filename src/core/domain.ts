@@ -1,17 +1,8 @@
-import { createHash } from "node:crypto";
+import { definitionFor } from "./definition.ts";
 import { run } from "./loop.ts";
 import type { Replay } from "./replay.ts";
 import type { Trace } from "./trace.ts";
 import type { Choice, Decider, Definition, Domain, JsonObject, Limits, RunResult } from "./types.ts";
-
-/** The SHA-256 of a value as JSON, in hex. */
-export const hashOf = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-
-export const definitionOf = (name: string, content: JsonObject): Definition => ({
-	name,
-	hash: hashOf(content),
-	content,
-});
 
 /** One case run from its folder: its id, the loop's result and how the case ended. */
 export interface CaseRun {
@@ -22,9 +13,8 @@ export interface CaseRun {
 }
 
 export interface CaseOptions {
-	readonly limits: Limits;
 	readonly trace: Trace;
-	/** A trace whose picks and states the case takes again. */
+	/** A trace whose picks and states the case takes again, under its limits. */
 	readonly replay?: Replay;
 }
 
@@ -43,18 +33,18 @@ export interface Runner {
  * without a definition of its own is defined by its stop text, its instructions and its limits.
  */
 export function runnerOf<S extends JsonObject, C extends Choice>(domain: Domain<S, C>): Runner {
-	const { name, stop, instructions, limits } = domain;
+	const definition = definitionFor(domain);
 	return {
-		name,
+		name: domain.name,
 		version: domain.version,
-		definition: domain.definition ?? definitionOf(name, { stop, instructions, limits: { ...limits } }),
-		limits,
+		definition,
+		limits: domain.limits,
 		caseId: (folder) => domain.caseId(folder),
 		async run(folder, decider, options) {
 			const id = await domain.caseId(folder);
 			const machine = await domain.load(folder);
-			const result = await run(domain, machine, decider, options);
-			return { case: id, result, outcome: domain.outcome?.(result.state, result) ?? null };
+			const result = await run({ ...domain, definition }, machine, decider, { ...options, case: id });
+			return { case: id, result, outcome: domain.outcome?.(result) ?? null };
 		},
 	};
 }

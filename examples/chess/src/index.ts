@@ -1,5 +1,5 @@
 import { Chess } from "chess.js";
-import type { DomainShared, Ending, JsonObject, Limits, StateMachine } from "@osolmaz/switch";
+import type { DomainShared, Ending, JsonObject, Limits, RunResult, StateMachine } from "@osolmaz/switch";
 import type { ChessCase, ChessGame } from "./case.ts";
 import {
 	boardOf,
@@ -35,8 +35,8 @@ export const CHESS: DomainShared = {
 async function opening(game: ChessGame): Promise<ChessState> {
 	const board = new Chess(game.start);
 	const waits = game.opponent === "self" || board.turn() === colorOf(game.side);
-	const answer = waits ? undefined : await replyOf(game, board, []);
-	const first = answer === undefined ? undefined : board.move(answer);
+	const theirs = waits ? undefined : await replyOf(game, board, []);
+	const first = theirs === undefined ? undefined : board.move(theirs);
 	const plays = game.opponent === "self" ? "You play both sides." : `You play ${game.side}.`;
 	const text = `The game starts. ${plays}${first === undefined ? "" : ` The opponent played ${first.san}.`}`;
 	const before: ChessState = {
@@ -87,12 +87,12 @@ function modelResult(
 }
 
 /**
- * How the game ended, from its last state and why its steps ended: the result with its reason, the number of moves
- * both sides made, the material and the final position. Stop is a resignation. Against an opponent the result is the
- * model's: win, loss or draw. In self-play it names the winner: white wins or black wins, or a draw. A game that the
- * step limit or a failed pick cut is unfinished, with that as its reason.
+ * How the game ended, from the run's result: its last state and why its steps ended. The result with its reason, the
+ * number of moves both sides made, the material and the final position. Stop is a resignation. Against an opponent the
+ * result is the model's: win, loss or draw. In self-play it names the winner: white wins or black wins, or a draw. A
+ * game that the step limit or a failed pick cut is unfinished, with that as its reason.
  */
-export function outcomeOf(state: ChessState, ended: Ending): JsonObject {
+export function outcomeOf({ state, ended }: Pick<RunResult<ChessState>, "state" | "ended">): JsonObject {
 	const board = boardOf(state);
 	const status = statusOf(board);
 	const ending =

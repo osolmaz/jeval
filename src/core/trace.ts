@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Answers, Choice, Ending, Json, JsonObject, Limits } from "./types.ts";
+import type { Answers, Choice, Ending, Json, JsonObject } from "./types.ts";
 
 export const answerSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("bool"), probability: z.number() }),
@@ -28,6 +28,10 @@ const traceEntrySchema = z.discriminatedUnion("type", [
 		type: z.literal("start"),
 		domain: z.string(),
 		version: z.string(),
+		/** The hash of the domain's definition. */
+		definition: z.string(),
+		/** The case's id; null when the run was given none. */
+		case: z.string().nullable(),
 		model: z.string(),
 		limits: z.object({ steps: z.number(), choices: z.number(), windowShare: z.number() }),
 	}),
@@ -36,6 +40,8 @@ const traceEntrySchema = z.discriminatedUnion("type", [
 		type: z.literal("choices"),
 		step: z.number().int(),
 		choices: z.array(z.object({ key: z.string(), type: z.string(), text: z.string(), data })),
+		/** How many of the choice function's choices the limit cut, written only when it cut any. */
+		cut: z.number().int().positive().optional(),
 	}),
 	z.object({
 		type: z.literal("pick"),
@@ -48,10 +54,14 @@ const traceEntrySchema = z.discriminatedUnion("type", [
 		/** The pick was taken from a recorded trace, and the model was not asked. */
 		repeated: z.literal(true).optional(),
 	}),
+	/** Why the steps ended, and how many there were, before the answers. */
+	z.object({ type: z.literal("ended"), ended: endingSchema, steps: z.number().int() }),
 	z.object({ type: z.literal("stage"), stage: z.string(), answers }),
-	z.object({ type: z.literal("answers"), answers }),
+	/** The final answer to each question, or why the answers failed: the last entry of a run. */
+	z.object({ type: z.literal("answers"), answers: answers.nullable(), error: z.string().nullable() }),
 	z.object({ type: z.literal("note"), message: z.string() }),
-	z.object({ type: z.literal("end"), ended: endingSchema, error: z.string().nullable() }),
+	/** The case failed: its code, or switch, threw this error, and the run stopped there. */
+	z.object({ type: z.literal("thrown"), error: z.string() }),
 ]);
 
 export type TraceEntry = z.infer<typeof traceEntrySchema>;
@@ -78,8 +88,8 @@ export class Trace {
 		this.push({ type: "state", step, state });
 	}
 
-	/** Records the choices that the model sees at `step`, and the stop choice after them. */
-	choices(step: number, offered: readonly Choice[], stop: string): void {
+	/** Records the choices that the model sees at `step`, the stop choice after them, and how many the limit cut. */
+	choices(step: number, offered: readonly Choice[], stop: string, cut: number): void {
 		const choices = offered.map(({ key, type, text, data }) => ({
 			key,
 			type,
@@ -87,7 +97,7 @@ export class Trace {
 			...(data === undefined ? {} : { data }),
 		}));
 		choices.push({ key: STOP_KEY, type: STOP_KEY, text: stop });
-		this.push({ type: "choices", step, choices });
+		this.push({ type: "choices", step, choices, ...(cut > 0 ? { cut } : {}) });
 	}
 
 	/** Records the pick at `step`: the picked choice's key, the probabilities by key, and the model's confidence. */
@@ -95,23 +105,28 @@ export class Trace {
 		this.push({ type: "pick", step, ...pick, probabilities: { ...pick.probabilities } });
 	}
 
+	/** Records why the steps ended, and how many there were. */
+	ended(ended: Ending, steps: number): void {
+		this.push({ type: "ended", ended, steps });
+	}
+
 	/** Records the answers of one stage of a domain's own answer function. */
 	stage(stage: string, answers: Answers): void {
 		this.push({ type: "stage", stage, answers: { ...answers } });
 	}
 
-	/** Records the final answer to each question. */
-	answered(answers: Answers): void {
-		this.push({ type: "answers", answers: { ...answers } });
+	/** Records the final answer to each question, or, with no answers, why they failed. */
+	answered(answers: Answers | null, error: string | null): void {
+		this.push({ type: "answers", answers: answers === null ? null : { ...answers }, error });
 	}
 
 	note(message: string): void {
 		this.push({ type: "note", message });
 	}
 
-	/** Records why the steps ended, and why the answers failed when they did. */
-	ended(ended: Ending, error: string | null): void {
-		this.push({ type: "end", ended, error });
+	/** Records the error that stopped the case. */
+	thrown(error: string): void {
+		this.push({ type: "thrown", error });
 	}
 
 	private push(entry: TraceEntry): void {
@@ -135,5 +150,3 @@ export function startOf(entries: readonly TraceEntry[]): Extract<TraceEntry, { t
 	if (first?.type !== "start") throw new Error("a trace starts with its start entry");
 	return first;
 }
-
-export const limitsOf = (entries: readonly TraceEntry[]): Limits => startOf(entries).limits;

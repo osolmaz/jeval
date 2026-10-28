@@ -38,7 +38,8 @@ Each game is a state machine, in `src/index.ts` and `src/move.ts`:
 - The state holds the side that the model plays, the opponent's name, the start position, every move so far in long
   algebraic notation and in SAN, the position in FEN, the status, whether the side to move is in check, and in words
   what the last step did. chess.js rebuilds the game from the start position and the moves, so it also sees a
-  repeated position; the FEN is kept for the view and the viewer.
+  repeated position. The view uses that rebuilt game; the SAN, the FEN, the status and the check are kept for the
+  viewer, whose browser code has no chess.js.
 - The initial state is the start position, after the opponent's first move when the opponent is to move.
 - The choice function gives the legal moves of the state's position, and none once the game is over.
 - The transition function plays the model's move and, against an opponent, the reply: a random legal move, or

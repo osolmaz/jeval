@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Choice, ChoiceError, choiceType, joinTypes, offerChoices } from "../../src/core/index.ts";
+import { type Choice, ChoiceError, choiceType, joinTypes, offerChoices, typedKey } from "../../src/core/index.ts";
 import { type FactsState, lookUp } from "../helpers/fakes.ts";
 
 const empty: FactsState = { looked: [], found: [] };
@@ -70,5 +70,18 @@ describe("joinTypes", () => {
 		if (first === undefined || last === undefined) throw new Error("no choices");
 		await expect(transition(empty, first)).resolves.toEqual({ looked: [], found: ["3"] });
 		await expect(transition(empty, last)).resolves.toEqual({ looked: ["a"], found: ["fact a"] });
+	});
+
+	it("gives a type's transition the picked choice's key, as typedKey makes it", async () => {
+		const keyed = choiceType<FactsState, string>({
+			type: "note",
+			choices: () => [{ key: "x", text: "Note x", arg: "x" }],
+			transition: (state, _arg, key) => ({ looked: [...state.looked, key], found: state.found }),
+		});
+		const { choices, transition } = joinTypes(keyed);
+		const [only] = choices(empty);
+		if (only === undefined) throw new Error("no choices");
+		expect(only.key).toBe(typedKey("note", "x"));
+		await expect(transition(empty, only)).resolves.toEqual({ looked: ["note:x"], found: [] });
 	});
 });

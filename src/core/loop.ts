@@ -1,6 +1,7 @@
 import { offerChoices } from "./choices.ts";
+import { definitionFor } from "./definition.ts";
 import { recordedPick, recordedState, type Replay, ReplayError } from "./replay.ts";
-import { STOP_KEY, Trace } from "./trace.ts";
+import { STOP_KEY, Trace, type TraceEntry } from "./trace.ts";
 import type {
 	Answer,
 	Answers,
@@ -23,18 +24,24 @@ import type {
 } from "./types.ts";
 
 export interface RunOptions {
-	/** Limits in place of the domain's own, such as those of a trace that the run repeats. */
-	readonly limits?: Limits;
 	readonly trace?: Trace;
-	/** A trace to repeat: the run takes its recorded picks and states, and asks the model only after them. */
+	/**
+	 * A trace to repeat: the run takes its recorded picks and states, under its limits, and asks the model only after
+	 * them. It must be a trace of the same domain and case.
+	 */
 	readonly replay?: Replay;
+	/** The case's id, for the trace. */
+	readonly case?: string;
 }
 
 /**
  * What every case of a domain shares, as the loop needs it: the domain's name and version, the two texts of the pick
- * question, and the limits.
+ * question, the limits, and the definition, when the domain has its own.
  */
-export type DomainShared = Pick<Domain<JsonObject>, "name" | "version" | "stop" | "instructions" | "limits">;
+export type DomainShared = Pick<
+	Domain<JsonObject>,
+	"name" | "version" | "stop" | "instructions" | "limits" | "definition"
+>;
 
 /** The id of the pick question, which the domain's own questions cannot use. */
 export const PICK_ID = "pick";
@@ -66,18 +73,53 @@ export async function run<S extends JsonObject, C extends Choice>(
 	decider: Decider,
 	options: RunOptions = {},
 ): Promise<RunResult<S>> {
-	const limits = options.limits ?? domain.limits;
-	const trace = options.trace ?? new Trace();
 	const { replay } = options;
-	trace.started({ domain: domain.name, version: domain.version, model: decider.model, limits });
+	const limits = replay?.start.limits ?? domain.limits;
+	const questions = checkedQuestions(machine, limits);
+	const trace = options.trace ?? new Trace();
+	const definition = definitionFor(domain).hash;
+	const start = { domain: domain.name, version: domain.version, definition, case: options.case ?? null };
+	trace.started({ ...start, model: decider.model, limits });
+	if (replay !== undefined) checkReplay(replay, start, trace);
 	const loop: Loop<S, C> = { domain, machine, decider, limits, trace, replay };
 	// A trace holds the states of the domain that wrote it, so a replay takes its states as the domain's own.
 	const initial = replay === undefined ? await machine.initial() : (recordedState(replay, 0) as S);
 	trace.state(0, initial);
 	const { steps, ended, state } = await takeSteps(loop, initial);
-	const outcome = await answer(loop, state);
-	trace.ended(ended, outcome.error);
+	trace.ended(ended, steps);
+	const outcome = await answer(loop, state, questions);
 	return { answers: outcome.answers, steps, ended, error: outcome.error, trace, state };
+}
+
+/** The questions of the case, once its limits and its questions are found fit for a run, before the first request. */
+function checkedQuestions(machine: StateMachine<JsonObject>, limits: Limits): Questions {
+	if (limits.choices < 2) {
+		throw new Error(`the limit of ${String(limits.choices)} choices leaves no room for stop and one more choice`);
+	}
+	const questions = machine.questions?.() ?? {};
+	if (Object.hasOwn(questions, PICK_ID)) {
+		throw new Error(`a question cannot have the id ${PICK_ID}, which the pick question has`);
+	}
+	return questions;
+}
+
+type Start = Pick<Extract<TraceEntry, { type: "start" }>, "domain" | "definition" | "case">;
+
+/**
+ * A replay repeats a trace of the same domain and case. A definition that changed since is noted: the repeated steps
+ * keep what the model read then, and only what the model reads after them changes.
+ */
+function checkReplay(replay: Replay, start: Start, trace: Trace): void {
+	const recorded = replay.start;
+	if (recorded.domain !== start.domain) {
+		throw new ReplayError(`the trace is of the domain ${recorded.domain}, not of ${start.domain}`);
+	}
+	if (recorded.case !== null && start.case !== null && recorded.case !== start.case) {
+		throw new ReplayError(`the trace is of the case ${recorded.case}, not of ${start.case}`);
+	}
+	if (recorded.definition !== start.definition) {
+		trace.note(`the trace's definition was ${recorded.definition}; this run's is ${start.definition}`);
+	}
 }
 
 async function takeSteps<S extends JsonObject, C extends Choice>(
@@ -89,10 +131,14 @@ async function takeSteps<S extends JsonObject, C extends Choice>(
 	let state = initial;
 	let step = 0;
 	while (step < limits.steps) {
-		const offered = offerChoices(machine.choices(state), picked, limits.choices - 1, loop.domain.stop);
-		if (offered.length === 0) return { steps: step, ended: "no choices", state };
+		const choices = machine.choices(state);
+		const offered = offerChoices(choices, picked, limits.choices - 1, loop.domain.stop);
+		if (offered.length === 0) {
+			checkNoChoices(loop.replay, step);
+			return { steps: step, ended: "no choices", state };
+		}
 		step += 1;
-		trace.choices(step, offered, loop.domain.stop);
+		trace.choices(step, offered, loop.domain.stop, choices.length - offered.length);
 		const pick = await pickAt(loop, step, state, offered);
 		if (pick === null) return { steps: step, ended: "pick failed", state };
 		trace.picked(step, pick.entry);
@@ -102,6 +148,16 @@ async function takeSteps<S extends JsonObject, C extends Choice>(
 		trace.state(step, state);
 	}
 	return { steps: step, ended: "step limit", state };
+}
+
+/** While the run repeats a trace, the steps end with no choices only where the recorded steps did. */
+function checkNoChoices(replay: Replay | undefined, step: number): void {
+	if (replay === undefined) return;
+	const recorded =
+		replay.ending === null ? step >= replay.steps : step === replay.steps && replay.ending === "no choices";
+	if (!recorded) {
+		throw new ReplayError(`the domain gives no choices after step ${String(step)}, where the recorded run had some`);
+	}
 }
 
 /** The state after `step`: the recorded one while the run repeats a trace, or the transition's. */
@@ -182,7 +238,7 @@ async function choose<S extends JsonObject, C extends Choice>(
 		trace.note(`the pick failed: ${failureOf(result)}; the case goes on to its answers`);
 		return null;
 	}
-	if (!(answered.choice in criteria)) {
+	if (!Object.hasOwn(criteria, answered.choice)) {
 		trace.note(`the pick failed: the model picked ${answered.choice}, which is none of the labels`);
 		return null;
 	}
@@ -207,23 +263,21 @@ export class AskError extends Error {
 async function answer<S extends JsonObject, C extends Choice>(
 	loop: Loop<S, C>,
 	state: S,
+	questions: Questions,
 ): Promise<{ answers: Answers | null; error: string | null }> {
 	const { machine, trace } = loop;
-	const questions = machine.questions?.() ?? {};
-	if (Object.hasOwn(questions, PICK_ID)) {
-		throw new Error(`a question cannot have the id ${PICK_ID}, which the pick question has`);
-	}
 	try {
 		const answers =
 			machine.answer === undefined
 				? await asker(loop, state, false)(questions, { stage: "answers" })
 				: await machine.answer({ state, questions, ask: asker(loop, state, true) });
 		const final = completed(questions, answers);
-		trace.answered(final);
+		trace.answered(final, null);
 		return { answers: final, error: null };
 	} catch (error: unknown) {
-		if (error instanceof AskError) return { answers: null, error: error.message };
-		throw error;
+		if (!(error instanceof AskError)) throw error;
+		trace.answered(null, error.message);
+		return { answers: null, error: error.message };
 	}
 }
 
@@ -314,13 +368,18 @@ function viewOf<S extends JsonObject>(
 	stage: StageView | undefined,
 ): Promise<View> {
 	if (stage !== undefined) return stage(tokens, charsPerToken);
-	if (machine.view === undefined) return Promise.resolve({ decisionState: state, decisionImages: [] });
+	if (machine.view === undefined) return Promise.resolve({ decisionState: state });
 	return machine.view(state, purpose, tokens, charsPerToken);
 }
 
+/** The view as the request takes it: its state, and its images when it has any, without anything else it holds. */
+const requestOf = ({ decisionState, decisionImages }: View): View =>
+	decisionImages === undefined ? { decisionState } : { decisionState, decisionImages };
+
 /**
  * Sends one decision request: the view and `questions`. When the model reports that the request did not fit its
- * window, it asks for a smaller view and sends it again, up to `ATTEMPTS` requests in all.
+ * window, it asks the view function for a smaller view and sends it again, up to `ATTEMPTS` requests in all. Without a
+ * view function, the view cannot shrink, so the request is sent once.
  */
 async function ask<S extends JsonObject, C extends Choice>(
 	loop: Loop<S, C>,
@@ -331,12 +390,12 @@ async function ask<S extends JsonObject, C extends Choice>(
 ): Promise<DecisionResult> {
 	const { machine, decider, limits, trace } = loop;
 	const budget = Math.floor(decider.window * limits.windowShare);
+	const attempts = stage === undefined && machine.view === undefined ? 1 : ATTEMPTS;
 	let room = budget - estimateTokens(questions, decider.charsPerToken);
 	for (let attempt = 1; ; attempt += 1) {
 		const view = await viewOf(machine, state, purpose, room, decider.charsPerToken, stage);
-		const { decisionState, decisionImages } = view;
-		const result = await decider.decide({ decisionState, decisionImages, decisionQuestions: questions });
-		if (!result.tooLong || attempt === ATTEMPTS) return result;
+		const result = await decider.decide({ ...requestOf(view), decisionQuestions: questions });
+		if (!result.tooLong || attempt === attempts) return result;
 		room = Math.floor(room * SHRINK);
 		trace.note(`the request did not fit the model's window; trying a view of ${String(room)} tokens`);
 	}

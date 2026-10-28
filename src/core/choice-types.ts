@@ -15,9 +15,12 @@ export interface ChoiceTypeSpec<S, A> {
 	readonly type: string;
 	/** This type's choices in a state. */
 	choices(state: S): readonly TypedChoice<A>[];
-	/** The state after the model picked one of this type's choices. */
-	transition(state: S, arg: A): S | Promise<S>;
+	/** The state after the model picked one of this type's choices; `key` is the picked choice's key, as `typedKey` makes it. */
+	transition(state: S, arg: A, key: string): S | Promise<S>;
 }
+
+/** The key of a choice of `type` whose key within the type is `key`, as the choice function gives it. */
+export const typedKey = (type: string, key: string): string => `${type}:${key}`;
 
 /** A choice that carries the transition of its type, as `choiceType` makes it. */
 export interface BoundChoice<S> extends Choice {
@@ -30,14 +33,17 @@ export type ChoiceType<S> = (state: S) => readonly BoundChoice<S>[];
 /** One type of choice, ready to join: each of its choices gets the type in its key and carries its transition. */
 export function choiceType<S, A>(spec: ChoiceTypeSpec<S, A>): ChoiceType<S> {
 	return (state) =>
-		spec.choices(state).map((choice) => ({
-			type: spec.type,
-			key: `${spec.type}:${choice.key}`,
-			text: choice.text,
-			...(choice.priority === undefined ? {} : { priority: choice.priority }),
-			...(choice.data === undefined ? {} : { data: choice.data }),
-			next: (from: S) => Promise.resolve(spec.transition(from, choice.arg)),
-		}));
+		spec.choices(state).map((choice) => {
+			const key = typedKey(spec.type, choice.key);
+			return {
+				type: spec.type,
+				key,
+				text: choice.text,
+				...(choice.priority === undefined ? {} : { priority: choice.priority }),
+				...(choice.data === undefined ? {} : { data: choice.data }),
+				next: (from: S) => Promise.resolve(spec.transition(from, choice.arg, key)),
+			};
+		});
 }
 
 /** The choice function and the transition function of several types of choice, with the types' choices in this order. */

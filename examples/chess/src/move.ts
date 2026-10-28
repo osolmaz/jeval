@@ -56,8 +56,8 @@ export async function play(game: ChessGame, state: ChessState, lan: string): Pro
 	const board = boardOf(state);
 	const who = mover(game, board.turn());
 	const ours = board.move(lan);
-	const answer = statusOf(board) === "playing" ? await replyOf(game, board, [...state.moves, ours.lan]) : undefined;
-	const reply = answer === undefined ? undefined : board.move(answer);
+	const theirs = statusOf(board) === "playing" ? await replyOf(game, board, [...state.moves, ours.lan]) : undefined;
+	const reply = theirs === undefined ? undefined : board.move(theirs);
 	const text = [
 		`${who} played ${ours.san}.`,
 		reply === undefined ? "" : `The opponent played ${reply.san}.`,

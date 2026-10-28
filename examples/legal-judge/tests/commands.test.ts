@@ -75,7 +75,7 @@ describe("the legal-judge harness", () => {
 		const options = {
 			out: join(folder, "out"),
 			concurrency: 2,
-			log: (line: string) => lines.push(line),
+			progress: (line: string) => lines.push(line),
 			set: { name: "s", file: "set.json" },
 		};
 		const decider = fakeDecider(missingNothing(answering(0.8, () => STOP_KEY)));
@@ -89,7 +89,7 @@ describe("the legal-judge harness", () => {
 			model: "fake/decider",
 			limits: { steps: 8, choices: 30, windowShare: 0.9 },
 			set: { name: "s", file: "set.json" },
-			totals: { cases: 2, failed: 0, calls: 4 },
+			totals: { cases: 3, failed: 1, requests: 4 },
 		});
 		const result = resultSchema.parse(
 			JSON.parse(await readFile(join(folder, "out", "cases", "c1", "result.json"), "utf8")),
@@ -116,7 +116,7 @@ describe("the legal-judge harness", () => {
 			"rules",
 		]);
 		expect(lines).toEqual(
-			expect.arrayContaining(["c1: stop", "c2: stop", expect.stringMatching(/^missing: FAILED/)]),
+			expect.arrayContaining(["c1: stop", "c2: stop", expect.stringMatching(/^missing: - \| ERROR .*ENOENT/)]),
 		);
 
 		await runCases(legalJudge, [join(folder, "cases", "c1")], decider, options);
@@ -153,7 +153,7 @@ describe("the legal-judge harness", () => {
 		await ingest(await inputFolder("c1"), join(folder, "cases", "c1"), "c1");
 		await ingest(await inputFolder("c2"), join(folder, "cases", "c2"), "c2");
 		const cases = [join(folder, "cases", "c1"), join(folder, "cases", "c2")];
-		const options = { concurrency: 2, log: () => undefined };
+		const options = { concurrency: 2, progress: () => undefined };
 		let calls = 0;
 		const first = fakeDecider(
 			missingNothing(answering(0.8, (labels) => (calls++ % 2 === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY))),
@@ -187,7 +187,7 @@ describe("the legal-judge harness", () => {
 		expect(run).toMatchObject({
 			definition: { name: "strict" },
 			stateFrom: join(folder, "first"),
-			totals: { calls: 2 },
+			totals: { requests: 2 },
 		});
 		const states = async (name: string) =>
 			parseTrace(await readFile(join(folder, name, "cases", "c1", "trace.jsonl"), "utf8")).flatMap((entry) =>
@@ -217,7 +217,7 @@ describe("the legal-judge harness", () => {
 		await runCases(legalJudge, [join(folder, "cases", "c1")], broken, {
 			out: join(folder, "out"),
 			concurrency: 1,
-			log: (line) => lines.push(line),
+			progress: (line) => lines.push(line),
 		});
 		expect(lines).toEqual(["c1: stop | ERROR down"]);
 	});

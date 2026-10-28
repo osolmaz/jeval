@@ -60,22 +60,37 @@ describe("storyOf", () => {
 		expect(second?.notes[0]).toBe("the pick failed: down; the case goes on to its answers");
 		expect(story.last).toEqual(afterA);
 		expect(story.answers).toEqual({ a: { type: "bool", probability: 0.7 }, b: { type: "bool", probability: 0.7 } });
-		expect(story).toMatchObject({ ended: "pick failed", error: null });
+		expect(story).toMatchObject({ ended: "pick failed", error: null, thrown: null });
 	});
 
-	it("gives a note after the picks to the story, and the answers' failure from the end", () => {
+	it("gives the notes after the steps ended to the story, also after a failed pick, and reads a failure", () => {
+		const retry = "the request did not fit the model's window; trying a view of 9 tokens";
 		const entries: TraceEntry[] = [
-			{ type: "start", domain: "facts", version: "1", model: "m", limits: FACTS.limits },
+			{
+				type: "start",
+				domain: "facts",
+				version: "1",
+				definition: "d",
+				case: "c1",
+				model: "m",
+				limits: FACTS.limits,
+			},
 			{ type: "state", step: 0, state: opened },
-			{ type: "choices", step: 1, choices: [{ key: "stop", type: "stop", text: "Stop" }] },
-			{ type: "pick", step: 1, choice: "stop", probabilities: { stop: 1 }, confidence: 1 },
-			{ type: "note", message: "the request did not fit the model's window; trying a view of 9 tokens" },
-			{ type: "end", ended: "stop", error: "too long" },
+			{ type: "choices", step: 1, choices: [{ key: "stop", type: "stop", text: "Stop" }], cut: 3 },
+			{ type: "note", message: "the pick failed: down; the case goes on to its answers" },
+			{ type: "ended", ended: "pick failed", steps: 1 },
+			{ type: "note", message: retry },
+			{ type: "answers", answers: null, error: "too long" },
 		];
 		const story = storyOf(entries, "c1");
-		expect(story.frames[0]?.notes).toEqual([]);
-		expect(story.notes).toEqual(["the request did not fit the model's window; trying a view of 9 tokens"]);
-		expect(story).toMatchObject({ ended: "stop", error: "too long", answers: null });
+		expect(story.frames[0]).toMatchObject({
+			cut: 3,
+			notes: ["the pick failed: down; the case goes on to its answers"],
+		});
+		expect(story.notes).toEqual([retry]);
+		expect(story).toMatchObject({ ended: "pick failed", error: "too long", answers: null, thrown: null });
+		const failed = storyOf([...entries, { type: "thrown", error: "no outcome" }], "c1");
+		expect(failed.thrown).toBe("no outcome");
 	});
 
 	it("refuses a trace that does not start with its start entry", () => {
@@ -106,10 +121,8 @@ describe("the page", () => {
 
 	it("has no style of any domain's drawing, colors or layout", () => {
 		const page = viewerPage({ title: "c1", script: "", config: {} });
-		for (const name of [".board", ".square", ".piece", ".arrow", ".player", ".plies", ".ply", "--board", "--light"]) {
-			expect(page).not.toContain(name);
-		}
-		// A domain's own stylesheet gives its drawing's size, the room for bars and the colors and stripes of its look.
+		// switch's word test checks the page's sources for the domains' names; a domain's own stylesheet gives its
+		// drawing's size, the room for bars and the colors and stripes of its look.
 		for (const rule of [
 			"--stage",
 			".bar-slot{min-height",
@@ -126,10 +139,10 @@ describe("the page", () => {
 
 	it("links every case of a run from the index", () => {
 		const page = indexPage("runs/a", [
-			{ id: "x y", summary: "win, checkmate" },
+			{ id: "x y", summary: "answered, 2 facts" },
 			{ id: "z", summary: null },
 		]);
-		expect(page).toContain('<a href="/case/x%20y">x y</a> <span class="meta">win, checkmate</span>');
+		expect(page).toContain('<a href="/case/x%20y">x y</a> <span class="meta">answered, 2 facts</span>');
 		expect(page).toContain('<a href="/case/z">z</a></li>');
 		expect(escape(`<a href="x">'`)).toBe("&lt;a href=&quot;x&quot;&gt;&#39;");
 	});

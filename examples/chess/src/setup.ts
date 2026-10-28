@@ -12,7 +12,7 @@ export function chessSetup(): Promise<Runner> {
 			...CHESS,
 			caseId: async (folder) => (await loadCase(folder)).id,
 			load: async (folder) => chessMachine(await loadGame(folder)),
-			outcome: (state, result) => outcomeOf(state, result.ended),
+			outcome: outcomeOf,
 		}),
 	);
 }

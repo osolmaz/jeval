@@ -113,8 +113,10 @@ describe("view", () => {
 		const state = stateOf(evidence("read:a1:0-0"), evidence("look:d1:0", "[image]", { image: render }));
 		const seen = await view(texts, folderOf(legalCase()), state, "answer", 50_000, 3);
 		expect(seen.decisionImages).toEqual([
-			{ label: "page 1 image", mimeType: "image/png", data: "data:images/d1-1.png" },
+			{ type: "image", label: "page 1 image", mimeType: "image/png", data: "data:images/d1-1.png" },
 		]);
+		const textOnly = await view(texts, folderOf(legalCase()), stateOf(evidence("read:a1:0-0")), "answer", 50_000, 3);
+		expect(textOnly).not.toHaveProperty("decisionImages");
 	});
 
 	it("cuts the longest evidence first to fit, and says so in the text it cut", () => {

@@ -64,7 +64,8 @@ export function legalCase(overrides: Partial<LegalCase> = {}): LegalCase {
 /** A case's folder whose images hold their own path as their data. */
 export const folderOf = (legal: LegalCase): CaseFolder => ({
 	case: legal,
-	image: (render) => Promise.resolve({ label: render.label, mimeType: render.mimeType, data: `data:${render.path}` }),
+	image: (render) =>
+		Promise.resolve({ type: "image", label: render.label, mimeType: render.mimeType, data: `data:${render.path}` }),
 });
 
 /** Evidence with `key` as its source too. */

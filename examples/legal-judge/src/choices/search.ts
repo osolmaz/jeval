@@ -1,7 +1,10 @@
-import { choiceType } from "@osolmaz/switch";
+import { choiceType, typedKey } from "@osolmaz/switch";
 import type { CaseFile, LegalCase } from "../case.ts";
-import { found, type LegalState, SIZES, withEvidence } from "../state.ts";
+import { found, type LegalState, SIZES, TYPES, withEvidence } from "../state.ts";
 import type { Term } from "../terms.ts";
+
+/** A term's key within the search type: one search for each term, whatever its case. */
+const termKey = (term: Term): string => term.term.toLowerCase();
 
 const choiceText = (term: Term): string => {
 	const from = term.items.length > 0 ? term.items.join(", ") : "the answer";
@@ -34,22 +37,22 @@ export function searchFiles(files: readonly CaseFile[], term: string): string {
 /** Search one term from the rubric, or a figure or clause reference the answer cites, that was not searched yet. */
 export const search = (legalCase: LegalCase, terms: readonly Term[]) =>
 	choiceType<LegalState, Term>({
-		type: "search",
+		type: TYPES.search,
 		choices: (state) =>
 			terms
-				.filter((term) => !found(state, `search:${term.term.toLowerCase()}`))
+				.filter((term) => !found(state, typedKey(TYPES.search, termKey(term))))
 				.slice(0, SIZES.searchChoices)
 				.map((term) => ({
-					key: term.term.toLowerCase(),
+					key: termKey(term),
 					text: choiceText(term),
 					arg: term,
 					priority: 1,
 					// The rubric items the term comes from, for tools that read the trace.
 					data: { informs: [...term.items] },
 				})),
-		transition: (state, term) =>
+		transition: (state, term, key) =>
 			withEvidence(state, {
-				key: `search:${term.term.toLowerCase()}`,
+				key,
 				source: `search for “${term.term}”`,
 				text: searchFiles(legalCase.files, term.term),
 			}),

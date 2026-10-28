@@ -62,8 +62,6 @@ export function chessView(state: ChessState, tokens: number, charsPerToken: numb
 		fen: board.fen(),
 	};
 	const whole = { ...base, moves: moves.join(" ") };
-	if (estimateTokens(whole, charsPerToken) <= tokens || moves.length <= RECENT) {
-		return { decisionState: whole, decisionImages: [] };
-	}
-	return { decisionState: { ...base, moves: `… ${moves.slice(-RECENT).join(" ")}` }, decisionImages: [] };
+	if (estimateTokens(whole, charsPerToken) <= tokens || moves.length <= RECENT) return { decisionState: whole };
+	return { decisionState: { ...base, moves: `… ${moves.slice(-RECENT).join(" ")}` } };
 }

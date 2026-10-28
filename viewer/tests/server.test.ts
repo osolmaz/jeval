@@ -3,13 +3,13 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { STOP_KEY } from "@osolmaz/switch";
+import { runnerOf, STOP_KEY } from "@osolmaz/switch";
 import { runCases } from "@osolmaz/switch/cli";
 import { viewCommand } from "../src/command.ts";
-import { caseVersion, onlyCase, route, serveRun, ViewError, writeCasePage } from "../src/server.ts";
+import { caseVersion, onlyCase, route, serveRun, ViewerError, writeCasePage } from "../src/server.ts";
 import type { Session } from "../src/web/model.ts";
 import { factsFolder, factsSetup } from "./helpers/facts.ts";
-import { answering, fakeDecider } from "./helpers/fakes.ts";
+import { answering, FACTS, fakeDecider } from "./helpers/fakes.ts";
 
 let folder = "";
 beforeEach(async () => {
@@ -26,7 +26,7 @@ async function factsRun(ids: readonly string[]): Promise<string> {
 	await runCases(await factsSetup(), folders, fakeDecider(answering(0.6, () => STOP_KEY)), {
 		out,
 		concurrency: 1,
-		log: () => undefined,
+		progress: () => undefined,
 	});
 	return out;
 }
@@ -73,7 +73,7 @@ describe("the viewer", () => {
 
 	it("writes a page with the session in it, and needs a case named when the run has more than one", async () => {
 		const out = await factsRun(["f1", "f2"]);
-		await expect(onlyCase(out)).rejects.toThrow(ViewError);
+		await expect(onlyCase(out)).rejects.toThrow(ViewerError);
 		const file = join(folder, "f1.html");
 		await writeCasePage(out, "f1", file, { facts: viewer });
 		const page = await readFile(file, "utf8");
@@ -83,6 +83,27 @@ describe("the viewer", () => {
 		expect(page).not.toContain('"sessionUrl":"');
 		await rm(join(out, "cases", "f2"), { recursive: true });
 		expect(await onlyCase(out)).toBe("f1");
+	});
+
+	it("shows a case that failed before it started, with its error", async () => {
+		const out = join(folder, "run");
+		const broken = runnerOf({
+			...FACTS,
+			caseId: () => Promise.resolve("f1"),
+			load: () => Promise.reject(new Error("the case folder is broken")),
+		});
+		await runCases(broken, [join(folder, "f1")], fakeDecider(answering(0.6)), {
+			out,
+			concurrency: 1,
+			progress: () => undefined,
+		});
+		const reply = await route(out, "/case/f1/session.json");
+		expect(reply.status).toBe(200);
+		expect((JSON.parse(reply.body) as Session).story).toMatchObject({
+			ended: null,
+			thrown: "the case folder is broken",
+			frames: [],
+		});
 	});
 
 	it("tells a case's version by the size of its trace and whether it has a result", async () => {

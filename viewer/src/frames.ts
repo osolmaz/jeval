@@ -15,6 +15,8 @@ export interface Frame {
 	/** The state before the pick. */
 	readonly before: JsonObject | null;
 	readonly choices: readonly FrameChoice[];
+	/** How many of the choice function's choices the limit cut, so the model never saw them. */
+	readonly cut: number;
 	/** The picked choice's key; null when the pick failed. */
 	readonly picked: string | null;
 	/** The state after the transition; null after stop or a failed pick. */
@@ -34,11 +36,13 @@ export interface Story {
 	/** The latest state of the case. */
 	readonly last: JsonObject | null;
 	readonly answers: Readonly<Record<string, Answer>> | null;
-	/** Why the steps ended; null until the run has ended. */
+	/** Why the steps ended; null until they have ended. */
 	readonly ended: Ending | null;
-	/** Why the answers failed; null when they did not, or until the run has ended. */
+	/** Why the answers failed; null when they did not, or until the answers are in. */
 	readonly error: string | null;
-	/** Notes made after the steps, such as a retry of the answers. */
+	/** The error that stopped the case; null when none did. */
+	readonly thrown: string | null;
+	/** Notes made outside the steps, such as a retry of the answers. */
 	readonly notes: readonly string[];
 }
 
@@ -46,6 +50,7 @@ interface Building {
 	step: number;
 	before: JsonObject | null;
 	choices: FrameChoice[];
+	cut: number;
 	picked: string | null;
 	after: JsonObject | null;
 	notes: string[];
@@ -70,7 +75,7 @@ function choicesFrame(entry: Entry<"choices">, before: JsonObject | null): Build
 		picked: false,
 		data: choice.data,
 	}));
-	return { step: entry.step, before, choices, picked: null, after: null, notes: [] };
+	return { step: entry.step, before, choices, cut: entry.cut ?? 0, picked: null, after: null, notes: [] };
 }
 
 interface Reading {
@@ -81,6 +86,7 @@ interface Reading {
 	answers: Readonly<Record<string, Answer>> | null;
 	ended: Ending | null;
 	error: string | null;
+	thrown: string | null;
 }
 
 function stated(reading: Reading, entry: Entry<"state">): void {
@@ -95,10 +101,10 @@ function picked(reading: Reading, entry: Entry<"pick">): void {
 	if (frame !== undefined) withPick(frame, entry);
 }
 
-/** A note belongs to the step that is still waiting for its pick; a note after the picks belongs to the story. */
+/** A note belongs to the step that is still waiting for its pick; any other note, such as one after the steps ended, belongs to the story. */
 function noted(reading: Reading, entry: Entry<"note">): void {
 	const frame = reading.frames.at(-1);
-	if (frame?.picked === null && frame.after === null) frame.notes.push(entry.message);
+	if (reading.ended === null && frame?.picked === null && frame.after === null) frame.notes.push(entry.message);
 	else reading.notes.push(entry.message);
 }
 
@@ -110,14 +116,17 @@ const READERS: { readonly [T in TraceEntry["type"]]: (reading: Reading, entry: E
 		reading.frames.push(choicesFrame(entry, reading.last));
 	},
 	pick: picked,
+	ended: (reading, entry) => {
+		reading.ended = entry.ended;
+	},
 	stage: () => undefined,
 	answers: (reading, entry) => {
 		reading.answers = entry.answers;
+		reading.error = entry.error;
 	},
 	note: noted,
-	end: (reading, entry) => {
-		reading.ended = entry.ended;
-		reading.error = entry.error;
+	thrown: (reading, entry) => {
+		reading.thrown = entry.error;
 	},
 };
 
@@ -137,8 +146,10 @@ export function storyOf(entries: readonly TraceEntry[], name: string): Story {
 		answers: null,
 		ended: null,
 		error: null,
+		thrown: null,
 	};
 	for (const entry of entries) read(reading, entry);
-	const { initial, frames, notes, last, answers, ended, error } = reading;
-	return { case: name, domain: head.domain, model: head.model, initial, frames, last, answers, ended, error, notes };
+	const { initial, frames, notes, last, answers, ended, error, thrown } = reading;
+	const { domain, model } = head;
+	return { case: name, domain, model, initial, frames, last, answers, ended, error, thrown, notes };
 }

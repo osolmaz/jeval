@@ -1,4 +1,4 @@
-import { startOf, type TraceEntry } from "./trace.ts";
+import { STOP_KEY, startOf, type TraceEntry } from "./trace.ts";
 import type { Answers, Decider, Ending, JsonObject } from "./types.ts";
 
 export class ReplayError extends Error {
@@ -12,6 +12,8 @@ type PickEntry = Extract<TraceEntry, { type: "pick" }>;
  * states, so no transition runs and the model is not asked, for the first `steps` steps.
  */
 export interface Replay {
+	/** What the recorded run was: its domain, definition, case and model, and the limits, which the run takes. */
+	readonly start: Extract<TraceEntry, { type: "start" }>;
 	readonly steps: number;
 	/** The recorded states by step: the initial state first. */
 	readonly states: readonly JsonObject[];
@@ -34,29 +36,30 @@ export interface ReplayOptions {
 
 /** What a run repeats of the trace `entries`: every step and the answers, every step only, or the steps of a fork. */
 export function replayOf(entries: readonly TraceEntry[], options: ReplayOptions = {}): Replay {
-	startOf(entries);
+	const start = startOf(entries);
 	const states = statesOf(entries);
 	const picks = entries.filter((entry) => entry.type === "pick");
 	if (options.fork !== undefined) {
-		if (options.fork > picks.length) {
+		const most = forkable(picks, states);
+		if (options.fork > most) {
 			throw new ReplayError(
-				`the trace has ${String(picks.length)} steps, fewer than the fork's ${String(options.fork)}`,
+				`the trace has ${String(most)} steps that a fork can repeat, fewer than the fork's ${String(options.fork)}`,
 			);
 		}
-		return { steps: options.fork, states, picks, ending: null, answers: null, answersError: null };
+		return { start, steps: options.fork, states, picks, ending: null, answers: null, answersError: null };
 	}
-	const end = entries.find((entry) => entry.type === "end");
-	if (end === undefined) throw new ReplayError("the trace has no end: its run did not finish");
-	const again = options.askAgain === true;
-	return {
-		steps: picks.length,
-		states,
-		picks,
-		ending: end.ended,
-		answers: again ? null : answersOf(entries),
-		answersError: again ? null : end.error,
-	};
+	const ended = entries.find((entry) => entry.type === "ended");
+	if (ended === undefined) throw new ReplayError("the trace's steps did not end: its run stopped before");
+	const steps = { start, steps: picks.length, states, picks, ending: ended.ended };
+	if (options.askAgain === true) return { ...steps, answers: null, answersError: null };
+	const final = entries.find((entry) => entry.type === "answers");
+	if (final === undefined) throw new ReplayError("the trace has no answers: its run stopped before them");
+	return { ...steps, answers: answersOf(entries), answersError: final.error };
 }
+
+/** How many steps a fork can repeat: each with its pick and the state after it, which only a last pick of stop lacks. */
+const forkable = (picks: readonly PickEntry[], states: readonly JsonObject[]): number =>
+	picks.at(-1)?.choice === STOP_KEY ? picks.length : Math.min(picks.length, states.length - 1);
 
 /** The recorded states in order of their steps; each step from 0 on must have one. */
 function statesOf(entries: readonly TraceEntry[]): JsonObject[] {
@@ -73,7 +76,7 @@ function statesOf(entries: readonly TraceEntry[]): JsonObject[] {
 function answersOf(entries: readonly TraceEntry[]): Answers {
 	return Object.fromEntries(
 		entries.flatMap((entry) =>
-			entry.type === "stage" || entry.type === "answers" ? Object.entries(entry.answers) : [],
+			entry.type === "stage" || entry.type === "answers" ? Object.entries(entry.answers ?? {}) : [],
 		),
 	);
 }

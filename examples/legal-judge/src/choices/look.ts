@@ -1,6 +1,6 @@
-import { choiceType, type TypedChoice } from "@osolmaz/switch";
+import { choiceType, typedKey, type TypedChoice } from "@osolmaz/switch";
 import type { CaseFile, LegalCase, Render } from "../case.ts";
-import { found, imagesSeen, type LegalState, SIZES, withEvidence } from "../state.ts";
+import { found, imagesSeen, type LegalState, SIZES, TYPES, withEvidence } from "../state.ts";
 
 interface Picture {
 	readonly file: CaseFile;
@@ -19,19 +19,19 @@ export const lookKey = (file: CaseFile, index: number): string => `${file.id}:${
 /** The evidence of a look at an image: its label as text, and the image, which the view loads from the case folder. */
 export function lookedAt(file: CaseFile, render: Render, index: number): LegalState["evidence"][number] {
 	const label = file.format === "image" ? file.path : `${file.path} ${render.label}`;
-	return { key: `look:${lookKey(file, index)}`, source: label, text: `[image: ${label}]`, image: render };
+	return { key: typedKey(TYPES.look, lookKey(file, index)), source: label, text: `[image: ${label}]`, image: render };
 }
 
 /** Look at an image file, or at a page image of a PDF page that has no text layer, until the run saw enough images. */
 export const look = (legalCase: LegalCase) =>
 	choiceType<LegalState, Picture>({
-		type: "look",
+		type: TYPES.look,
 		choices: (state) =>
 			imagesSeen(state) >= SIZES.images
 				? []
 				: legalCase.files.flatMap((file) =>
 						file.renders.flatMap((render, index): TypedChoice<Picture>[] =>
-							found(state, `look:${lookKey(file, index)}`)
+							found(state, typedKey(TYPES.look, lookKey(file, index)))
 								? []
 								: [
 										{

@@ -1,5 +1,18 @@
-import type { Image, JsonObject } from "@osolmaz/switch";
+import { type Image, type JsonObject, typedKey } from "@osolmaz/switch";
 import type { CaseFile, LegalCase, Render } from "./case.ts";
+
+/**
+ * The types of choice. A choice's key is its type's name and its key within the type, as `typedKey` makes it, and the
+ * evidence that the choice adds keeps that key, so that the choice is left out once it is done.
+ */
+export const TYPES = {
+	read: "read",
+	look: "look",
+	search: "search",
+	count: "count",
+	changes: "changes",
+	compare: "compare",
+} as const;
 
 /** Sizes in estimated tokens, at three characters a token. */
 export const SIZES = {
@@ -98,15 +111,24 @@ export function partSource(part: Part): string {
 	return part.from === part.to ? `${part.file.path}, ${first}` : `${part.file.path}, ${first} to ${last}`;
 }
 
+/** The file and the first and last unit that a read's key names, as `partKey` makes it; null for another type's key. */
+function readRange(key: string): [file: string, from: number, to: number] | null {
+	const prefix = typedKey(TYPES.read, "");
+	const match = key.startsWith(prefix) ? /^(.+):(\d+)-(\d+)$/.exec(key.slice(prefix.length)) : null;
+	if (match === null) return null;
+	const [, file = "", from = "0", to = "0"] = match;
+	return [file, Number(from), Number(to)];
+}
+
 /** The parts of each file read so far, from the keys of the state's `read` evidence. */
 export function readParts(state: LegalState): Map<string, Set<number>> {
 	const read = new Map<string, Set<number>>();
 	for (const entry of state.evidence) {
-		const match = /^read:(.+):(\d+)-(\d+)$/.exec(entry.key);
-		if (match === null) continue;
-		const [, file = "", from = "0", to = "0"] = match;
+		const range = readRange(entry.key);
+		if (range === null) continue;
+		const [file, from, to] = range;
 		const units = read.get(file) ?? new Set<number>();
-		for (let index = Number(from); index <= Number(to); index += 1) units.add(index);
+		for (let index = from; index <= to; index += 1) units.add(index);
 		read.set(file, units);
 	}
 	return read;

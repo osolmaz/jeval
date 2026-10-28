@@ -39,7 +39,7 @@ function decider(model: string, variable: string | undefined): Decider {
 	return piAiDecider(model, { registry: builtinModels(), ...(apiKey === undefined ? {} : { apiKey }) });
 }
 
-const log = (line: string): void => {
+const progress = (line: string): void => {
 	process.stderr.write(`${line}\n`);
 };
 
@@ -75,7 +75,7 @@ function runCommand(domains: Domains): Command {
 		.option("--concurrency <n>", "cases at once", positive, 4)
 		.option(
 			"--state-from <run>",
-			"repeat each case's steps from this run, under its limits, and ask the model only the questions again",
+			"repeat each named case's steps from this run, under its limits, and ask the model only the questions again",
 		);
 	return withDomainFlags(command, domains).action(async (cases: string[], options: RunFlags, self: Command) => {
 		const { folders, set } = await casesOf(cases, options.set);
@@ -84,7 +84,7 @@ function runCommand(domains: Domains): Command {
 		await runCases(domain, folders, model, {
 			out: options.out,
 			concurrency: options.concurrency,
-			log,
+			progress,
 			...(set === undefined ? {} : { set }),
 			...(options.stateFrom === undefined ? {} : { stateFrom: options.stateFrom }),
 		});
@@ -102,7 +102,7 @@ interface ReplayFlags {
 function replayCommand(domains: Domains): Command {
 	const command = new Command("replay")
 		.description(
-			"Run a case again with the picks, states, ending and answers of its trace; with --fork, the model goes on after the fork",
+			"Run a case again with the picks, states, ending and answers of its trace; with --fork, the model goes on after the fork. It fails when the case does not repeat the trace",
 		)
 		.argument("<case>")
 		.argument("<trace>")
@@ -120,6 +120,10 @@ function replayCommand(domains: Domains): Command {
 				...(out === undefined ? {} : { out }),
 			});
 			process.stdout.write(`${JSON.stringify(result, null, 1)}\n`);
+			if (result.thrown !== null) {
+				process.stderr.write(`the replay failed: ${result.thrown}\n`);
+				process.exitCode = 1;
+			}
 		},
 	);
 }

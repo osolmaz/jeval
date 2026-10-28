@@ -64,6 +64,11 @@ describe("switch's sources", () => {
 		expect(await linesMatching(["src", "viewer/src"], await domainWords())).toEqual([]);
 	});
 
+	it("are tested without any domain's words, except in this test of the words", async () => {
+		const found = await linesMatching(["tests", "viewer/tests"], await domainWords());
+		expect(found.filter((line) => !line.includes("/tests/no-domain.test.ts:"))).toEqual([]);
+	});
+
 	it("have no web page, server or browser code: the viewer is a package of its own", async () => {
 		expect(await linesMatching(["src"], WEB)).toEqual([]);
 	});

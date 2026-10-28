@@ -10,19 +10,24 @@ export const resultSchema = z.object({
 	version: z.string(),
 	model: z.string(),
 	steps: z.number().int(),
-	/** Why the steps ended; null when the case failed before its steps ended. */
+	/** Why the steps ended; null when the case threw before they ended. */
 	ended: endingSchema.nullable(),
-	/** Why the answers failed, or why the case failed; null when it did not. */
+	/** Why the answers failed; null when they did not, or when the case threw before them. */
 	error: z.string().nullable(),
 	answers: z.record(z.string(), answerSchema).nullable(),
-	/** How the case ended in the domain's own terms; null when the domain reports none. */
+	/** How the case ended in the domain's own terms; null when the domain reports none, or when the case threw. */
 	outcome: z.record(z.string(), z.unknown()).nullable(),
+	/**
+	 * The error that stopped the case, from its code or from switch, such as a replay that does not match; null when
+	 * none did. A run that goes on runs such a case again.
+	 */
+	thrown: z.string().nullable(),
 });
 export type CaseResult = z.infer<typeof resultSchema>;
 
-/** A case failed: its answers failed, its pick failed, or it failed before its steps ended. */
+/** A case failed: it threw, its answers failed, or its pick failed. */
 export const failed = (result: CaseResult): boolean =>
-	result.error !== null || result.ended === null || result.ended === "pick failed";
+	result.thrown !== null || result.error !== null || result.ended === "pick failed";
 
 /**
  * What a harness's `run` and `replay --out` write as `run.json`: what ran, with which definition and model, on which
@@ -33,6 +38,10 @@ export const runRecordSchema = z.object({
 	version: z.string(),
 	definition: z.object({ name: z.string(), hash: z.string(), content: z.record(z.string(), z.unknown()) }),
 	model: z.string(),
+	/**
+	 * The limits that the cases ran under: the domain's, or those of the run or trace that they repeat, which take the
+	 * place of the definition's.
+	 */
 	limits: z.object({ steps: z.number().int(), choices: z.number().int(), windowShare: z.number() }),
 	switch: z.object({ version: z.string(), commit: z.string().nullable(), changed: z.boolean().nullable() }),
 	set: z.object({ name: z.string(), file: z.string() }).nullable(),
@@ -47,7 +56,7 @@ export const runRecordSchema = z.object({
 			cases: z.number().int(),
 			failed: z.number().int(),
 			/** The requests to the decision model, and the sum of their usage. */
-			calls: z.number().int(),
+			requests: z.number().int(),
 			usage: decisionUsageSchema,
 		})
 		.nullable(),

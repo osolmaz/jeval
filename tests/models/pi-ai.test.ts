@@ -37,7 +37,7 @@ function registry(
 
 const request: DecisionRequest = {
 	decisionState: { a: 1 },
-	decisionImages: [{ label: "page", mimeType: "image/png", data: "AAAA" }],
+	decisionImages: [{ type: "image", label: "page", mimeType: "image/png", data: "AAAA" }],
 	decisionQuestions: {
 		b: { type: "bool", instructions: "B?", criteria: { true: "yes", false: "no" } },
 		c: { type: "choice", instructions: "C?", criteria: { x: "X", y: "Y" } },
@@ -102,7 +102,8 @@ describe("piAiDecider", () => {
 
 	it("leaves images out when there are none, and the key to pi-ai when none is given", async () => {
 		const fake = registry({});
-		await piAiDecider("typesafe/jev-latest", { registry: fake }).decide({ ...request, decisionImages: [] });
+		const imageless = { decisionState: request.decisionState, decisionQuestions: request.decisionQuestions };
+		await piAiDecider("typesafe/jev-latest", { registry: fake }).decide(imageless);
 		expect(fake.contexts[0]).not.toHaveProperty("images");
 		expect(fake.keys).toEqual([undefined]);
 	});

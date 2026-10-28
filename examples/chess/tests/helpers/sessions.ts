@@ -19,8 +19,12 @@ export async function chessSession(
 	} = {},
 ): Promise<Session> {
 	const { steps = 3, policy = picking(), finished = true, ...fields } = options;
-	const result = await run(CHESS, chessMachine(game(fields)), fakeDecider(policy), { limits: { ...LIMITS, steps } });
-	const outcome = finished ? outcomeOf(result.state, result.ended) : null;
+	const result = await run(
+		{ ...CHESS, limits: { ...LIMITS, steps } },
+		chessMachine(game(fields)),
+		fakeDecider(policy),
+	);
+	const outcome = finished ? outcomeOf(result) : null;
 	return {
 		story: storyOf(result.trace.entries, "g1"),
 		outcome,

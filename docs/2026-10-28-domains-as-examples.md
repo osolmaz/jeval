@@ -13,7 +13,8 @@ latest state, the model picks one, and the transition function gives the next st
 interface that a domain must give, and behind them a domain may use any machinery of its own, such as chess.js and
 Stockfish in chess. switch knows nothing about any domain, so the trace holds only the states, the choices, the picks
 and the answers, and a replay reads the saved states and runs no transition again. This is the fourth and last PR of
-this plan; old traces need the `jq` command that it adds, and `run --steps-from` becomes `run --state-from`.
+this plan, [#29](https://github.com/osolmaz/switch/pull/29); old traces need the `jq` command that it adds, and
+`run --steps-from` becomes `run --state-from`.
 
 ## Done
 

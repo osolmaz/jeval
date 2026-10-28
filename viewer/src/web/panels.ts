@@ -102,21 +102,16 @@ function factRows(session: Session, hidden: readonly string[]): HTMLElement[] {
 }
 
 /**
- * How the case ended: a banner with the score and the domain's summary, and the outcome's facts and the answers. A
- * domain's part gives the score and the facts it leaves out, and its viewer gives the summary.
+ * How the case ended: a banner with the domain's summary, and the outcome's facts and the answers. A domain's viewer
+ * gives the summary, and its part the facts it leaves out.
  */
-export function resultPanel(
-	session: Session | null,
-	waiting: boolean,
-	score: string | null,
-	hidden: readonly string[],
-): HTMLElement {
+export function resultPanel(session: Session | null, waiting: boolean, hidden: readonly string[]): HTMLElement {
 	const pending = waitingPanel(session, waiting);
 	if (pending !== null || session === null) return h("section", { class: "result" }, pending ?? "");
 	return h(
 		"section",
 		{ class: "result" },
-		h("p", { class: "banner" }, score === null ? "" : h("strong", {}, score), h("span", {}, session.summary ?? "")),
+		h("p", { class: "banner" }, session.summary ?? ""),
 		h("dl", { class: "facts" }, ...factRows(session, hidden)),
 	);
 }
@@ -141,9 +136,7 @@ export function confidenceChart(session: Session, index: number): HTMLElement[] 
 
 /** The parts of the page that change. */
 export interface Parts {
-	readonly top: HTMLElement;
 	readonly stage: HTMLElement;
-	readonly bottom: HTMLElement;
 	readonly chart: HTMLElement;
 	readonly side: HTMLElement;
 	/** The title of the steps list, which a domain's part names. */
@@ -156,7 +149,6 @@ export interface Parts {
 	readonly title: HTMLElement;
 	readonly meta: HTMLElement;
 	readonly download: HTMLButtonElement;
-	readonly sound: HTMLButtonElement;
 	readonly scrub: HTMLInputElement;
 	readonly where: HTMLElement;
 	readonly play: HTMLButtonElement;
@@ -173,9 +165,7 @@ function speedSelect(): HTMLSelectElement {
 
 export function layout(root: HTMLElement): Parts {
 	const parts = {
-		top: h("div", { class: "bar-slot" }),
 		stage: h("div", { class: "stage-slot" }),
-		bottom: h("div", { class: "bar-slot" }),
 		chart: h("section", { class: "card chart" }),
 		side: h("div", { class: "card side-slot" }),
 		stepsTitle: h("h2", {}, "Result"),
@@ -186,7 +176,6 @@ export function layout(root: HTMLElement): Parts {
 		title: h("h1", {}, "switch"),
 		meta: h("span", { class: "meta" }),
 		download: button("Download", "download", "Download"),
-		sound: button("Turn the sound off", "sound", "Sound on"),
 		scrub: h("input", { type: "range", min: "0", max: "0", value: "0", "aria-label": "Step" }) as HTMLInputElement,
 		where: h("output", { "aria-live": "polite" }),
 		play: button("Play", "play", "Play"),
@@ -194,7 +183,6 @@ export function layout(root: HTMLElement): Parts {
 		controls: h("div", { class: "controls" }),
 	};
 	parts.download.hidden = true;
-	parts.sound.hidden = true;
 	parts.home.append(h("span", { class: "brand" }, "switch"), parts.title);
 	const header = h(
 		"header",
@@ -203,10 +191,9 @@ export function layout(root: HTMLElement): Parts {
 		parts.meta,
 		parts.live,
 		h("span", { class: "spacer" }),
-		parts.sound,
 		parts.download,
 	);
-	const stage = h("section", { class: "stage", "aria-label": "The case" }, parts.top, parts.stage, parts.bottom);
+	const stage = h("section", { class: "stage", "aria-label": "The case" }, parts.stage);
 	const timeline = h("div", { class: "card timeline" }, parts.stepsTitle, parts.steps, parts.result, parts.controls);
 	const side = h("aside", { class: "side" }, parts.chart, parts.side, timeline);
 	root.replaceChildren(h("div", { class: "app" }, header, h("main", { class: "layout" }, stage, side)));

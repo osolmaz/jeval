@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { confidence } from "@osolmaz/switch/page";
+import { confidence } from "@osolmaz/switch-viewer/page";
 import { chessChoice, chessState, movesOfStep } from "../src/web/data.ts";
 import { captures, pgnOf, piecesOf, play, pliesOf, samePlaces, scoreOf } from "../src/web/model.ts";
 import { picking, stateOf } from "./helpers/chess.ts";

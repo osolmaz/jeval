@@ -79,10 +79,11 @@ STOCKFISH=/path/to/stockfish examples/chess/src/main.ts replay examples/chess/ca
 
 ## Watch a game
 
-Add `--view` to `run` to watch the game while it is played, or open a finished run with `view`:
+The harness has the `view` command of switch's [viewer](../../viewer/README.md). Start it on the run folder to watch
+the game while it is played, or to play back a finished one:
 
 ```bash
-examples/chess/src/main.ts run examples/chess/cases/self-play --out runs/self-play --view
+examples/chess/src/main.ts run examples/chess/cases/self-play --out runs/self-play
 examples/chess/src/main.ts view runs/self-play
 ```
 
@@ -90,16 +91,17 @@ The page looks like a game on chess.com: a green board, with each player's bar a
 took and a box lit for the side to move. At each step the board shows the position the model picked in, with orange
 arrows for its five likeliest moves, as wide as their probabilities, the picked one solid; then the pieces move. Beside
 the board are the model's confidence in each move it picked, the step's choices with the model's probability for each
-one, and the moves in numbered rows with piece icons, where a move opens its step. The page plays the game
-back at four speeds, the arrow keys step through it, and it downloads the game as PGN. The start of the game, each
-move, a capture, castling, a check and the end (checkmate, stalemate, or another game over) each play their own short
-recorded clip from [`assets/sounds/`](assets/sounds), which the table `SOUND_SET` in `src/viewer.ts` maps by event; the
-Sound button turns them off.
+one, and the moves in numbered rows with piece icons, where a move opens its step, and the score once the game is
+over. The page plays the game back at four speeds, the arrow keys step through it, and it downloads the game as PGN.
+The start of the game, each move, a capture, castling, a check and the end (checkmate, stalemate, or another game
+over) each play their own short recorded clip from [`assets/sounds/`](assets/sounds), which the table `SOUND_SET` in
+`src/viewer.ts` maps by event; the Sound button in the top bar turns them off.
 
-All of this is the chess part of the page. switch's viewer shows every domain's steps, choices and results, and the
-chess domain adds the rest: the browser modules in [`src/web/`](src/web) register it with `registerPart` from
-`@osolmaz/switch/page`, `src/web/chess.css` draws it, and `src/viewer.ts` names those modules and that stylesheet and
-gives them the pieces and the clips. The domain writes each state, and the page reads it, with the one type in
+All of this is the chess part of the page. The viewer shows every domain's steps, choices and results, and the chess
+domain adds the rest: the browser modules in [`src/web/`](src/web) register it with `registerPart` from
+`@osolmaz/switch-viewer/page`, `src/web/chess.css` draws it, and `src/viewer.ts` names those modules and that
+stylesheet and gives them the pieces and the clips. The part draws the bars, the board, the sound button and the score
+itself, and plays its own sounds; the viewer knows nothing of them. The domain writes each state, and the page reads it, with the one type in
 `src/web/data.ts`. The moves of a step are the moves that its state added to the state before it.
 
 The pieces are cburnett by Colin M.L. Burnett, the set lichess shows by default, under the BSD license;

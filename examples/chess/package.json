@@ -16,6 +16,7 @@
 	},
 	"dependencies": {
 		"@osolmaz/switch": "workspace:*",
+		"@osolmaz/switch-viewer": "workspace:*",
 		"chess.js": "1.4.0",
 		"zod": "4.6.7"
 	},

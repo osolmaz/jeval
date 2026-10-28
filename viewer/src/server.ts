@@ -1,18 +1,17 @@
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { access, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
-import { parseTrace } from "../core/index.ts";
-import {
-	type DomainViewer,
-	indexPage,
-	partConfigs,
-	partStyles,
-	type Session,
-	storyOf,
-	viewerPage,
-	viewerScript,
-} from "../view/index.ts";
-import { caseFiles, casesFolder } from "./layout.ts";
-import { exists, resultSchema } from "./runs.ts";
+import { parseTrace } from "@osolmaz/switch";
+import { caseFiles, casesFolder, resultSchema } from "@osolmaz/switch/cli";
+import { type DomainViewer, partConfigs, partStyles, viewerScript } from "./bundle.ts";
+import { storyOf } from "./frames.ts";
+import { indexPage, viewerPage } from "./page.ts";
+import type { Session } from "./web/model.ts";
+
+const exists = (path: string): Promise<boolean> =>
+	access(path).then(
+		() => true,
+		() => false,
+	);
 
 const HTML = "text/html; charset=utf-8";
 const TEXT = "text/plain; charset=utf-8";

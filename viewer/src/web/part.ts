@@ -19,23 +19,13 @@ export interface Download {
 	readonly text: string;
 }
 
-/** The part's sounds: the page shows a Sound button for them, and wakes them at the first click or key. */
-export interface PartSound {
-	readonly enabled: boolean;
-	toggle(): void;
-	wake(): void;
-	/** The page plays the case from its start. */
-	started(): void;
-	/** The page reached the end of the case. */
-	ended(session: Session): void;
-}
-
 /** A domain's part of the page. Every hook is optional: without one, the page shows its own plain view. */
 export interface DomainPart {
-	/** The stage for `moment`, moved to it from `from` when the page steps forward to it; null for the plain view. */
-	stage?(moment: Moment, from: Moment | null): Promise<HTMLElement | null>;
-	/** What goes above and below the stage. */
-	bars?(moment: Moment, session: Session): { readonly top: HTMLElement | null; readonly bottom: HTMLElement | null };
+	/**
+	 * The stage for `moment` of `session`, moved to it from `from` when the page steps forward to it; null for the plain
+	 * view. The part draws all of the stage, and anything it needs on it.
+	 */
+	stage?(moment: Moment, from: Moment | null, session: Session): Promise<HTMLElement | null>;
 	/** Text after a step's label, which starts with its own separator. */
 	stepNote?(moment: Moment): string;
 	/** A list of the steps beside the stage, with its title; each entry opens a moment. */
@@ -43,13 +33,10 @@ export interface DomainPart {
 		readonly title: string;
 		list(session: Session, index: number, open: (moment: number) => void): HTMLElement[];
 	};
-	/** A short result for the result's banner; null when there is none. */
-	score?(session: Session): string | null;
 	/** Fields of the outcome that the result leaves out. */
 	readonly hidden?: readonly string[];
 	/** The download button's label and text, and the file it gives. */
 	readonly download?: { readonly label: string; readonly text: string; file(session: Session): Download };
-	readonly sound?: PartSound;
 }
 
 export type PartMaker = (context: PartContext) => DomainPart;

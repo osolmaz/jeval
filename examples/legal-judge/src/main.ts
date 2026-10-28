@@ -1,14 +1,17 @@
 #!/usr/bin/env -S node --conditions=switch-source
 /**
- * The legal-judge harness's command line: switch's run, replay and view with the legal-judge domain, and its own
- * ingest, score and compare.
+ * The legal-judge harness's command line: switch's run and replay with the legal-judge domain, the viewer's view, and
+ * its own ingest, score and compare.
  */
 import { commandLine } from "@osolmaz/switch/cli";
+import { viewCommand } from "@osolmaz/switch-viewer";
 import { ingestCase } from "./ingest/ingest.ts";
 import { compareRuns, loadLabelledSet, scoreResults } from "./score/scores.ts";
 import { legalJudgeSetup } from "./setup.ts";
 
-const program = commandLine({ "legal-judge": { setup: legalJudgeSetup } }).name("legal-judge");
+const program = commandLine({ "legal-judge": { setup: legalJudgeSetup } })
+	.name("legal-judge")
+	.addCommand(viewCommand());
 
 program
 	.command("ingest")

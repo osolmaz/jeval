@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Script } from "node:vm";
 import { describe, expect, it } from "vitest";
-import { run, STOP_KEY, type TraceEntry } from "../../src/core/index.ts";
+import { run, STOP_KEY, type TraceEntry } from "@osolmaz/switch";
 import {
 	buildScript,
 	escape,
@@ -16,8 +16,8 @@ import {
 	viewerModules,
 	viewerPage,
 	viewerScript,
-} from "../../src/view/index.ts";
-import { answering, type Facts, factsMachine, FACTS, failing, fakeDecider } from "../helpers/fakes.ts";
+} from "../src/index.ts";
+import { answering, type Facts, factsMachine, FACTS, failing, fakeDecider } from "./helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact <b>" } };
 const opened = { looked: ["intro"], found: ["Hello"] };

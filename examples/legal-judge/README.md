@@ -8,7 +8,8 @@ contradicts any requirement. An item passes when both checks pass. Every text th
 judge is another file passed with `--definition`.
 
 The example uses switch only by its package name, `@osolmaz/switch`, as a project outside switch would. Its program
-adds three commands to switch's `run`, `replay` and `view`: `ingest`, `score` and `compare`.
+adds the [viewer](../../viewer/README.md)'s `view` and three commands of its own to switch's `run` and `replay`:
+`ingest`, `score` and `compare`.
 
 ## Install
 

@@ -3,13 +3,13 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runCases } from "../../src/cli/commands.ts";
-import { DomainError, domainNamed, domainOf, viewersOf } from "../../src/cli/domains.ts";
-import { caseVersion, onlyCase, route, serveRun, ViewError, writeCasePage } from "../../src/cli/view.ts";
-import { STOP_KEY } from "../../src/core/index.ts";
-import type { Session } from "../../src/view/index.ts";
-import { factsFolder, factsSetup } from "../helpers/facts.ts";
-import { answering, fakeDecider } from "../helpers/fakes.ts";
+import { STOP_KEY } from "@osolmaz/switch";
+import { runCases } from "@osolmaz/switch/cli";
+import { viewCommand } from "../src/command.ts";
+import { caseVersion, onlyCase, route, serveRun, ViewError, writeCasePage } from "../src/server.ts";
+import type { Session } from "../src/web/model.ts";
+import { factsFolder, factsSetup } from "./helpers/facts.ts";
+import { answering, fakeDecider } from "./helpers/fakes.ts";
 
 let folder = "";
 beforeEach(async () => {
@@ -32,20 +32,6 @@ async function factsRun(ids: readonly string[]): Promise<string> {
 }
 
 const viewer = { modules: [], config: () => Promise.resolve({ shade: "dark" }) };
-
-describe("a harness's domains", () => {
-	it("are picked by name, or the only one without a name", async () => {
-		const one = { facts: { setup: factsSetup } };
-		expect(domainOf(one, undefined)).toBe(one.facts);
-		expect((await domainNamed(one)).name).toBe("facts");
-		await expect(domainNamed(one, "facts", "x.json")).rejects.toThrow(/takes no definition file/);
-		const two = { facts: { setup: factsSetup }, more: { setup: factsSetup, viewer } };
-		expect(() => domainOf(two, undefined)).toThrow(DomainError);
-		expect(() => domainOf(two, undefined)).toThrow("the harness has 2 domains; name one with --domain: facts, more");
-		expect(() => domainOf(two, "poker")).toThrow("no domain poker; known: facts, more");
-		expect(viewersOf(two)).toEqual({ more: viewer });
-	});
-});
 
 describe("the viewer", () => {
 	it("serves the index, and each case's page, session and version, with the parts' configs", async () => {
@@ -120,5 +106,18 @@ describe("the viewer", () => {
 		const taken = await serveRun(out, port).catch((error: unknown) => error);
 		expect(taken).toBeInstanceOf(Error);
 		await new Promise((resolve) => again.close(resolve));
+	});
+});
+
+describe("the view command", () => {
+	it("writes a case's page to a file, and takes only a positive port", async () => {
+		const out = await factsRun(["f1"]);
+		const file = join(folder, "page.html");
+		await viewCommand({ facts: viewer }).parseAsync(["node", "view", out, "--html", file]);
+		expect(await readFile(file, "utf8")).toContain('"parts":{"facts":{"shade":"dark"}}');
+		const command = viewCommand()
+			.exitOverride()
+			.configureOutput({ writeErr: () => undefined });
+		expect(() => command.parse(["node", "view", out, "--port", "0"])).toThrow(/positive whole number/);
 	});
 });

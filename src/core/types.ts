@@ -20,7 +20,7 @@ export interface Image {
 
 /** One thing that the model can do in a state. Stop is a choice too, which the core adds. */
 export interface Choice {
-	/** What sort of choice it is, for the trace and the viewer. */
+	/** What sort of choice it is, for the trace. */
 	readonly type: string;
 	/** Unique in a run: the model picks a key at most once. */
 	readonly key: string;

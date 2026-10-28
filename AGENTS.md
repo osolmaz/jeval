@@ -3,7 +3,7 @@
 - Read [docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) before you change the design or start a
   phase.
 - Run `pnpm check` before you finish: format, lint, typecheck, tests with the 85% coverage gate, the DRY scan, the
-  same checks in each example, and `slophammer-ts check .`. CI does not run mutation tests; `pnpm mutate` runs them
+  same checks in the viewer and each example, and `slophammer-ts check .`. CI does not run mutation tests; `pnpm mutate` runs them
   locally on request.
 - Add or update a test for every behavior change. Tests make no model calls: use the fake decider from
   `@osolmaz/switch/testing`.
@@ -29,13 +29,22 @@
 - Keep functions under the lint limits: complexity 8 and 80 lines. Split them by responsibility; do not raise a limit.
 - A suppression comment needs a reason after `--`.
 
+## Only the interface in switch
+
+- switch is the interface between a domain and a decision model, and nothing more: the types of a domain and its state
+  machine, the loop, the choice checks, the trace, replay, the model glue in `src/models`, the command line that runs
+  cases, and the fake decider for tests.
+- switch has no user interface. `src/` has no web page, HTTP server, styles or browser code. The web viewer is a
+  package of its own in `viewer/`, which uses switch as the examples do.
+
 ## No domain in switch
 
-- switch knows nothing about any domain. `src/`, the trace and the page have no domain's words, fields, file formats,
-  styles or special cases. This also holds for the comments, help texts and examples in `src/`.
+- switch knows nothing about any domain. `src/`, the trace, `viewer/` and its page have no domain's words, fields, file
+  formats, styles or special cases. This also holds for their comments, help texts and examples.
 - A domain brings what it needs through switch's general parts: its state, its choice function, its transition
-  function, its view function, its questions, its own hooks, and its part of the page with its own styles.
-- A concept goes into switch only when it means the same thing for any domain.
+  function, its view function and its questions. For the viewer, it may give its own part of the page, which draws its
+  states, its own controls and its own styles.
+- A concept goes into switch or the viewer only when it means the same thing for any domain.
 - A domain must give an initial state, a choice function and a transition function. The view function, the questions,
   the answer stages and the outcome are optional. Behind these functions, a domain may use any library, program or data
   of its own, and switch never sees it.
@@ -46,26 +55,28 @@
 
 - `src/` is switch, and imports no domain. `src/core` imports nothing else from `src`. It holds the building blocks, the
   loop, the choice checks, the trace, replay and the domain type that runs a domain on case folders.
-- `src/models`, `src/view` and `src/testing` import only `src/core`. `src/view` turns a trace into a web page that
-  shows any domain's run. A domain may give its own part of the page, such as the chess board: browser modules that
-  register hooks with `registerPart`, and a `DomainViewer` that names them and their stylesheets.
-- The page joins switch's browser modules in `src/view/web/` and then each part's modules into one script. They import
-  each other with plain relative `import { … } from "…/name.ts"` lines and switch's page with
-  `import { … } from "@osolmaz/switch/page"`, which the script drops. They take only types from other code, and keep
-  their top-level names unique across the whole script.
-- `src/cli` wires the others together into `commandLine`, the program of a harness, which takes the harness's domains
-  by name.
-- Each harness in `examples/` is a package of its own, with its own lint, typecheck, test and coverage settings. It
-  imports switch only by the package's name and entry points, such as `@osolmaz/switch/cli`, never by a path out of
-  its folder. In this repository the `switch-source` condition points those names at switch's TypeScript sources:
-  `tsconfig.json`, the Vitest configs and each example's `src/main.ts` shebang set it.
+- `src/models` and `src/testing` import only `src/core`.
+- `src/cli` wires the others together into `commandLine`, the program of a harness with `run` and `replay`, which takes
+  the harness's domains by name.
+- `viewer/` turns a run folder into a web page that shows any domain's run, and gives a harness the `view` command. A
+  domain may give its own part of the page, such as the chess board: browser modules that register hooks with
+  `registerPart`, and a `DomainViewer` that names them and their stylesheets. A part's hooks draw a domain's own
+  things; a hook goes into the viewer only when any domain could use it.
+- The page joins the viewer's browser modules in `viewer/src/web/` and then each part's modules into one script. They
+  import each other with plain relative `import { … } from "…/name.ts"` lines and the viewer's page with
+  `import { … } from "@osolmaz/switch-viewer/page"`, which the script drops. They take only types from other code, and
+  keep their top-level names unique across the whole script.
+- The viewer and each harness in `examples/` are packages of their own, with their own lint, typecheck, test and
+  coverage settings. They import switch only by the package's name and entry points, such as `@osolmaz/switch/cli`,
+  never by a path out of their folder. In this repository the `switch-source` condition points those names at
+  switch's TypeScript sources: `tsconfig.json`, the Vitest configs and each example's `src/main.ts` shebang set it.
 - A domain's choice function reads only the state and the case's fixed data. In a run, only `load`, the initial state,
   the transition and the view function's reads of the case's own files read files or start programs; the rest of the file and
   process work stays in the domain's `ingest/` folder, `load.ts`, `setup.ts` and `viewer.ts`. A state machine may hold
   a handle to a program outside, such as the chess engine that `load.ts` starts: a replay takes each recorded state and
   runs no transition again.
 - Each domain's `setup.ts` exports the function that sets the domain up from a definition file: it loads case folders
-  and reports a case. The example's `src/main.ts` passes it to `commandLine`.
+  and reports a case. The example's `src/main.ts` passes it to `commandLine`, and adds the viewer's `viewCommand`.
 
 ## Dependencies and docs
 

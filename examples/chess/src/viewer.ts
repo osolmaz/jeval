@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { type DomainViewer, modulesNear } from "@osolmaz/switch/viewer";
+import { type DomainViewer, modulesNear } from "@osolmaz/switch-viewer";
 import type { SoundKind, SoundSet } from "./web/sound.ts";
 
 /**

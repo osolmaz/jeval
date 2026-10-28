@@ -1,6 +1,6 @@
-import { run, STOP_KEY } from "../../src/core/index.ts";
-import { storyOf } from "../../src/view/frames.ts";
-import type { Session } from "../../src/view/web/model.ts";
+import { run, STOP_KEY } from "@osolmaz/switch";
+import { storyOf } from "../../src/frames.ts";
+import type { Session } from "../../src/web/model.ts";
 import { answering, factsMachine, FACTS, fakeDecider } from "./fakes.ts";
 
 /**

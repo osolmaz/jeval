@@ -32,8 +32,6 @@ export class App {
 	private readonly parts: Parts;
 	/** The domain's part of the page, known once the first session names the domain. */
 	private part: DomainPart = {};
-	/** Whether the stage shows the part's own drawing, not the state as JSON. */
-	private drawn = false;
 	private session: Session | null = null;
 	private moments: Moment[] = [];
 	private index = 0;
@@ -46,11 +44,7 @@ export class App {
 	private queue: Promise<void> = Promise.resolve();
 	private readonly timer: ReturnType<typeof setInterval> | undefined;
 	private readonly onKey = (event: KeyboardEvent): void => {
-		this.part.sound?.wake();
 		this.key(event);
-	};
-	private readonly onPointer = (): void => {
-		this.part.sound?.wake();
 	};
 
 	constructor(root: HTMLElement, config: AppConfig) {
@@ -58,7 +52,6 @@ export class App {
 		this.parts = layout(root);
 		this.controls();
 		document.addEventListener("keydown", this.onKey);
-		document.addEventListener("pointerdown", this.onPointer);
 		if (config.session !== undefined) this.load(config.session);
 		else void this.fetchSession();
 		const poll =
@@ -70,7 +63,6 @@ export class App {
 	close(): void {
 		clearInterval(this.timer);
 		document.removeEventListener("keydown", this.onKey);
-		document.removeEventListener("pointerdown", this.onPointer);
 		this.playing = false;
 	}
 
@@ -122,15 +114,13 @@ export class App {
 			motion: () => this.motion,
 			gap: () => (this.playing ? this.dwell : 0),
 		});
-		const { download, sound, steps } = this.part;
+		const { download, steps } = this.part;
 		this.parts.download.hidden = download === undefined;
 		if (download !== undefined) {
 			this.parts.download.textContent = download.text;
 			this.parts.download.setAttribute("aria-label", download.label);
 			this.parts.download.title = download.label;
 		}
-		this.parts.sound.hidden = sound === undefined;
-		this.soundButton();
 		if (steps !== undefined) this.parts.stepsTitle.textContent = steps.title;
 	}
 
@@ -148,13 +138,6 @@ export class App {
 		const from = glide ? (this.moments[this.index] ?? null) : null;
 		this.index = target;
 		await this.draw(from);
-		if (glide) this.reached(target);
-	}
-
-	/** Gives the part's end sound when the page moved onto the end of the case with the part's drawing. */
-	private reached(target: number): void {
-		if (!this.drawn || this.session === null || this.moments[target]?.type !== "end") return;
-		this.part.sound?.ended(this.session);
 	}
 
 	/** Steps to `target` one moment at a time, each with its animation. */
@@ -181,12 +164,7 @@ export class App {
 		const session = this.session;
 		if (moment === undefined || session === null) return;
 		this.panels();
-		const bars = this.part.bars?.(moment, session);
-		this.parts.top.replaceChildren(...slotOf(bars?.top));
-		this.parts.bottom.replaceChildren(...slotOf(bars?.bottom));
-		const drawing = (await this.part.stage?.(moment, from)) ?? null;
-		this.drawn = drawing !== null;
-		this.place(moment, drawing);
+		this.place(moment, (await this.part.stage?.(moment, from, session)) ?? null);
 	}
 
 	/** Puts the part's drawing on the stage, or the state as JSON when there is none. */
@@ -215,10 +193,9 @@ export class App {
 		this.parts.play.setAttribute("aria-label", this.playing ? "Pause" : "Play");
 	}
 
-	/** The result, with the part's score and without the outcome's fields that the part leaves out. */
+	/** The result, without the outcome's fields that the part leaves out. */
 	private result(session: Session | null): void {
-		const score = session === null ? null : (this.part.score?.(session) ?? null);
-		this.parts.result.replaceChildren(resultPanel(session, this.waiting, score, this.part.hidden ?? []));
+		this.parts.result.replaceChildren(resultPanel(session, this.waiting, this.part.hidden ?? []));
 	}
 
 	/** The part's list of steps; each entry opens its moment. */
@@ -263,10 +240,6 @@ export class App {
 		parts.download.addEventListener("click", () => {
 			this.download();
 		});
-		parts.sound.addEventListener("click", () => {
-			this.part.sound?.toggle();
-			this.soundButton();
-		});
 		const buttons = h(
 			"div",
 			{ class: "buttons" },
@@ -284,15 +257,6 @@ export class App {
 			h("label", { class: "speed" }, "Speed ", parts.speed),
 		);
 		parts.controls.replaceChildren(parts.scrub, buttons, status);
-	}
-
-	private soundButton(): void {
-		const on = this.part.sound?.enabled ?? false;
-		const { sound } = this.parts;
-		sound.textContent = on ? "Sound on" : "Sound off";
-		sound.setAttribute("aria-label", on ? "Turn the sound off" : "Turn the sound on");
-		sound.title = sound.getAttribute("aria-label") ?? "";
-		sound.setAttribute("aria-pressed", String(on));
 	}
 
 	/** Read through a method, since a click can stop the playing while the loop waits. */
@@ -331,7 +295,6 @@ export class App {
 		this.playing = true;
 		this.following = false;
 		if (this.goal >= this.last) void this.go(0, false);
-		if (this.goal === 0 && this.drawn) this.part.sound?.started();
 		void this.play();
 	}
 
@@ -386,10 +349,6 @@ export class App {
 		URL.revokeObjectURL(link.href);
 	}
 }
-
-/** The content of a bar's slot: the part's element, or nothing. */
-const slotOf = (node: HTMLElement | null | undefined): HTMLElement[] =>
-	node === null || node === undefined ? [] : [node];
 
 /** Keys typed into a field, or held with a modifier, belong to the field or the browser. */
 function ignored(event: KeyboardEvent): boolean {

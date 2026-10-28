@@ -4,9 +4,8 @@ import { Command, InvalidArgumentError } from "commander";
 import type { Decider } from "../core/index.ts";
 import { piAiDecider } from "../models/pi-ai.ts";
 import { replayCase, runCases } from "./commands.ts";
-import { type Domains, domainNamed, viewersOf } from "./domains.ts";
+import { type Domains, domainNamed } from "./domains.ts";
 import { loadSet } from "./sets.ts";
-import { onlyCase, serveRun, type Viewers, writeCasePage } from "./view.ts";
 
 const positive = (value: string): number => {
 	const number = Number(value);
@@ -43,10 +42,6 @@ const log = (line: string): void => {
 	process.stderr.write(`${line}\n`);
 };
 
-/** The viewer's default local port. */
-const VIEW_PORT = 4173;
-const caseUrl = (port: number, id: string): string => `http://127.0.0.1:${String(port)}/case/${encodeURIComponent(id)}`;
-
 const DOMAIN = "the domain; the harness's only domain when it has one";
 
 interface RunFlags {
@@ -58,10 +53,9 @@ interface RunFlags {
 	readonly apiKeyEnv?: string;
 	readonly concurrency: number;
 	readonly stateFrom?: string;
-	readonly view?: number | true;
 }
 
-function runCommand(domains: Domains, viewers: Viewers): Command {
+function runCommand(domains: Domains): Command {
 	return new Command("run")
 		.description(
 			"Run a domain on case folders into a run folder: run.json, and each case's result, trace and requests",
@@ -75,16 +69,10 @@ function runCommand(domains: Domains, viewers: Viewers): Command {
 		.option("--api-key-env <variable>", "the environment variable that holds the API key")
 		.option("--concurrency <n>", "cases at once", positive, 4)
 		.option("--state-from <run>", "take each case's states again from this run, and only ask the questions again")
-		.option("--view [port]", "watch the cases in the browser while they run, on this local port", positive)
 		.action(async (cases: string[], options: RunFlags) => {
 			const { folders, set } = await casesOf(cases, options.set);
 			const domain = await domainNamed(domains, options.domain, options.definition);
 			const model = decider(options.model, options.apiKeyEnv);
-			if (options.view !== undefined) {
-				const port = options.view === true ? VIEW_PORT : options.view;
-				await serveRun(options.out, port, viewers);
-				for (const folder of folders) log(caseUrl(port, await domain.caseId(folder)));
-			}
 			await runCases(domain, folders, model, {
 				out: options.out,
 				concurrency: options.concurrency,
@@ -92,7 +80,6 @@ function runCommand(domains: Domains, viewers: Viewers): Command {
 				...(set === undefined ? {} : { set }),
 				...(options.stateFrom === undefined ? {} : { stateFrom: options.stateFrom }),
 			});
-			if (options.view !== undefined) log("The run is done. The viewer stays open until you stop it with Ctrl-C.");
 		});
 }
 
@@ -129,38 +116,15 @@ function replayCommand(domains: Domains): Command {
 		});
 }
 
-function viewCommand(viewers: Viewers): Command {
-	return new Command("view")
-		.description("Show a run's cases step by step in the browser; a case's page follows it while it runs")
-		.argument("<run>")
-		.option("--case <id>", "the case to open")
-		.option("--port <n>", "the local port", positive, VIEW_PORT)
-		.option("--html <file>", "write one case's page to a file instead: --case, or the run's only case")
-		.action(async (run: string, options: { case?: string; port: number; html?: string }) => {
-			if (options.html !== undefined) {
-				await writeCasePage(run, options.case ?? (await onlyCase(run)), options.html, viewers);
-				return;
-			}
-			await serveRun(run, options.port, viewers);
-			log(
-				options.case === undefined
-					? `http://127.0.0.1:${String(options.port)}/`
-					: caseUrl(options.port, options.case),
-			);
-		});
-}
-
 /**
- * The command line of a harness with `domains`: `run`, `replay` and `view`. A harness can add commands of its own
- * before it parses the arguments, such as one that prepares case folders.
+ * The command line of a harness with `domains`: `run` and `replay`. A harness can add commands of its own before it
+ * parses the arguments, such as one that prepares case folders.
  */
 export function commandLine(domains: Domains): Command {
-	const viewers = viewersOf(domains);
 	return new Command()
 		.description(
 			"A switch harness: a decision model works through cases by picking each step from the choices that code gives.",
 		)
-		.addCommand(runCommand(domains, viewers))
-		.addCommand(replayCommand(domains))
-		.addCommand(viewCommand(viewers));
+		.addCommand(runCommand(domains))
+		.addCommand(replayCommand(domains));
 }

@@ -1,5 +1,6 @@
-# The example harnesses are packages of their own, which use switch as an outside project would.
+# The viewer and the example harnesses are packages of their own, which use switch as an outside project would.
 packages:
+  - viewer
   - examples/*
 
 # pi-ai's provider SDKs ship install scripts that switch does not need.

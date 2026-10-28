@@ -31,6 +31,9 @@ jobs:
       - run: pnpm coverage
       - run: pnpm dry
       - run: pnpm build
+      - name: Check the viewer
+        working-directory: viewer
+        run: pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm coverage && pnpm dry
       - name: Check the chess example
         working-directory: examples/chess
         run: pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm coverage && pnpm dry

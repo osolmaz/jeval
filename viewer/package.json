@@ -1,0 +1,38 @@
+{
+	"name": "@osolmaz/switch-viewer",
+	"version": "0.1.0",
+	"private": true,
+	"description": "A web viewer for switch runs: it shows any domain's cases step by step in the browser.",
+	"license": "MIT",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./page": "./src/web/index.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"lint": "eslint .",
+		"format": "prettier --check .",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage",
+		"dry": "slophammer-ts dry .",
+		"check": "pnpm format && pnpm lint && pnpm typecheck && pnpm coverage && pnpm dry"
+	},
+	"dependencies": {
+		"@osolmaz/switch": "workspace:*",
+		"commander": "15.0.0"
+	},
+	"devDependencies": {
+		"@eslint/js": "10.0.1",
+		"@types/node": "22.19.1",
+		"@vitest/coverage-v8": "5.0.5",
+		"eslint": "10.13.0",
+		"happy-dom": "21.0.1",
+		"prettier": "3.9.10",
+		"slophammer-ts": "0.5.0",
+		"typescript": "6.0.3",
+		"typescript-eslint": "8.72.0",
+		"vitest": "5.0.5",
+		"zod": "4.6.7"
+	}
+}

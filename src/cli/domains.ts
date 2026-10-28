@@ -1,11 +1,9 @@
 import type { Runner } from "../core/index.ts";
-import type { DomainViewer } from "../view/index.ts";
 
-/** A domain of a harness: its setup, and its part of the viewer when it has one. */
+/** A domain of a harness: how to set it up. */
 export interface HarnessDomain {
 	/** Makes the domain's runner from a definition file, or from the domain's own definition. */
 	readonly setup: (definitionFile: string | undefined) => Promise<Runner>;
-	readonly viewer?: DomainViewer;
 }
 
 /** A harness's domains, by name. */
@@ -33,11 +31,4 @@ export function domainOf(domains: Domains, name: string | undefined): HarnessDom
 /** A domain ready to run, with the definition in `definitionFile` or with the domain's own. */
 export async function domainNamed(domains: Domains, name?: string, definitionFile?: string): Promise<Runner> {
 	return domainOf(domains, name).setup(definitionFile);
-}
-
-/** The part of the viewer of each domain that has one, by the domain's name. */
-export function viewersOf(domains: Domains): Readonly<Record<string, DomainViewer>> {
-	return Object.fromEntries(
-		Object.entries(domains).flatMap(([name, domain]) => (domain.viewer === undefined ? [] : [[name, domain.viewer]])),
-	);
 }

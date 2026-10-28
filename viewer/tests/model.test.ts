@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { answerText, changesOf, confidence, momentsOf, percent, plain, ranked } from "../../src/view/web/model.ts";
-import { factsSession } from "../helpers/sessions.ts";
+import { answerText, changesOf, confidence, momentsOf, percent, plain, ranked } from "../src/web/model.ts";
+import { factsSession } from "./helpers/sessions.ts";
 
 describe("moments", () => {
 	it("are the start, every step and, once the case has finished, the end", async () => {

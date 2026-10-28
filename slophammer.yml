@@ -7,6 +7,7 @@ typescript:
     max_findings: 0
     paths:
       - src
+      - viewer
       - examples
     exclude:
       - "**/*.test.ts"
@@ -17,6 +18,12 @@ typescript:
         reason: Each example is a project of its own, as one outside switch would be, so it keeps its own copy of switch's lint rules.
       - pattern: "examples/*/vitest.config.ts"
         reason: Each example is a project of its own, as one outside switch would be, so it keeps its own copy of the test settings.
+      - pattern: "viewer/eslint.config.mjs"
+        reason: The viewer is a project of its own, as one outside switch would be, so it keeps its own copy of switch's lint rules.
+      - pattern: "viewer/vitest.config.ts"
+        reason: The viewer is a project of its own, as one outside switch would be, so it keeps its own copy of the test settings.
+      - pattern: "viewer/tests/helpers/**"
+        reason: The viewer's tests run switch's toy domain of facts, which they keep a copy of, as a project outside switch would.
     copied_blocks:
       enabled: true
       min_tokens: 100
@@ -32,10 +39,6 @@ typescript:
       allow:
         - src/models
         - src/core
-    - from: src/view
-      allow:
-        - src/view
-        - src/core
     - from: src/testing
       allow:
         - src/testing
@@ -45,7 +48,9 @@ typescript:
         - src/cli
         - src/core
         - src/models
-        - src/view
+    - from: viewer
+      allow:
+        - viewer
     - from: examples/chess
       allow:
         - examples/chess

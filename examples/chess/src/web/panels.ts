@@ -1,9 +1,13 @@
 /// <reference lib="dom" />
-/** The chess part's pieces of the page: the board's position and arrows, the move list and the players' bars. */
-import { button, type Child, h, type Moment, percent, ranked, type Story } from "@osolmaz/switch/page";
+/**
+ * The chess part's pieces of the page: the board's position and arrows, the move list with the score, the players'
+ * bars and the sound button.
+ */
+import { button, type Child, h, type Moment, percent, ranked, type Session } from "@osolmaz/switch-viewer/page";
 import type { Arrow, Position } from "./board.ts";
 import { type ChessState, chessChoice, chessState } from "./data.ts";
-import { captures, piecesOf, pliesOf, type Ply } from "./model.ts";
+import { captures, piecesOf, pliesOf, type Ply, scoreOf } from "./model.ts";
+import type { Sounds } from "./sound.ts";
 
 /** How many of the likeliest moves get an arrow; the picked one always does. */
 const ARROWS = 5;
@@ -71,9 +75,17 @@ function plyButton(ply: Ply, current: boolean, images: Images, open: (moment: nu
 	return node;
 }
 
-/** The game's moves in numbered rows. Each move opens its moment; the latest move on the board is marked. */
-export function moveList(story: Story, index: number, images: Images, open: (moment: number) => void): HTMLElement[] {
-	const plies = pliesOf(story);
+/**
+ * The game's moves in numbered rows, and its score once it is over. Each move opens its moment; the latest move on the
+ * board is marked.
+ */
+export function moveList(
+	session: Session,
+	index: number,
+	images: Images,
+	open: (moment: number) => void,
+): HTMLElement[] {
+	const plies = pliesOf(session.story);
 	const current = plies.findLastIndex((ply) => ply.shown <= index);
 	const rows = new Map<number, HTMLElement[]>();
 	plies.forEach((ply, at) => {
@@ -83,7 +95,26 @@ export function moveList(story: Story, index: number, images: Images, open: (mom
 		rows.set(ply.number, row);
 	});
 	if (rows.size === 0) return [];
-	return [h("ol", { class: "plies" }, ...[...rows.values()].map((row) => h("li", {}, ...row)))];
+	const score = scoreOf(session);
+	const list = h("ol", { class: "plies" }, ...[...rows.values()].map((row) => h("li", {}, ...row)));
+	return score === null ? [list] : [list, h("p", { class: "score" }, score)];
+}
+
+/** The sound button, which turns the sounds on and off and says which they are. */
+export function soundButton(sounds: Sounds): HTMLButtonElement {
+	const node = button("", "sound", "");
+	const show = () => {
+		node.textContent = sounds.enabled ? "Sound on" : "Sound off";
+		node.setAttribute("aria-label", sounds.enabled ? "Turn the sound off" : "Turn the sound on");
+		node.title = node.getAttribute("aria-label") ?? "";
+		node.setAttribute("aria-pressed", String(sounds.enabled));
+	};
+	node.addEventListener("click", () => {
+		sounds.toggle();
+		show();
+	});
+	show();
+	return node;
 }
 
 /** A player's bar: the king of their color, their name, the pieces they took, and a box lit while they are to move. */

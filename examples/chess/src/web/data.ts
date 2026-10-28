@@ -2,7 +2,7 @@
  * The chess state, which the domain writes and the page reads, and the checks that read it back. Both use this one
  * module; it imports only types, so it runs in the browser as is.
  */
-import type { JsonObject } from "@osolmaz/switch/page";
+import type { JsonObject } from "@osolmaz/switch-viewer/page";
 
 /** Where a game is after some steps. */
 export interface ChessState extends JsonObject {

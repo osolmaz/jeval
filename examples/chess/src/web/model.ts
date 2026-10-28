@@ -1,5 +1,5 @@
 /** The chess part's model of a game, in the browser and in tests: no DOM here. */
-import type { Session, Story } from "@osolmaz/switch/page";
+import type { Session, Story } from "@osolmaz/switch-viewer/page";
 import { type ChessState, chessState, movesOfStep } from "./data.ts";
 
 export type Color = "w" | "b";

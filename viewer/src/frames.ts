@@ -1,4 +1,4 @@
-import type { Answer, JsonObject, TraceEntry } from "../core/index.ts";
+import type { Answer, JsonObject, TraceEntry } from "@osolmaz/switch";
 
 /** One choice that the model saw, with the probability it gave it; null when the model never answered. */
 export interface FrameChoice {

@@ -63,14 +63,15 @@ pnpm add github:osolmaz/switch#<commit>
 
 The package has these entry points:
 
-| Import                    | What it gives                                                                                               |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `@osolmaz/switch`         | The loop, the types of a domain and its state machine, the choice checks, traces and replay                 |
-| `@osolmaz/switch/models`  | `piAiDecider`, which asks a classifier model that pi-ai lists                                               |
-| `@osolmaz/switch/cli`     | `commandLine`, which gives a harness the `run`, `replay` and `view` commands, and the functions behind them |
-| `@osolmaz/switch/viewer`  | The viewer's server side, and `DomainViewer` for a domain's own part of the page                            |
-| `@osolmaz/switch/page`    | The viewer's browser side, with `registerPart` for a domain's part of the page                              |
-| `@osolmaz/switch/testing` | A fake decider that answers by a rule, for tests that make no model calls                                   |
+| Import                    | What it gives                                                                                       |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
+| `@osolmaz/switch`         | The loop, the types of a domain and its state machine, the choice checks, traces and replay         |
+| `@osolmaz/switch/models`  | `piAiDecider`, which asks a classifier model that pi-ai lists                                       |
+| `@osolmaz/switch/cli`     | `commandLine`, which gives a harness the `run` and `replay` commands, and the functions behind them |
+| `@osolmaz/switch/testing` | A fake decider that answers by a rule, for tests that make no model calls                           |
+
+switch has no user interface. The web viewer that plays runs back in the browser is a package of its own,
+[`viewer/`](viewer/README.md), which uses switch as the examples do.
 
 To work on switch itself, clone it and run `pnpm install`.
 
@@ -86,18 +87,14 @@ installed and how to run it. Its program is `src/main.ts`, which runs from the r
 
 ## Watch a run
 
-`view` opens a run in the browser and plays it back step by step: each step's choices with the model's probability for
-every one, the model's pick and what the step changed in the state. A domain can give its own part of the page, with
-its own styles, which draws its states in its own way: a chess game gets a board with moving pieces, arrows for the
-model's likeliest moves, the move list and a PGN download. Add `--view` to `run` to watch the cases while they run;
-each case's page follows it live:
+A run folder keeps every case's trace, so another program can show it. The [viewer](viewer/README.md) is one: both
+examples add its `view` command, which plays a run back in the browser step by step, and follows each case live while
+it runs.
 
 ```bash
-examples/chess/src/main.ts run examples/chess/cases/white-seed-1 --out runs/chess --view
+examples/chess/src/main.ts run examples/chess/cases/white-seed-1 --out runs/chess
+examples/chess/src/main.ts view runs/chess
 ```
-
-The run folder keeps everything a later `view runs/chess` needs to play the cases back. `view --html <file>` saves a
-case's page as one HTML file that opens without switch.
 
 ## Replay a case
 
@@ -222,9 +219,9 @@ export function triageSetup(file: string | undefined): Promise<Runner> {
 }
 ```
 
-`commandLine` turns the setup into the harness's program, with switch's `run`, `replay` and `view` commands. It is a
+`commandLine` turns the setup into the harness's program, with switch's `run` and `replay` commands. It is a
 [Commander](https://github.com/tj/commander.js) program, so the harness can add its own commands, as `legal-judge`
-adds `ingest`, `score` and `compare`:
+adds `ingest`, `score` and `compare`, and both examples add the viewer's `view`:
 
 ```ts
 import { commandLine } from "@osolmaz/switch/cli";
@@ -235,15 +232,9 @@ await commandLine({ triage: { setup: triageSetup } })
   .parseAsync();
 ```
 
-Next to `setup`, a domain can name its part of the viewer. That part is a `DomainViewer`: browser modules that call
-`registerPart` with hooks for the stage, the bars beside it, a list of the steps, the result's score, a download and
-sounds, the stylesheets that draw them, and the config they start with. It can also give a summary of a case's
-outcome, a short line for the list of cases and the result's banner. The hooks read the states. Every hook is
-optional. The page marks the document with the case's domain, so a stylesheet can restyle the page for its own cases
-under `:root[data-domain="<domain>"]`, as chess gives its cases chess.com's colors. A harness with more than one domain
-takes `--domain`
-to pick one. [`examples/legal-judge/`](examples/legal-judge) and [`examples/chess/`](examples/chess) are complete
-harnesses, and [docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) explains the design.
+A harness with more than one domain takes `--domain` to pick one. [`examples/legal-judge/`](examples/legal-judge) and
+[`examples/chess/`](examples/chess) are complete harnesses, and
+[docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) explains the design.
 
 ## License
 

@@ -27,7 +27,11 @@
 	width: min(100%, max(280px, 100dvh - 200px));
 	justify-self: center;
 }
-:root[data-domain="chess"] .bar-slot {
+.chess-stage {
+	display: grid;
+	gap: 8px;
+}
+.player-slot {
 	min-height: 44px;
 }
 @media (min-width: 981px) {
@@ -106,6 +110,9 @@
 }
 .clock.active {
 	opacity: 1;
+}
+.player .sound {
+	flex: none;
 }
 .board {
 	position: relative;
@@ -259,6 +266,13 @@
 }
 .ply.current small {
 	color: var(--muted);
+}
+.score {
+	margin: 8px 0 0;
+	font-size: 18px;
+	font-weight: 700;
+	text-align: center;
+	color: var(--ink);
 }
 @media (prefers-reduced-motion: reduce) {
 	.piece {

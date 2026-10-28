@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { Script } from "node:vm";
 import { describe, expect, it } from "vitest";
-import { viewerScript } from "@osolmaz/switch/viewer";
+import { viewerScript } from "@osolmaz/switch-viewer";
 import { chessViewer, pieceImages, SOUND_SET, soundSet } from "../src/viewer.ts";
 
 const PREFIX = "data:audio/wav;base64,";

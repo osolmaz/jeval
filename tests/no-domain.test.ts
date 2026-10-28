@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
  * word counts at the start of a word or of a part of a camelCase name, so `chessPart` and `toPgn` count too.
  */
 const DOMAIN_WORDS =
-	/\b(chess|legal|judge|rubric|stockfish|pgn|game|board|opponent|checkmate|fen|uci|engine|pawn|knight|bishop|rook|queen|evidence|verdict|grader|qualifier)/i;
+	/\b(chess|legal|judge|rubric|stockfish|pgn|game|board|opponent|player|checkmate|fen|uci|engine|pawn|knight|bishop|rook|queen|sound|evidence|verdict|grader|qualifier)/i;
 
 /** The words of a line, with each camelCase name split into its parts. */
 const wordsOf = (line: string): string => line.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
@@ -22,25 +22,44 @@ async function filesIn(folder: string): Promise<string[]> {
 	return nested.flat();
 }
 
+/** The lines of the files in `folders`, from this repository's root, that match `pattern` once split into words. */
+async function linesMatching(folders: readonly string[], pattern: RegExp): Promise<string[]> {
+	const files = (
+		await Promise.all(folders.map((folder) => filesIn(new URL(`../${folder}`, import.meta.url).pathname)))
+	)
+		.flat()
+		.sort();
+	expect(files.length).toBeGreaterThan(10);
+	const found: string[] = [];
+	for (const file of files) {
+		(await readFile(file, "utf8")).split("\n").forEach((line, index) => {
+			if (pattern.test(wordsOf(line))) found.push(`${file}:${String(index + 1)}: ${line.trim()}`);
+		});
+	}
+	return found;
+}
+
+/** What only a web page or its server has: the browser's types, the document, HTML, styles and an HTTP server. */
+const WEB = /lib="dom"|\bHTML|\bdocument\.|<html|<style|\.css\b|node:http|\bbrowser|\bweb page/i;
+
 describe("switch's sources", () => {
-	it("name no domain, in code, comments, help texts or styles", async () => {
-		const files = await filesIn(new URL("../src", import.meta.url).pathname);
-		expect(files.length).toBeGreaterThan(20);
-		const named: string[] = [];
-		for (const file of files) {
-			(await readFile(file, "utf8")).split("\n").forEach((line, index) => {
-				if (DOMAIN_WORDS.test(wordsOf(line))) named.push(`${file}:${String(index + 1)}: ${line.trim()}`);
-			});
-		}
-		expect(named).toEqual([]);
+	it("name no domain, in code, comments, help texts or styles, and neither does the viewer", async () => {
+		expect(await linesMatching(["src", "viewer/src"], DOMAIN_WORDS)).toEqual([]);
 	});
 
-	it("are checked for words inside names too", () => {
+	it("have no web page, server or browser code: the viewer is a package of its own", async () => {
+		expect(await linesMatching(["src"], WEB)).toEqual([]);
+	});
+
+	it("are checked for words inside names too, and for web code", () => {
 		for (const name of ["chessPart", "toPgn", "legalCase", "judgeDefinition", "rubricItems", "chess_board"]) {
 			expect(DOMAIN_WORDS.test(wordsOf(name))).toBe(true);
 		}
 		for (const name of ["keyboard", "removeEventListener", "criteria", "labels", "checkSquare"]) {
 			expect(DOMAIN_WORDS.test(wordsOf(name))).toBe(false);
+		}
+		for (const line of ['/// <reference lib="dom" />', "): HTMLElement {", 'from "node:http";', "page.css"]) {
+			expect(WEB.test(line)).toBe(true);
 		}
 	});
 });

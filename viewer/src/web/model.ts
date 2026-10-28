@@ -1,4 +1,4 @@
-import type { Answer, JsonObject } from "../../core/types.ts";
+import type { Answer, JsonObject } from "@osolmaz/switch";
 import type { Frame, FrameChoice, Story } from "../frames.ts";
 
 /**

@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AppConfig, start } from "../../src/view/web/app.ts";
-import type { Moment, Session } from "../../src/view/web/model.ts";
-import { button, h } from "../../src/view/web/panels.ts";
-import { type PartContext, partOf, registerPart } from "../../src/view/web/part.ts";
-import { factsSession } from "../helpers/sessions.ts";
+import { type AppConfig, start } from "../src/web/app.ts";
+import type { Moment, Session } from "../src/web/model.ts";
+import { button, h } from "../src/web/panels.ts";
+import { type PartContext, partOf, registerPart } from "../src/web/part.ts";
+import { factsSession } from "./helpers/sessions.ts";
 
 const QUICK = { motion: 0, dwell: 0, poll: 5 } as const;
 
@@ -41,11 +41,7 @@ describe("the viewer, for a domain without a part", () => {
 		expect(text(root, "h1")).toBe("f1");
 		expect(document.documentElement.dataset["domain"]).toBe("facts");
 		expect(text(root, ".meta")).toBe("facts · fake/decider");
-		expect([hidden(root, ".live"), hidden(root, "button.download"), hidden(root, "button.sound")]).toEqual([
-			true,
-			true,
-			true,
-		]);
+		expect([hidden(root, ".live"), hidden(root, "button.download")]).toEqual([true, true]);
 		// A saved page has no server, so its header links nowhere.
 		expect(root.querySelector("a.home")?.hasAttribute("href")).toBe(false);
 		expect(JSON.parse(text(root, ".state-card"))).toEqual({ looked: [], found: [] });
@@ -196,11 +192,10 @@ let context: PartContext | null = null;
 registerPart("fake", (given) => {
 	context = given;
 	return {
-		stage: (moment: Moment, from: Moment | null) => {
-			asked.push(`stage ${moment.label}${from === null ? "" : ` from ${from.label}`}`);
+		stage: (moment: Moment, from: Moment | null, session: Session) => {
+			asked.push(`stage ${moment.label}${from === null ? "" : ` from ${from.label}`} of ${session.story.case}`);
 			return Promise.resolve(moment.type === "end" ? null : h("div", { class: "drawn" }, moment.label));
 		},
-		bars: (moment: Moment) => ({ top: h("p", { class: "top" }, `above ${moment.label}`), bottom: null }),
 		stepNote: () => " · a note",
 		steps: {
 			title: "Facts",
@@ -224,25 +219,17 @@ registerPart("fake", (given) => {
 					return list;
 				}),
 		},
-		score: () => "9-9",
 		hidden: ["looked"],
 		download: {
 			label: "Download the facts",
 			text: "Facts",
 			file: (session) => ({ name: "facts.txt", type: "text/plain", text: session.story.case }),
 		},
-		sound: {
-			enabled: true,
-			toggle: () => asked.push("toggle"),
-			wake: () => asked.push("wake"),
-			started: () => asked.push("started"),
-			ended: () => asked.push("ended"),
-		},
 	};
 });
 
 describe("a domain's part of the page", () => {
-	it("draws the stage, the bars, the note, the steps list, the score and the buttons that the part gives", async () => {
+	it("draws the stage, the note, the steps list and the download button that the part gives", async () => {
 		asked.length = 0;
 		const session = await factsSession();
 		const { root } = mount({
@@ -255,17 +242,15 @@ describe("a domain's part of the page", () => {
 		});
 		expect(context?.config).toEqual({ color: "blue" });
 		expect([context?.motion(), context?.gap()]).toEqual([0, 0]);
-		expect(text(root, ".top")).toBe("above Start");
 		expect(text(root, ".timeline h2")).toBe("Facts");
-		expect(text(root, ".banner")).toBe("9-9answered · the model stopped");
+		expect(text(root, ".banner")).toBe("answered · the model stopped");
 		expect(text(root, ".facts")).not.toContain("looked");
 		expect([hidden(root, "button.download"), text(root, "button.download")]).toEqual([false, "Facts"]);
-		expect([hidden(root, "button.sound"), text(root, "button.sound")]).toEqual([false, "Sound on"]);
 		click(root, "button.next");
 		await vi.waitFor(() => {
 			expect(text(root, ".decision .step")).toBe("Step 1 of 3 · a note");
 		});
-		expect(asked).toContain("stage Step 1 of 3 from Start");
+		expect(asked).toContain("stage Step 1 of 3 from Start of f1");
 		click(root, "button.jump2");
 		await vi.waitFor(() => {
 			expect(text(root, ".drawn")).toBe("Step 2 of 3");
@@ -277,7 +262,7 @@ describe("a domain's part of the page", () => {
 		});
 	});
 
-	it("passes clicks, keys, playing and the end to the part's sound, and downloads the part's file", async () => {
+	it("plays the case through the part's stage up to the end, and downloads the part's file", async () => {
 		asked.length = 0;
 		const made: Blob[] = [];
 		vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
@@ -290,25 +275,19 @@ describe("a domain's part of the page", () => {
 		await vi.waitFor(() => {
 			expect(text(root, ".drawn")).toBe("Start");
 		});
-		document.dispatchEvent(new Event("pointerdown"));
-		click(root, "button.sound");
 		click(root, "button.download");
 		expect(await made[0]?.text()).toBe("f1");
 		click(root, "button.play");
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("End");
 		});
-		expect(asked.filter((call) => !call.startsWith("stage"))).toEqual(["wake", "toggle", "started"]);
-		click(root, "button.previous");
-		await vi.waitFor(() => {
-			expect(label(root)).toBe("Step 1 of 1");
-		});
-		click(root, "button.next");
-		await vi.waitFor(() => {
-			expect(label(root)).toBe("End");
-		});
-		// The fake part draws no end, so the page shows the plain text there and plays no end sound.
-		expect(asked).not.toContain("ended");
+		expect(asked).toEqual([
+			"stage Start of f1",
+			"stage Step 1 of 1 from Start of f1",
+			"stage End from Step 1 of 1 of f1",
+		]);
+		// The fake part draws no end, so the page shows the state as JSON there.
+		expect(root.querySelector(".state-card")).not.toBeNull();
 	});
 
 	it("is no part at all for a domain that registered none", () => {

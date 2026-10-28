@@ -25,16 +25,6 @@
 			"types": "./dist/src/models/pi-ai.d.ts",
 			"default": "./dist/src/models/pi-ai.js"
 		},
-		"./viewer": {
-			"switch-source": "./src/view/index.ts",
-			"types": "./dist/src/view/index.d.ts",
-			"default": "./dist/src/view/index.js"
-		},
-		"./page": {
-			"switch-source": "./src/view/web/index.ts",
-			"types": "./dist/src/view/web/index.d.ts",
-			"default": "./dist/src/view/web/index.js"
-		},
 		"./testing": {
 			"switch-source": "./src/testing/index.ts",
 			"types": "./dist/src/testing/index.d.ts",
@@ -56,8 +46,8 @@
 		"dry": "slophammer-ts dry .",
 		"slophammer": "slophammer-ts check .",
 		"mutate": "stryker run",
-		"examples": "pnpm --filter './examples/*' run check",
-		"check": "pnpm format && pnpm lint && pnpm typecheck && pnpm coverage && pnpm dry && pnpm examples && pnpm slophammer"
+		"packages": "pnpm --filter './viewer' --filter './examples/*' run check",
+		"check": "pnpm format && pnpm lint && pnpm typecheck && pnpm coverage && pnpm dry && pnpm packages && pnpm slophammer"
 	},
 	"dependencies": {
 		"@earendil-works/pi-ai": "1.4.0",
@@ -72,7 +62,6 @@
 		"@types/node": "22.19.1",
 		"@vitest/coverage-v8": "5.0.5",
 		"eslint": "10.13.0",
-		"happy-dom": "21.0.1",
 		"prettier": "3.9.10",
 		"slophammer-ts": "0.5.0",
 		"typescript": "6.0.3",

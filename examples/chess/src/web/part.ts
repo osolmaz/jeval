@@ -1,10 +1,20 @@
 /// <reference lib="dom" />
-/** The chess part of the page: the board with its moves and sounds, the players' bars, the move list and the PGN. */
-import { type DomainPart, type Moment, type PartContext, registerPart, type Session } from "@osolmaz/switch/page";
+/**
+ * The chess part of the page: the board with its moves and sounds between the players' bars, the sound button, the
+ * move list with the score, and the PGN.
+ */
+import {
+	type DomainPart,
+	h,
+	type Moment,
+	type PartContext,
+	registerPart,
+	type Session,
+} from "@osolmaz/switch-viewer/page";
 import { type BoardView, createBoard } from "./board.ts";
 import { chessState, movesOfStep } from "./data.ts";
-import { initialOf, pgnOf, scoreOf } from "./model.ts";
-import { moveList, playerRow, positionOf, turnOf } from "./panels.ts";
+import { initialOf, pgnOf } from "./model.ts";
+import { moveList, playerRow, positionOf, soundButton, turnOf } from "./panels.ts";
 import { endingOf, type SoundSet, soundOf, Sounds } from "./sound.ts";
 
 /** Seconds between the last move's sound and the end's. */
@@ -38,14 +48,52 @@ function movesAfter(moment: Moment): { readonly uci: readonly string[]; readonly
 	return { uci: lan, san };
 }
 
+/**
+ * The players' bars above and below the board, with the sound button in the top one. The model's side is at the
+ * bottom; in self-play it plays both, with white at the bottom.
+ */
+function bars(moment: Moment, session: Session, pieces: ChessConfig["pieces"], sound: HTMLElement): HTMLElement[] {
+	const state = chessState(moment.state);
+	if (state === null) return [];
+	const { model, opponent } = namesOf(session);
+	const mine = state.you === "black" ? "b" : "w";
+	const theirs = mine === "w" ? "b" : "w";
+	const top = playerRow(opponent, theirs, state.fen, pieces);
+	top.append(sound);
+	return [top, playerRow(model, mine, state.fen, pieces)];
+}
+
 /** The chess part for one page: it keeps one board, which moves from position to position. */
 export function chessPart(context: PartContext): DomainPart {
 	const { pieces, sounds: clips } = chessConfig(context.config);
 	const sounds = new Sounds(clips);
+	const sound = soundButton(sounds);
+	const slots = [h("div", { class: "player-slot" }), h("div", {}), h("div", { class: "player-slot" })] as const;
+	const stage = h("div", { class: "chess-stage" }, ...slots);
+	// A browser lets a page play sound only after a click or a key press, so any of them on the page wakes the sounds.
+	for (const type of ["pointerdown", "keydown"]) {
+		document.addEventListener(type, () => {
+			if (stage.isConnected) sounds.wake();
+		});
+	}
 	let board: BoardView | null = null;
+	/** The board, which the part makes and puts between the bars the first time. */
+	const boardOn = (): BoardView => {
+		if (board === null) {
+			board = createBoard(document, pieces);
+			slots[1].replaceChildren(board.element);
+		}
+		return board;
+	};
+	const showBars = (moment: Moment, session: Session): void => {
+		const rows = bars(moment, session, pieces, sound);
+		slots[0].replaceChildren(...rows.slice(0, 1));
+		slots[2].replaceChildren(...rows.slice(1));
+	};
 	const glide = async (shown: BoardView, from: Moment, moment: Moment): Promise<void> => {
 		const position = positionOf(moment);
 		if (position === null) return;
+		if (from.type === "start") sounds.play("game-start");
 		const moves = movesAfter(from);
 		const landed = (move: number) => {
 			const san = moves.san[move];
@@ -54,33 +102,22 @@ export function chessPart(context: PartContext): DomainPart {
 		await shown.animate(moves.uci, position, context.motion(), { gap: context.gap(), landed });
 	};
 	return {
-		async stage(moment, from) {
+		async stage(moment, from, session) {
 			const position = positionOf(moment);
 			if (position === null) {
 				board = null;
 				return null;
 			}
-			if (board === null || from === null) {
-				board ??= createBoard(document, pieces);
-				board.show(position);
-			} else await glide(board, from, moment);
-			return board.element;
-		},
-		bars(moment, session) {
-			const state = chessState(moment.state);
-			if (state === null) return { top: null, bottom: null };
-			const { model, opponent } = namesOf(session);
-			// The model's side is at the bottom; in self-play it plays both, with white at the bottom.
-			const mine = state.you === "black" ? "b" : "w";
-			const theirs = mine === "w" ? "b" : "w";
-			return {
-				top: playerRow(opponent, theirs, state.fen, pieces),
-				bottom: playerRow(model, mine, state.fen, pieces),
-			};
+			showBars(moment, session);
+			if (board === null || from === null) boardOn().show(position);
+			else {
+				await glide(board, from, moment);
+				if (moment.type === "end") sounds.play(endingOf(session.outcome?.["reason"]), ENDING_DELAY);
+			}
+			return stage;
 		},
 		stepNote: turnOf,
-		steps: { title: "Moves", list: (session, index, open) => moveList(session.story, index, pieces, open) },
-		score: scoreOf,
+		steps: { title: "Moves", list: (session, index, open) => moveList(session, index, pieces, open) },
 		hidden: ["result", "reason", "fen"],
 		download: {
 			label: "Download the game as PGN",
@@ -90,23 +127,6 @@ export function chessPart(context: PartContext): DomainPart {
 				type: "application/x-chess-pgn",
 				text: pgnOf(session),
 			}),
-		},
-		sound: {
-			get enabled() {
-				return sounds.enabled;
-			},
-			toggle: () => {
-				sounds.toggle();
-			},
-			wake: () => {
-				sounds.wake();
-			},
-			started: () => {
-				sounds.play("game-start");
-			},
-			ended: (session) => {
-				sounds.play(endingOf(session.outcome?.["reason"]), ENDING_DELAY);
-			},
 		},
 	};
 }

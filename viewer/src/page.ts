@@ -98,9 +98,8 @@ button:hover,select:hover,.download:hover{background:var(--raise-hover)}
 .spark .now{stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
 .timeline{display:grid;gap:10px}
 .timeline h2{margin:0}
-.banner{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16px;color:var(--ink)}
-.banner strong{font-size:20px}
-.banner span::first-letter{text-transform:uppercase}
+.banner{margin:0 0 8px;font-size:16px;color:var(--ink)}
+.banner::first-letter{text-transform:uppercase}
 .facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 16px;margin:0;font-size:14px}
 .facts dt{color:var(--muted)}.facts dd{margin:0;overflow-wrap:anywhere}
 .controls{display:grid;gap:10px}

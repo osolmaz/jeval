@@ -58,6 +58,10 @@ through switch's general parts: its state, its choice function, its transition f
 own hooks, and its part of the page with its own styles. A concept goes into switch only when it means the same thing
 for any domain.
 
+A follow-up after this plan made the rule stricter: switch holds only the interface between a domain and a decision
+model, and the glue to the model. It has no user interface. The web viewer is a package of its own, with the same
+rule.
+
 `AGENTS.md` has this rule. A test makes it hold: it reads every file in `src/` and fails on the words chess,
 legal, judge, rubric, Stockfish and PGN.
 
@@ -480,6 +484,17 @@ The fourth PR follows the plan above, with these differences and additions:
 - **Word check.** `tests/no-domain.test.ts` also finds a word at the start of a part of a camelCase name, such as
   `chessPart`, and checks more words of both examples. The view tests check that switch's own styles have no square
   stage, no room for bars and none of chess.com's colors.
+- **Viewer out of switch.** The owner then ruled that switch is an abstract framework: the interface and the model
+  glue, and no web app. `src/view/` and the `view` command moved to a package of their own, `viewer/`
+  (`@osolmaz/switch-viewer`), which imports switch by its package name as the examples do. `commandLine` gives `run`
+  and `replay` only, and a harness adds the viewer's `viewCommand`; `run --view` went, since `view` follows a run
+  while it runs. The entry points `@osolmaz/switch/viewer` and `@osolmaz/switch/page` became `@osolmaz/switch-viewer`
+  and `@osolmaz/switch-viewer/page`, and `HarnessDomain` lost its `viewer`.
+- **Part hooks.** The page's `sound`, `bars` and `score` hooks went, since only chess had a use for them. A part's
+  `stage` gets the session, and draws all of the stage. Chess draws its players' bars and its sound button there,
+  plays its own sounds when its board moves, and shows the score under its move list. The word check now also covers
+  `viewer/src`, with the words sound and player, and a test checks that `src/` has no browser, HTML, style or HTTP
+  server code.
 
 ## Out of scope
 

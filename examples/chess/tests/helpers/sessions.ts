@@ -1,7 +1,7 @@
 import { run } from "@osolmaz/switch";
-import type { Session } from "@osolmaz/switch/page";
 import { fakeDecider, type Policy } from "@osolmaz/switch/testing";
-import { storyOf } from "@osolmaz/switch/viewer";
+import { storyOf } from "@osolmaz/switch-viewer";
+import type { Session } from "@osolmaz/switch-viewer/page";
 import { CHESS, type ChessCase, chessMachine, LIMITS, outcomeOf } from "../../src/index.ts";
 import { chessViewer } from "../../src/viewer.ts";
 import { game, picking } from "./chess.ts";

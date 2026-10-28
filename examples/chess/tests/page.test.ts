@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AppConfig, type Session, start } from "@osolmaz/switch/page";
+import { type AppConfig, type Session, start } from "@osolmaz/switch-viewer/page";
 import "../src/web/part.ts";
 import type { SoundSet } from "../src/web/sound.ts";
 import { clipUrl, type FakeAudioContext, stubAudio } from "./helpers/audio.ts";
@@ -73,7 +73,8 @@ describe("the chess part of the page", () => {
 				"fake/decider",
 			]);
 		});
-		expect(text(root, ".banner")).toBe("1-0white wins · checkmate");
+		expect(text(root, ".banner")).toBe("white wins · checkmate");
+		expect(text(root, ".plies + .score")).toBe("1-0");
 		expect(root.querySelector(".ply .figure")?.getAttribute("alt")).toBe("R");
 	});
 
@@ -300,7 +301,7 @@ describe("the chess part's sounds", () => {
 		expect(heard(made)).toEqual([]);
 	});
 
-	it("plays the game-start clip when the game plays from its start", async () => {
+	it("plays the game-start clip when the board moves on from the start", async () => {
 		const made = stubAudio();
 		const { root } = mount({ ...withSounds(SOUNDS), session: await chessSession({ steps: 1 }) });
 		await vi.waitFor(() => {
@@ -309,6 +310,9 @@ describe("the chess part's sounds", () => {
 		document.dispatchEvent(new Event("pointerdown"));
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		click(root, "button.play");
+		await vi.waitFor(() => {
+			expect(label(root)).toBe("End");
+		});
 		expect(heard(made)[0]).toBe("game-start");
 	});
 });

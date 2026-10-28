@@ -15,7 +15,7 @@ export interface Session {
 	readonly version: string;
 }
 
-/** One view of the timeline: the start, a step's pick, or the end. */
+/** One moment of the timeline: the start, a step's pick, or the end. */
 export interface Moment {
 	readonly type: "start" | "step" | "end";
 	readonly label: string;
@@ -86,6 +86,6 @@ export function changesOf(before: JsonObject | null, after: JsonObject): string[
 	return [...changed, ...removed.map((field) => `${field}: removed`)];
 }
 
-/** The model's probability for each choice it picked, step by step; null where the pick failed. */
-export const confidence = (story: Story): (number | null)[] =>
+/** The probability of each step's pick, step by step; null where the pick failed. */
+export const pickProbabilities = (story: Story): (number | null)[] =>
 	story.frames.map((frame) => frame.choices.find((choice) => choice.picked)?.probability ?? null);

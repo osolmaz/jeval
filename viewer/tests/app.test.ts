@@ -131,7 +131,7 @@ describe("a running case", () => {
 			expect(label(root)).toBe("Step 1");
 			expect(hidden(root, ".live")).toBe(false);
 		});
-		expect(text(root, ".result-slot")).toBe("The case is running.");
+		expect(text(root, ".result-slot")).toContain("The case is running.");
 		expect(root.querySelector("a.home")?.getAttribute("href")).toBe("/");
 		current = await factsSession({ steps: 1, finished: false });
 		await vi.waitFor(() => {
@@ -181,7 +181,34 @@ describe("a running case", () => {
 			expect(text(root, ".decision h2")).toBe("The model is picking from the choices…");
 		});
 		expect(Array.from(root.querySelectorAll(".choices .p")).map((p) => p.textContent)).toEqual(["–", "–", "–", "–"]);
-		expect(text(root, ".result-slot")).toBe("The case ended without an outcome.");
+		// A case without an outcome still shows its answers.
+		expect(root.querySelector(".banner")).toBeNull();
+		expect(text(root, ".facts")).toContain("ayes 70.0%");
+	});
+
+	it("says when the answers failed, a pick failed, or the case failed before its steps ended", async () => {
+		const session = await factsSession({ steps: 1 });
+		const show = async (story: Partial<typeof session.story>, finished = true): Promise<string> => {
+			const { root, app } = mount({
+				...QUICK,
+				session: { ...session, finished, story: { ...session.story, ...story } },
+			});
+			await vi.waitFor(() => {
+				expect(label(root)).toBe("Start");
+			});
+			app.close();
+			return text(root, ".result-slot");
+		};
+		expect(await show({ answers: null, error: "too long" })).toContain("The answers failed: too long");
+		expect(await show({ ended: "pick failed" })).toContain("A pick failed, so the steps ended early.");
+		expect(await show({ ended: null, notes: ["the case failed: broken"] })).toContain(
+			"The case failed before its steps ended.the case failed: broken",
+		);
+		const bare = { ...session, outcome: null, summary: null };
+		const { root } = mount({ ...QUICK, session: { ...bare, story: { ...bare.story, answers: {} } } });
+		await vi.waitFor(() => {
+			expect(text(root, ".result-slot")).toBe("The case ended with no outcome and no answers.");
+		});
 	});
 });
 
@@ -192,8 +219,8 @@ let context: PartContext | null = null;
 registerPart("fake", (given) => {
 	context = given;
 	return {
-		stage: (moment: Moment, from: Moment | null, session: Session) => {
-			asked.push(`stage ${moment.label}${from === null ? "" : ` from ${from.label}`} of ${session.story.case}`);
+		draw: (moment: Moment, from: Moment | null, session: Session) => {
+			asked.push(`draw ${moment.label}${from === null ? "" : ` from ${from.label}`} of ${session.story.case}`);
 			return Promise.resolve(moment.type === "end" ? null : h("div", { class: "drawn" }, moment.label));
 		},
 		stepNote: () => " · a note",
@@ -229,7 +256,7 @@ registerPart("fake", (given) => {
 });
 
 describe("a domain's part of the page", () => {
-	it("draws the stage, the note, the steps list and the download button that the part gives", async () => {
+	it("shows the drawing, the note, the steps list and the download button that the part gives", async () => {
 		asked.length = 0;
 		const session = await factsSession();
 		const { root } = mount({
@@ -250,7 +277,7 @@ describe("a domain's part of the page", () => {
 		await vi.waitFor(() => {
 			expect(text(root, ".decision .step")).toBe("Step 1 of 3 · a note");
 		});
-		expect(asked).toContain("stage Step 1 of 3 from Start of f1");
+		expect(asked).toContain("draw Step 1 of 3 from Start of f1");
 		click(root, "button.jump2");
 		await vi.waitFor(() => {
 			expect(text(root, ".drawn")).toBe("Step 2 of 3");
@@ -262,7 +289,7 @@ describe("a domain's part of the page", () => {
 		});
 	});
 
-	it("plays the case through the part's stage up to the end, and downloads the part's file", async () => {
+	it("plays the case through the part's drawing up to the end, and downloads the part's file", async () => {
 		asked.length = 0;
 		const made: Blob[] = [];
 		vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
@@ -282,9 +309,9 @@ describe("a domain's part of the page", () => {
 			expect(label(root)).toBe("End");
 		});
 		expect(asked).toEqual([
-			"stage Start of f1",
-			"stage Step 1 of 1 from Start of f1",
-			"stage End from Step 1 of 1 of f1",
+			"draw Start of f1",
+			"draw Step 1 of 1 from Start of f1",
+			"draw End from Step 1 of 1 of f1",
 		]);
 		// The fake part draws no end, so the page shows the state as JSON there.
 		expect(root.querySelector(".state-card")).not.toBeNull();

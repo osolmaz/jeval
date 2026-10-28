@@ -69,11 +69,11 @@ export function chessPart(context: PartContext): DomainPart {
 	const sounds = new Sounds(clips);
 	const sound = soundButton(sounds);
 	const slots = [h("div", { class: "player-slot" }), h("div", {}), h("div", { class: "player-slot" })] as const;
-	const stage = h("div", { class: "chess-stage" }, ...slots);
+	const area = h("div", { class: "chess-board-area" }, ...slots);
 	// A browser lets a page play sound only after a click or a key press, so any of them on the page wakes the sounds.
 	for (const type of ["pointerdown", "keydown"]) {
 		document.addEventListener(type, () => {
-			if (stage.isConnected) sounds.wake();
+			if (area.isConnected) sounds.wake();
 		});
 	}
 	let board: BoardView | null = null;
@@ -102,7 +102,7 @@ export function chessPart(context: PartContext): DomainPart {
 		await shown.animate(moves.uci, position, context.motion(), { gap: context.gap(), landed });
 	};
 	return {
-		async stage(moment, from, session) {
+		async draw(moment, from, session) {
 			const position = positionOf(moment);
 			if (position === null) {
 				board = null;
@@ -114,7 +114,7 @@ export function chessPart(context: PartContext): DomainPart {
 				await glide(board, from, moment);
 				if (moment.type === "end") sounds.play(endingOf(session.outcome?.["reason"]), ENDING_DELAY);
 			}
-			return stage;
+			return area;
 		},
 		stepNote: turnOf,
 		steps: { title: "Moves", list: (session, index, open) => moveList(session, index, pieces, open) },

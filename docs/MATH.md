@@ -4,8 +4,9 @@
 
 A run of switch is a state machine. From an initial state, the choice function gives the choices in the latest state,
 the model picks one with probabilities from a softmax over its scores, and the transition function gives the next
-state. The trace keeps every state, so a replay needs nothing else and gives the recorded run exactly. Each request
-fills at most a fixed share of the model's window, and the view gets smaller by a fixed factor on each retry.
+state. The trace keeps every state, so a replay needs nothing else and gives the recorded run exactly. The view
+function gets a budget, a fixed share of the model's window less the questions, and when the model's API says that a
+request was still too long, switch asks for a view smaller by a fixed factor.
 
 ## What this covers
 
@@ -31,9 +32,8 @@ The model picks $c_t$, and when it picks stop, the run ends at $S_{t-1}$. A stat
 everything that the choice function, the transition function and the view function need to know about where the case is. The
 case's data that never changes is no part of the state. It stays inside the functions.
 
-In chess, a state holds the moves played so far. $C$ gives the legal moves of the position that those moves lead to,
-and $T$ plays the picked move and the opponent's reply. The board is never stored, because it follows from the start
-position and the moves.
+In chess, a state holds the start position, the moves played so far, and the position that they lead to. $C$ gives
+the legal moves of that position, and $T$ plays the picked move and the opponent's reply.
 
 The textbook model for this is a Markov decision process. Its names map to switch's names as follows:
 
@@ -51,13 +51,19 @@ does not need $T$ to be repeatable, because the trace keeps every state that $T$
 ## The view function
 
 The model does not read the state itself. It reads the **view**, which a fourth function of the domain, the **view
-function** $V$, makes from the state: JSON and images in at most $\tau$ estimated tokens, so that the request fits the
-model's window. A domain that gives no view function lets the model read the state as it is:
+function** $V$, makes from the state. $V$ takes the state, the purpose $p$ of the request, which is a pick or the
+answers at the end, and a budget of $\tau$ estimated tokens. It gives a JSON object $J$ and a list of images $I$, which
+are all that the model reads besides the questions:
 
-$$V(S, \tau) = S$$
+$$V(S, p, \tau) = (J, I)$$
 
-In chess, the view function draws the board as text, lists each side's pieces, and gives the moves so far, or only
-the latest ones when the whole game does not fit $\tau$.
+A domain that gives no view function lets the model read the state as it is, with no images:
+
+$$V(S, p, \tau) = (S, \varnothing)$$
+
+An answer stage of the domain may give a view function of its own for its questions. In chess, the view function
+draws the board as text, lists each side's pieces, and gives the moves so far, or only the latest ones when the whole
+game does not fit $\tau$.
 
 ## What switch does to the choices
 
@@ -83,14 +89,15 @@ Chess sets $L$ so that no move is ever cut: a chess position has at most 218 leg
 
 ## One pick
 
-The model never writes its pick as text. Its API lists the choices of $O_t$ under short labels and reads the model's
-score $\ell_i$ for each label: its logit, the raw number that the model gives before any normalizing. The softmax turns
-the scores into probabilities that add up to 1:
+The model never writes its pick as text. switch gives the choices of $O_t$ short labels and asks one choice
+question whose answers are those labels. The model gives a score $\ell_i$ for each label, the raw number before any
+normalizing, and a softmax turns the scores into probabilities that add up to 1:
 
 $$p_i = \frac{e^{\ell_i / \theta}}{\sum_{j=1}^{n} e^{\ell_j / \theta}}$$
 
-Here $n = |O_t|$, and $\theta$ is the temperature. A value above 1 flattens the probabilities, and a value below 1
-sharpens them. With $\theta = 1$, these are the model's own probabilities.
+Here $n = |O_t|$, and $\theta$ is the model's temperature, which its makers fit and switch does not set. A value above
+1 flattens the probabilities, and a value below 1 sharpens them. switch maps each label back to its choice, so the
+trace keeps the choices' own keys.
 
 The pick is the likeliest label:
 
@@ -107,12 +114,19 @@ compared: a top probability of 0.5 gives a confidence of 0 among 2 choices and $
 
 The questions at the end of a run use the same probabilities:
 
-- A **bool** question has the labels true and false, and its answer is $P(\text{true}) = p_{\text{true}}$.
+- A **bool** question has the answers true and false, and its answer is $P(\text{true}) = p_{\text{true}}$.
 - A **choice** question is answered like a pick.
-- A **score** question has levels $0, 1, \dots, k-1$. Its answer is the expected level, with the same confidence over
-  the $k$ levels:
+- A **score** question has levels $0, 1, \dots, k-1$. Its answer is the expected level:
 
 $$\text{score} = \sum_{i=0}^{k-1} i \, p_i$$
+
+A score's confidence looks at distance, because the levels are in order. With $m$ the likeliest level, it compares
+the expected distance from $m$ with that of an even spread from the middle of the scale:
+
+$$\text{conf} = \max\!\left(0,\; 1 - \frac{\sum_i p_i \, |i - m|}{\sum_i \frac{1}{k} \left|i - \frac{k-1}{2}\right|}\right)$$
+
+This is the formula of the decision model APIs that publish one. An API that has no formula of its own for scores,
+such as a chat model used as a classifier, may give the choice's confidence instead.
 
 ## A whole run
 
@@ -121,12 +135,13 @@ With $L_{\text{steps}}$ the most steps that a run may take, a run goes:
 1. Start with $S_0$.
 2. For $t = 1, 2, \dots$: make $O_t$ from $C(S_{t-1})$ by the rules above. If $C(S_{t-1})$ has no choice, end with
    no choices.
-3. Ask the model to pick from $O_t$ over the view $V(S_{t-1}, \tau)$. The model gives the probabilities $p_t$ and the
-   pick $c_t$.
+3. Ask the model to pick from $O_t$ over the view $V(S_{t-1}, \text{pick}, \tau)$. The model gives the probabilities
+   $p_t$ and the pick $c_t$.
 4. If $c_t$ is stop, end with stop. Otherwise $S_t = T(S_{t-1}, c_t)$.
-5. After $L_{\text{steps}}$ picks, end with the step limit. If a request fails, end with a failed pick.
-6. Ask the domain's questions over the view of the last state, $S_N$, where $N$ is the number of transitions that
-   ran.
+5. After $L_{\text{steps}}$ picks, end with the step limit. If a request fails, or the model's answer names no label,
+   end with a failed pick.
+6. Ask the domain's questions over the view $V(S_N, \text{answer}, \tau)$ of the last state, $S_N$, where $N$ is the
+   number of transitions that ran. The trace ends with why the steps ended, and why the answers failed if they did.
 
 A run thus takes at most $L_{\text{steps}}$ steps, and never more than the number of different keys that the choice
 function can give.
@@ -141,12 +156,14 @@ A long run of confident picks keeps this high, and one unsure step lowers it by 
 
 ## Why a replay is exact
 
-The trace keeps every state $S_0, S_1, \dots, S_N$ and every pick. A replay walks the same steps:
+The trace keeps every state $S_0, S_1, \dots, S_N$, every pick and how the steps ended. A replay walks the same steps
+under the recorded limits:
 
-- At step $t$ it makes $O_t$ from the recorded $S_{t-1}$, checks that the recorded $c_t$ is among the choices, and
-  repeats it.
+- At step $t$ it makes $O_t$ from the recorded $S_{t-1}$, finds the recorded $c_t$ among the choices by its key, and
+  repeats it with its recorded probabilities.
 - It takes the recorded $S_t$ and runs no transition.
-- At the end it repeats the recorded answers.
+- It ends where the recorded steps ended, also at a failed pick.
+- At the end it repeats the recorded answers, or their failure.
 
 So a replay calls no model and runs no $T$, and it gives the recorded run even when $T$ would give another state now.
 In chess, that is the engine's reply, which need not be the same move twice. The check of $c_t$ against $C(S_{t-1})$
@@ -155,25 +172,27 @@ is what a replay tests: whether the domain's code still gives the choices that t
 Two variants follow from the same trace:
 
 - A **fork** at step $n$ takes $S_n$ from the trace. From step $n + 1$ the model picks and $T$ runs again.
-- Asking the questions again takes $S_N$ from the trace, so new answers are a function of $S_N$, the questions and the
-  model.
+- Asking the questions again repeats every step and its ending, and takes $S_N$ from the trace, so new answers are a
+  function of $S_N$, the questions and the model.
 
 ## Fitting a request into the window
 
-A model reads at most $w$ tokens per request, its window. switch sizes every request before it sends it, with these
-values:
+A model reads at most $w$ tokens per request, its window. switch gives the view function a budget before it sends a
+request, with these values:
 
 - $\sigma$, the share of the window that a request may fill.
 - $r$, the characters per token of the size estimate, set low so that it overestimates.
 - $\hat{t}(x) = \lceil |\text{JSON}(x)| / r \rceil$, the estimated tokens of a value $x$.
 
-The budget of a request is $B = \lfloor w \sigma \rfloor$ tokens. The questions come first, with any extra fields that
-an answer stage adds, and the view gets the rest:
+The budget of a request is $B = \lfloor w \sigma \rfloor$ tokens. The questions come first, and the view gets the
+rest:
 
 $$\tau_1 = B - \hat{t}(\text{questions})$$
 
-The domain's view function gets $\tau$ and must make JSON that fits it. When the model's API says that the request was still
-too long, switch asks again with a smaller view, up to $A$ requests in all, each time by a factor $\lambda < 1$:
+The view function gets $\tau$ and $r$, and must make a view that fits. switch does not cut a view itself: a domain
+without a view function sends its state as it is, and images do not count in $\hat{t}$. When the model's API says that
+the request was still too long, switch asks the view function again for a smaller view, up to $A$ requests in all,
+each time by a factor $\lambda < 1$:
 
 $$\tau_{a+1} = \lfloor \lambda \, \tau_a \rfloor$$
 

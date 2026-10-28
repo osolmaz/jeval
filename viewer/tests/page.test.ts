@@ -27,7 +27,7 @@ async function traced(): Promise<TraceEntry[]> {
 	let calls = 0;
 	const decider = fakeDecider((request, call) => {
 		calls = call;
-		if (call === 2) return failing("provider", "down");
+		if (call === 2) return failing("down");
 		return answering(0.7, (labels) => labels[0] ?? STOP_KEY)(request, call);
 	});
 	const result = await run(FACTS, factsMachine(facts, opened), decider);
@@ -53,13 +53,29 @@ describe("storyOf", () => {
 		]);
 	});
 
-	it("reads a failed pick as a step without a pick, with its note, then the answers", async () => {
+	it("reads a failed pick as a step without a pick, with its note, then the answers and the end", async () => {
 		const story = storyOf(await traced(), "c1");
 		const second = story.frames[1];
 		expect(second).toMatchObject({ step: 2, picked: null, after: null, before: afterA });
-		expect(second?.notes[0]).toMatch(/^the pick failed \(provider\): down/);
+		expect(second?.notes[0]).toBe("the pick failed: down; the case goes on to its answers");
 		expect(story.last).toEqual(afterA);
 		expect(story.answers).toEqual({ a: { type: "bool", probability: 0.7 }, b: { type: "bool", probability: 0.7 } });
+		expect(story).toMatchObject({ ended: "pick failed", error: null });
+	});
+
+	it("gives a note after the picks to the story, and the answers' failure from the end", () => {
+		const entries: TraceEntry[] = [
+			{ type: "start", domain: "facts", version: "1", model: "m", limits: FACTS.limits },
+			{ type: "state", step: 0, state: opened },
+			{ type: "choices", step: 1, choices: [{ key: "stop", type: "stop", text: "Stop" }] },
+			{ type: "pick", step: 1, choice: "stop", probabilities: { stop: 1 }, confidence: 1 },
+			{ type: "note", message: "the request did not fit the model's window; trying a view of 9 tokens" },
+			{ type: "end", ended: "stop", error: "too long" },
+		];
+		const story = storyOf(entries, "c1");
+		expect(story.frames[0]?.notes).toEqual([]);
+		expect(story.notes).toEqual(["the request did not fit the model's window; trying a view of 9 tokens"]);
+		expect(story).toMatchObject({ ended: "stop", error: "too long", answers: null });
 	});
 
 	it("refuses a trace that does not start with its start entry", () => {
@@ -93,11 +109,19 @@ describe("the page", () => {
 		for (const name of [".board", ".square", ".piece", ".arrow", ".player", ".plies", ".ply", "--board", "--light"]) {
 			expect(page).not.toContain(name);
 		}
-		// A domain's own stylesheet gives the square stage, the room for bars and the colors of its look.
-		for (const rule of ["--stage", ".bar-slot{min-height", "container-type", "#312E2B", "#81B64C"]) {
+		// A domain's own stylesheet gives its drawing's size, the room for bars and the colors and stripes of its look.
+		for (const rule of [
+			"--stage",
+			".bar-slot{min-height",
+			"container-type",
+			"#312E2B",
+			"#81B64C",
+			"--stripe",
+			"--line",
+		]) {
 			expect(page).not.toContain(rule);
 		}
-		expect(page).toMatch(/\.stage\{display:grid;gap:8px;min-width:0\}/);
+		expect(page).toMatch(/\.drawing\{display:grid;gap:8px;min-width:0\}/);
 	});
 
 	it("links every case of a run from the index", () => {

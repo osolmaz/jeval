@@ -6,7 +6,7 @@ import { count, countWords } from "../src/choices/count.ts";
 import { look } from "../src/choices/look.ts";
 import { read } from "../src/choices/read.ts";
 import { search, searchFiles } from "../src/choices/search.ts";
-import { LIMITS } from "../src/state.ts";
+import { SIZES } from "../src/state.ts";
 import { searchTerms } from "../src/terms.ts";
 import { evidence, file, legalCase, stateOf } from "./helpers/cases.ts";
 
@@ -32,7 +32,7 @@ describe("read", () => {
 	it("offers the unread parts of a large or partly read file, the first part ahead of the others", async () => {
 		const page = "word ".repeat(4000);
 		const big = legalCase({
-			files: [file("d1", "documents/big.pdf", "document", [page, page, page, ""], { kind: "pdf" })],
+			files: [file("d1", "documents/big.pdf", "document", [page, page, page, ""], { format: "pdf" })],
 		});
 		const choices = read(big)(empty);
 		expect(choices.map((choice) => [choice.key, choice.priority])).toEqual([
@@ -47,11 +47,11 @@ describe("read", () => {
 	});
 
 	it("offers nothing that does not fit the evidence budget, and no image or unreadable file", () => {
-		const full = stateOf(evidence("read:a1:0-0", "x".repeat(LIMITS.evidenceTokens * LIMITS.charsPerToken)));
+		const full = stateOf(evidence("read:a1:0-0", "x".repeat(SIZES.evidenceTokens * SIZES.charsPerToken)));
 		expect(read(legalCase())(full)).toEqual([]);
 		const odd = legalCase({
 			files: [
-				file("d1", "documents/a.png", "document", [], { kind: "image" }),
+				file("d1", "documents/a.png", "document", [], { format: "image" }),
 				file("d2", "documents/b.doc", "document", ["x"], { error: "broken" }),
 			],
 		});
@@ -63,9 +63,9 @@ describe("look", () => {
 	const page = { label: "page 1 image", path: "images/d1-1.png", mimeType: "image/png" };
 	const scanned = legalCase({
 		files: [
-			file("d1", "documents/scan.pdf", "document", [""], { kind: "pdf", renders: [page] }),
+			file("d1", "documents/scan.pdf", "document", [""], { format: "pdf", renders: [page] }),
 			file("d2", "documents/photo.png", "document", [], {
-				kind: "image",
+				format: "image",
 				renders: [{ label: "image", path: "images/d2-1.png", mimeType: "image/png" }],
 			}),
 		],
@@ -95,7 +95,7 @@ describe("look", () => {
 		expect(texts(look(scanned)(stateOf(evidence("look:d1:0", "x", { image: page }))))).toEqual([
 			"Look at documents/photo.png",
 		]);
-		const seen = Array.from({ length: LIMITS.images }, (_, index) =>
+		const seen = Array.from({ length: SIZES.images }, (_, index) =>
 			evidence(`look:x:${String(index)}`, "x", { image: page }),
 		);
 		expect(look(scanned)(stateOf(...seen))).toEqual([]);
@@ -173,10 +173,10 @@ describe("changes", () => {
 
 describe("compare", () => {
 	const edited = file("a1", "output/Contract.docx", "answer", ["P1: The parties agree.\nP2 [Heading1]: New clause."], {
-		kind: "docx",
+		format: "docx",
 	});
 	const original = file("d2", "documents/contract.docx", "document", ["P1: The parties agree.\nP2: Old clause."], {
-		kind: "docx",
+		format: "docx",
 	});
 
 	it("pairs the answer's Word file with the document of the same name, and lists added and removed paragraphs", async () => {

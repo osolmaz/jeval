@@ -23,11 +23,11 @@
 :root[data-domain="chess"] .layout {
 	justify-content: center;
 }
-:root[data-domain="chess"] .stage {
+:root[data-domain="chess"] .drawing {
 	width: min(100%, max(280px, 100dvh - 200px));
 	justify-self: center;
 }
-.chess-stage {
+.chess-board-area {
 	display: grid;
 	gap: 8px;
 }
@@ -38,16 +38,16 @@
 	:root[data-domain="chess"] .layout {
 		container-type: size;
 		grid-template-columns: auto 380px;
-		--stage: max(240px, min(100cqw - 404px, 100cqh - 104px));
+		--board-area: max(240px, min(100cqw - 404px, 100cqh - 104px));
 	}
-	:root[data-domain="chess"] .stage {
-		width: var(--stage);
+	:root[data-domain="chess"] .drawing {
+		width: var(--board-area);
 	}
 	:root[data-domain="chess"] .state-card {
-		max-height: var(--stage);
+		max-height: var(--board-area);
 	}
 	:root[data-domain="chess"] .side {
-		height: calc(var(--stage) + 104px);
+		height: calc(var(--board-area) + 104px);
 	}
 }
 .player {

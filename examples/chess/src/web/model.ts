@@ -3,11 +3,11 @@ import type { Session, Story } from "@osolmaz/switch-viewer/page";
 import { type ChessState, chessState, movesOfStep } from "./data.ts";
 
 export type Color = "w" | "b";
-export type Kind = "k" | "q" | "r" | "b" | "n" | "p";
+export type PieceType = "k" | "q" | "r" | "b" | "n" | "p";
 export interface Piece {
 	readonly id: number;
 	readonly color: Color;
-	readonly kind: Kind;
+	readonly type: PieceType;
 	readonly square: string;
 }
 
@@ -24,19 +24,19 @@ export function piecesOf(fen: string): Piece[] {
 			}
 			const square = `${String.fromCharCode(97 + file)}${String(8 - index)}`;
 			const color = char === char.toUpperCase() ? "w" : "b";
-			pieces.push({ id: pieces.length, color, kind: char.toLowerCase() as Kind, square });
+			pieces.push({ id: pieces.length, color, type: char.toLowerCase() as PieceType, square });
 			file += 1;
 		}
 	});
 	return pieces;
 }
 
-/** How one move changes the pieces: who goes where, who is taken, and a promoted pawn's new kind. */
+/** How one move changes the pieces: who goes where, who is taken, and a promoted pawn's new type. */
 export interface Motion {
 	readonly pieces: readonly Piece[];
 	readonly moved: readonly { readonly id: number; readonly to: string }[];
 	readonly taken: readonly number[];
-	readonly promoted: readonly { readonly id: number; readonly kind: Kind }[];
+	readonly promoted: readonly { readonly id: number; readonly type: PieceType }[];
 }
 
 const shift = (square: string, files: number): string =>
@@ -58,14 +58,14 @@ const at = (pieces: readonly Piece[], square: string): Piece | undefined =>
 /** The piece a move takes: the one on its target square, or the pawn an en-passant capture passes. */
 function takenBy(pieces: readonly Piece[], mover: Piece, from: string, to: string): Piece | undefined {
 	const target = at(pieces, to);
-	if (target !== undefined || mover.kind !== "p" || to.startsWith(from.charAt(0))) return target;
+	if (target !== undefined || mover.type !== "p" || to.startsWith(from.charAt(0))) return target;
 	return at(pieces, passedPawn(from, to));
 }
 
 /** Every piece a move carries: the mover, and the rook when the king castles. */
 function carried(pieces: readonly Piece[], mover: Piece, from: string, to: string): { id: number; to: string }[] {
 	const moved = [{ id: mover.id, to }];
-	if (mover.kind !== "k" || Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) !== 2) return moved;
+	if (mover.type !== "k" || Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) !== 2) return moved;
 	const rook = castlingRook(from, to);
 	const found = at(pieces, rook.from);
 	return found === undefined ? moved : [...moved, { id: found.id, to: rook.to }];
@@ -79,41 +79,41 @@ export function play(pieces: readonly Piece[], lan: string): Motion {
 	if (mover === undefined) return { pieces, moved: [], taken: [], promoted: [] };
 	const moved = carried(pieces, mover, from, to);
 	const taken = takenBy(pieces, mover, from, to);
-	const promoted = lan.length > 4 ? [{ id: mover.id, kind: lan.slice(4, 5) as Kind }] : [];
+	const promoted = lan.length > 4 ? [{ id: mover.id, type: lan.slice(4, 5) as PieceType }] : [];
 	const after = pieces
 		.filter((piece) => piece.id !== taken?.id)
 		.map((piece) => {
 			const square = moved.find((move) => move.id === piece.id)?.to ?? piece.square;
-			const kind = promoted.find((change) => change.id === piece.id)?.kind ?? piece.kind;
-			return { ...piece, square, kind };
+			const type = promoted.find((change) => change.id === piece.id)?.type ?? piece.type;
+			return { ...piece, square, type };
 		});
 	return { pieces: after, moved, taken: taken === undefined ? [] : [taken.id], promoted };
 }
 
-/** Whether two sets of pieces stand on the same squares as the same kinds, whatever their numbers. */
+/** Whether two sets of pieces stand on the same squares as the same types, whatever their numbers. */
 export function samePlaces(a: readonly Piece[], b: readonly Piece[]): boolean {
 	const key = (pieces: readonly Piece[]) =>
 		pieces
-			.map((piece) => `${piece.square}${piece.color}${piece.kind}`)
+			.map((piece) => `${piece.square}${piece.color}${piece.type}`)
 			.sort()
 			.join(" ");
 	return key(a) === key(b);
 }
 
-const VALUES: Readonly<Record<Kind, number>> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-const FULL_SET: Readonly<Record<Kind, number>> = { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 };
-const ORDER: readonly Kind[] = ["q", "r", "b", "n", "p"];
+const VALUES: Readonly<Record<PieceType, number>> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+const FULL_SET: Readonly<Record<PieceType, number>> = { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 };
+const ORDER: readonly PieceType[] = ["q", "r", "b", "n", "p"];
 
 /** The pieces each side has lost, most valuable first, and white's material lead in points. */
-export function captures(fen: string): { readonly lost: Record<Color, Kind[]>; readonly lead: number } {
+export function captures(fen: string): { readonly lost: Record<Color, PieceType[]>; readonly lead: number } {
 	const pieces = piecesOf(fen);
-	const lost: Record<Color, Kind[]> = { w: [], b: [] };
+	const lost: Record<Color, PieceType[]> = { w: [], b: [] };
 	let lead = 0;
 	for (const color of ["w", "b"] as const) {
-		for (const kind of ORDER) {
-			const left = pieces.filter((piece) => piece.color === color && piece.kind === kind).length;
-			for (let count = left; count < FULL_SET[kind]; count += 1) lost[color].push(kind);
-			lead += (color === "w" ? 1 : -1) * left * VALUES[kind];
+		for (const type of ORDER) {
+			const left = pieces.filter((piece) => piece.color === color && piece.type === type).length;
+			for (let count = left; count < FULL_SET[type]; count += 1) lost[color].push(type);
+			lead += (color === "w" ? 1 : -1) * left * VALUES[type];
 		}
 	}
 	return { lost, lead };

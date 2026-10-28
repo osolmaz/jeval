@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { type Answer, run, STOP_KEY } from "@osolmaz/switch";
+import { type Answer, PICK_ID, run, STOP_KEY } from "@osolmaz/switch";
 import { answering, fakeDecider } from "@osolmaz/switch/testing";
 import { itemQuestions, itemVerdict } from "../src/definition.ts";
 import { DEFAULT_JUDGE, judgeOf, legalJudge, legalMachine, loadJudge } from "../src/index.ts";
 import { combine } from "../src/judge.ts";
 import { openAnswer } from "../src/start.ts";
-import { LIMITS } from "../src/state.ts";
+import { SIZES } from "../src/state.ts";
 import { searchTerms, termsIn } from "../src/terms.ts";
 import { fitEvidence, view } from "../src/view.ts";
 import { evidence, file, folderOf, legalCase, stateOf } from "./helpers/cases.ts";
@@ -53,11 +53,11 @@ describe("openAnswer", () => {
 		const answer = legalCase({
 			files: [
 				file("a1", "output/memo.docx", "answer", ["P1: Memo text."], {
-					kind: "docx",
+					format: "docx",
 					formatting: "Tracked insertions: 0; tracked deletions: 0.",
 				}),
 				file("a2", "output/chart.png", "answer", [], {
-					kind: "image",
+					format: "image",
 					renders: [{ label: "image", path: "images/a2-1.png", mimeType: "image/png" }],
 				}),
 				file("a3", "output/broken.pdf", "answer", [], { error: "PDF error" }),
@@ -74,9 +74,11 @@ describe("openAnswer", () => {
 		const long = legalCase({ files: [file("a1", "output/long.md", "answer", [page, page, page, page])] });
 		expect(openAnswer(long).evidence.length).toBeLessThan(4);
 		const render = { label: "image", path: "images/a1.png", mimeType: "image/png" };
-		const many = Array.from({ length: LIMITS.images + 2 }, () => render);
-		const images = legalCase({ files: [file("a1", "output/a.png", "answer", [], { kind: "image", renders: many })] });
-		expect(openAnswer(images).evidence).toHaveLength(LIMITS.images);
+		const many = Array.from({ length: SIZES.images + 2 }, () => render);
+		const images = legalCase({
+			files: [file("a1", "output/a.png", "answer", [], { format: "image", renders: many })],
+		});
+		expect(openAnswer(images).evidence).toHaveLength(SIZES.images);
 	});
 });
 
@@ -84,8 +86,8 @@ describe("view", () => {
 	it("shows the rubric, the files and the steps for a pick, and only the request and evidence for the answers", async () => {
 		const folder = folderOf(legalCase());
 		const state = stateOf({ ...evidence("read:d1:0-0", "Section 4.2"), source: "documents/lease.pdf, page 1" });
-		const picking = await view(texts, folder, state, "choose", 50_000);
-		expect(Object.keys(picking.json)).toEqual([
+		const picking = await view(texts, folder, state, "pick", 50_000, 3);
+		expect(Object.keys(picking.decisionState)).toEqual([
 			"process",
 			"stage",
 			"request",
@@ -94,62 +96,68 @@ describe("view", () => {
 			"steps_taken",
 			"evidence",
 		]);
-		expect(picking.json["files"]).toEqual(
-			expect.arrayContaining([expect.objectContaining({ path: "documents/lease.pdf", read: "1 of 2 parts" })]),
+		expect(picking.decisionState["files"]).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ path: "documents/lease.pdf", format: "pdf", read: "1 of 2 parts" }),
+			]),
 		);
-		expect(picking.json["evidence"]).toEqual([{ source: "documents/lease.pdf, page 1", text: "Section 4.2" }]);
-		expect(Object.keys((await view(texts, folder, state, "answer", 50_000)).json)).toEqual(["request", "evidence"]);
+		expect(picking.decisionState["evidence"]).toEqual([
+			{ source: "documents/lease.pdf, page 1", text: "Section 4.2" },
+		]);
+		const answering = await view(texts, folder, state, "answer", 50_000, 3);
+		expect(Object.keys(answering.decisionState)).toEqual(["request", "evidence"]);
 	});
 
 	it("loads the images that the evidence names from the case folder", async () => {
 		const render = { label: "page 1 image", path: "images/d1-1.png", mimeType: "image/png" };
 		const state = stateOf(evidence("read:a1:0-0"), evidence("look:d1:0", "[image]", { image: render }));
-		const seen = await view(texts, folderOf(legalCase()), state, "answer", 50_000);
-		expect(seen.images).toEqual([{ label: "page 1 image", mimeType: "image/png", data: "data:images/d1-1.png" }]);
+		const seen = await view(texts, folderOf(legalCase()), state, "answer", 50_000, 3);
+		expect(seen.decisionImages).toEqual([
+			{ label: "page 1 image", mimeType: "image/png", data: "data:images/d1-1.png" },
+		]);
 	});
 
-	it("cuts the longest evidence first to fit, and says so", () => {
+	it("cuts the longest evidence first to fit, and says so in the text it cut", () => {
 		const evidence = [
 			{ source: "long", text: "x".repeat(3000) },
 			{ source: "short", text: "y".repeat(30) },
 		];
-		const fitted = fitEvidence(evidence, 200);
-		expect(fitted.evidence[1]).toEqual(evidence[1]);
-		expect(fitted.evidence[0]?.text).toMatch(/\[cut: \d+ characters left out to fit the window\]$/);
-		expect(fitted.omitted).toEqual([expect.stringMatching(/^\d+ characters of long$/)]);
-		expect(fitEvidence(evidence, 10_000).omitted).toEqual([]);
-		expect(Math.ceil(JSON.stringify(fitted.evidence).length / LIMITS.charsPerToken)).toBeLessThanOrEqual(260);
+		const fitted = fitEvidence(evidence, 200, 3);
+		expect(fitted[1]).toEqual(evidence[1]);
+		expect(fitted[0]?.text).toMatch(/\[cut: \d+ characters left out to fit the window\]$/);
+		expect(fitEvidence(evidence, 10_000, 3)).toEqual(evidence);
+		expect(Math.ceil(JSON.stringify(fitted).length / 3)).toBeLessThanOrEqual(260);
 	});
 });
 
 describe("legalJudge", () => {
 	it("gathers evidence, then asks whether each item is met and whether anything is missed", async () => {
 		const item = { id: "S-1", category: null, text: "PASS if x." };
-		expect(itemQuestions(judge.definition, item).map((question) => question.instructions)).toEqual([
-			"Rubric item S-1:\nPASS if x.\n\nDoes the submitted answer meet this item?",
-			expect.stringMatching(/^Rubric item S-1:\nPASS if x\.\n\nCheck each requirement/) as unknown,
+		expect(itemQuestions(judge.definition, item).map(([id, question]) => [id, question.instructions])).toEqual([
+			["S-1/meets", "Rubric item S-1:\nPASS if x.\n\nDoes the submitted answer meet this item?"],
+			["S-1/misses", expect.stringMatching(/^Rubric item S-1:\nPASS if x\.\n\nCheck each requirement/) as unknown],
 		]);
 		expect(itemVerdict({ ...item, category: "form" })).toMatchObject({
-			id: "S-1",
 			instructions: "Rubric item S-1 (form):\nPASS if x.",
+			criteria: { true: "The item passes.", false: "The item fails." },
 		});
 		const domain = legalJudge(judge);
-		expect(domain.version).toBe(`0.4.0 legal-judge@${judge.hash.slice(0, 12)}`);
+		expect(domain.version).toBe("0.5.0");
 		let calls = 0;
 		const decider = fakeDecider(answering(0.9, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
 		const result = await run(domain, legalMachine(judge.definition, folderOf(legalCase())), decider);
 		expect(result.steps).toBe(2);
 		expect(result.state.evidence.map((entry) => entry.key)).toEqual(["read:a1:0-0", "read:d1:0-1"]);
 		expect(result.trace.entries.filter((entry) => entry.type === "stage")).toHaveLength(1);
-		expect(decider.requests[0]?.questions[0]?.instructions).toBe(`${texts.gather} ${texts.choose}`);
+		expect(decider.requests[0]?.decisionQuestions[PICK_ID]?.instructions).toBe(`${texts.gather} ${texts.choose}`);
 		const last = decider.requests.at(-1);
-		expect(last?.questions.map((question) => question.id)).toEqual([
+		expect(Object.keys(last?.decisionQuestions ?? {})).toEqual([
 			"S-001/meets",
 			"S-001/misses",
 			"F-001/meets",
 			"F-001/misses",
 		]);
-		expect(last?.json).toMatchObject({ process: texts.process, stage: texts.check, rules: texts.rules });
+		expect(last?.decisionState).toMatchObject({ process: texts.process, stage: texts.check, rules: texts.rules });
 		// Every question answered 0.9: the answer meets each item, but also misses something, so both fail.
 		expect(result.answers).toEqual({
 			"S-001": { type: "bool", probability: expect.closeTo(0.1) as unknown },

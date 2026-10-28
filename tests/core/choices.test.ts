@@ -4,6 +4,7 @@ import { type FactsState, lookUp } from "../helpers/fakes.ts";
 
 const empty: FactsState = { looked: [], found: [] };
 const none = new Set<string>();
+const STOP = "Stop";
 
 const ranked = choiceType<FactsState, number>({
 	type: "ranked",
@@ -22,31 +23,36 @@ const choice = (key: string, text = key): Choice => ({ type: "test", key, text }
 describe("offerChoices", () => {
 	it("keeps the choice function's choices in their order", () => {
 		const { choices } = joinTypes(lookUp({ facts: { a: "1", b: "2" } }));
-		const offered = offerChoices(choices(empty), none, 10);
+		const offered = offerChoices(choices(empty), none, 10, STOP);
 		expect(offered.map((offer) => offer.key)).toEqual(["look-up:a", "look-up:b"]);
 		expect(offered[0]).toMatchObject({ type: "look-up", text: "Look up a" });
 	});
 
 	it("keeps the choices of lowest priority value when it must cut, in their listed order", () => {
-		const offered = offerChoices(joinTypes(ranked).choices(empty), none, 2);
+		const offered = offerChoices(joinTypes(ranked).choices(empty), none, 2, STOP);
 		expect(offered.map((offer) => offer.text)).toEqual(["priority 0", "priority 1"]);
 	});
 
 	it("keeps the first listed choices when their priorities tie, and none when there is no room", () => {
 		const tied = [1, 2, 3, 4].map((n) => choice(String(n)));
-		expect(offerChoices(tied, none, 2).map((offer) => offer.key)).toEqual(["1", "2"]);
-		expect(offerChoices(tied, none, 0)).toEqual([]);
+		expect(offerChoices(tied, none, 2, STOP).map((offer) => offer.key)).toEqual(["1", "2"]);
+		expect(offerChoices(tied, none, 0, STOP)).toEqual([]);
 	});
 
-	it("refuses two choices with one key or one text, a key picked before, and the stop key", () => {
-		expect(() => offerChoices([choice("x", "one"), choice("x", "two")], none, 10)).toThrow(
+	it("refuses two choices with one key or one text, a key picked before, and the stop choice's key or text", () => {
+		expect(() => offerChoices([choice("x", "one"), choice("x", "two")], none, 10, STOP)).toThrow(
 			new ChoiceError("two choices share the key x"),
 		);
-		expect(() => offerChoices([choice("x", "same"), choice("y", "same")], none, 10)).toThrow(/share the text/);
-		expect(() => offerChoices([choice("x")], new Set(["x"]), 10)).toThrow(
+		expect(() => offerChoices([choice("x", "same"), choice("y", "same")], none, 10, STOP)).toThrow(/share the text/);
+		expect(() => offerChoices([choice("x")], new Set(["x"]), 10, STOP)).toThrow(
 			"the choice x was picked before in this run",
 		);
-		expect(() => offerChoices([choice("stop")], none, 10)).toThrow(expect.objectContaining({ name: "ChoiceError" }));
+		expect(() => offerChoices([choice("stop")], none, 10, STOP)).toThrow(
+			expect.objectContaining({ name: "ChoiceError" }),
+		);
+		expect(() => offerChoices([choice("x", STOP)], none, 10, STOP)).toThrow(
+			'the text "Stop" belongs to the stop choice',
+		);
 	});
 });
 

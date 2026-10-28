@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { endingOf, type SoundKind, soundOf, Sounds, type SoundSet } from "../src/web/sound.ts";
+import { endingOf, type SoundEvent, soundOf, Sounds, type SoundSet } from "../src/web/sound.ts";
 import { clipUrl, stubAudio } from "./helpers/audio.ts";
 
 const SET: SoundSet = {
@@ -50,8 +50,8 @@ describe("the sounds", () => {
 		expect(made).toHaveLength(1);
 		// The clips decode in the background.
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		const heard = (kind: SoundKind, delay?: number): string[] => {
-			sounds.play(kind, delay);
+		const heard = (event: SoundEvent, delay?: number): string[] => {
+			sounds.play(event, delay);
 			return (made[0]?.started.splice(0) ?? []).map((sound) => `${sound.clip} ${String(sound.at)}`);
 		};
 		expect(heard("move")).toEqual(["a 0"]);

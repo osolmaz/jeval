@@ -1,6 +1,6 @@
 import { choiceType } from "@osolmaz/switch";
 import type { CaseFile, LegalCase } from "../case.ts";
-import { found, type LegalState, LIMITS, withEvidence } from "../state.ts";
+import { found, type LegalState, SIZES, withEvidence } from "../state.ts";
 import type { Term } from "../terms.ts";
 
 const choiceText = (term: Term): string => {
@@ -14,10 +14,10 @@ function hitsIn(file: CaseFile, needle: string, room: number): string[] {
 		const haystack = unit.text.toLowerCase();
 		let at = haystack.indexOf(needle);
 		while (at >= 0 && hits.length < room) {
-			const around = unit.text.slice(Math.max(0, at - LIMITS.hitContext), at + needle.length + LIMITS.hitContext);
+			const around = unit.text.slice(Math.max(0, at - SIZES.hitContext), at + needle.length + SIZES.hitContext);
 			const where = file.units.length > 1 ? `${file.path}, ${unit.label}` : file.path;
 			hits.push(`${where}: …${around.replace(/\s+/g, " ")}…`);
-			at = haystack.indexOf(needle, at + needle.length + LIMITS.hitContext);
+			at = haystack.indexOf(needle, at + needle.length + SIZES.hitContext);
 		}
 	}
 	return hits;
@@ -27,7 +27,7 @@ function hitsIn(file: CaseFile, needle: string, room: number): string[] {
 export function searchFiles(files: readonly CaseFile[], term: string): string {
 	const needle = term.toLowerCase();
 	const hits: string[] = [];
-	for (const file of files) hits.push(...hitsIn(file, needle, LIMITS.hits - hits.length));
+	for (const file of files) hits.push(...hitsIn(file, needle, SIZES.hits - hits.length));
 	return hits.length > 0 ? hits.join("\n") : "Not found in any file.";
 }
 
@@ -38,7 +38,7 @@ export const search = (legalCase: LegalCase, terms: readonly Term[]) =>
 		choices: (state) =>
 			terms
 				.filter((term) => !found(state, `search:${term.term.toLowerCase()}`))
-				.slice(0, LIMITS.searchChoices)
+				.slice(0, SIZES.searchChoices)
 				.map((term) => ({
 					key: term.term.toLowerCase(),
 					text: choiceText(term),

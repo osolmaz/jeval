@@ -1,6 +1,6 @@
 import type { CaseFile, LegalCase } from "./case.ts";
 import { lookedAt } from "./choices/look.ts";
-import { type Evidence, LIMITS, type LegalState, partKey, partSource, partText, unreadParts } from "./state.ts";
+import { type Evidence, SIZES, type LegalState, partKey, partSource, partText, unreadParts } from "./state.ts";
 
 function readAnswerFile(file: CaseFile, room: number): { evidence: Evidence[]; tokens: number } {
 	const evidence: Evidence[] = [];
@@ -31,13 +31,13 @@ const formatting = (file: CaseFile): Evidence => ({
  */
 export function openAnswer(legalCase: LegalCase): LegalState {
 	const evidence: Evidence[] = [];
-	let room = LIMITS.answerTokens;
+	let room = SIZES.answerTokens;
 	for (const file of legalCase.files.filter((candidate) => candidate.role === "answer")) {
 		if (file.error !== null) {
 			evidence.push(unreadable(file));
-		} else if (file.kind === "image") {
+		} else if (file.format === "image") {
 			const seen = evidence.filter((entry) => entry.image !== undefined).length;
-			const renders = file.renders.slice(0, Math.max(0, LIMITS.images - seen));
+			const renders = file.renders.slice(0, Math.max(0, SIZES.images - seen));
 			evidence.push(...renders.map((render, index) => lookedAt(file, render, index)));
 		} else {
 			const opened = readAnswerFile(file, room);

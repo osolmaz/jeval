@@ -6,9 +6,9 @@
 
 switch is a framework for building decision-model harnesses for any kind of task.
 
-A decision model reads a state, such as text or a JSON object, and answers typed questions about it. It picks one of a
-list of options, rates the state on a scale, or gives the probability that a statement is true, and every answer comes
-with the model's probabilities. It writes no text. TypeSafe calls them
+A decision model reads some content, such as text or a JSON object, and answers typed questions about it. It picks one
+of the answers that a question allows, rates the content on a scale, or gives the probability that a statement is true,
+and every answer comes with the model's probabilities. It writes no text. TypeSafe calls them
 [System One models](https://docs.typesafe.ai/concepts/system-one), and its Jev was the first. Open models followed:
 llama.cpp [serves decision models](https://huggingface.co/blog/ggml-org/decision-models-in-llamacpp) through the same
 API as Jev, and the Hugging Face Hub tags thousands of models as
@@ -26,9 +26,12 @@ The task itself comes from a domain, which you write in TypeScript. For each cas
 initial state, a choice function that gives the choices in a state, and a transition function that gives the next
 state after the model's pick. These three are the whole interface that a domain must give. Behind them, a domain may
 use any library, program or data of its own, such as a chess engine. A domain may also set the questions that the
-model answers at the end, and the view function, which turns a state into what the model reads. switch runs the same loop for every domain
-and keeps the model's probability for every choice of every step. It fits the view into the model's window and writes
-a trace of every state, which can be replayed or forked. Two example harnesses in [`examples/`](examples) use switch
+model answers at the end, and the view function, which turns a state into what the model reads. switch runs the same
+loop for every domain and keeps the model's probability for every choice of every step. It gives the view function a
+budget that fits the model's window, asks for a smaller view when a request is still too long, and writes a trace of
+every state, which can be replayed or forked. What goes to the model and comes back follows the classifier interface of
+the [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) library, so any classifier model that pi-ai lists can
+decide; [docs/DECISION_MODEL_API.md](docs/DECISION_MODEL_API.md) explains these APIs. Two example harnesses in [`examples/`](examples) use switch
 the way another project would: `legal-judge`, which grades answers to legal tasks against a rubric, and `chess`. The
 same loop fits any task where a model should look around before it decides, such as routing a support ticket after
 reading its logs or deciding whether a report needs a person.
@@ -42,19 +45,20 @@ Each case is a state machine. A run of one case goes like this:
 2. The **choice function** takes the latest state and gives the **choices** in it. Each choice has a type, such as
    `read` or `move`, a key and a text that the model reads. switch checks the choices, cuts them to its limit and adds
    stop.
-3. The **view function** takes the state and gives the **view**, the JSON and the images that the model reads. The
-   model reads the view and **picks** one choice, with a probability for every choice.
+3. The **view function** takes the state and gives the **view**: the `decisionState`, a JSON object, and the
+   `decisionImages` that the model reads. switch adds the pick question, whose answers are the choices, and the model
+   **picks** one choice, with a probability for every choice.
 4. The **transition function** takes the state and the picked choice, does the work of the choice, and gives the next
    state. One pass of the choices, the pick and the transition is a **step**.
 5. The run goes back to the choice function, until the model picks stop, the state has no choices, or the step limit
    is reached. Then the model answers the domain's **questions**, and every **answer** comes with its probabilities.
 
-The **trace** of a run keeps every state, the choices of each step with the model's probabilities, and each pick. So
-a replay reads the states from the trace and runs no transition again.
+The **trace** of a run keeps every state, the choices of each step with the model's probabilities, each pick, the
+answers, and why the steps ended. So a replay reads the states from the trace and runs no transition again.
 
 ## Install
 
-switch needs Node.js 22.13 or newer and pnpm. To use it in another project, add it pinned to a commit; installing
+switch needs Node.js 22.18 or newer, which runs TypeScript sources without a flag, and pnpm. To use it in another project, add it pinned to a commit; installing
 builds it.
 
 ```bash
@@ -98,18 +102,24 @@ examples/chess/src/main.ts view runs/chess
 
 ## Replay a case
 
-`replay` runs a case again from its trace. It repeats each recorded pick and takes each state from the trace, so no
-transition runs again. A replay thus gives the recorded case, even when a transition would find something else now,
-such as the reply of a chess engine. It stops with an error when a recorded pick is not among the choices that the
-domain's code gives now. With `--fork <n>`, `replay` takes the state after n steps from the trace, and the model that
-`--model` names goes on from there, with the transitions running again:
+`replay` runs a case again from its trace, under the trace's limits. It takes each recorded pick by its key and each
+state from the trace, so no transition runs and no model is asked. It ends as the recorded steps ended, and repeats
+the recorded answers, or their failure. A replay thus gives the recorded case, even when a transition would find
+something else now, such as the reply of a chess engine. It stops with an error when a recorded pick is not among the
+choices that the domain's code gives now. With `--fork <n>`, `replay` repeats only the first n steps, and the model
+that `--model` names picks and answers from there, with the transitions running again. With `--out <folder>`, it
+writes the replay as a run folder of one case, which the viewer can show:
 
 ```bash
-examples/chess/src/main.ts replay examples/chess/cases/white-seed-1 runs/chess/cases/white-seed-1/trace.jsonl --fork 5
+examples/chess/src/main.ts replay examples/chess/cases/white-seed-1 runs/chess/cases/white-seed-1/trace.jsonl --fork 5 --out runs/fork
 ```
 
-`run --state-from <run>` does this for every case of an earlier run: it takes each case's states from that run's
-traces and asks only the questions again, for example with another definition or model.
+`run --state-from <run>` repeats every case of an earlier run in this way, under that run's limits, and asks the model
+only the questions again, for example with another definition or model.
+
+A run folder holds `run.json`, with what ran and, at the end, its totals: the cases, the failed ones, the requests
+and their summed usage, cost included. Each case has its `result.json` with its answers, why its steps ended and its
+error if any, its `trace.jsonl`, and its `requests.jsonl`, with every decision request and its result.
 
 ## Write a domain
 
@@ -153,23 +163,23 @@ export function triageMachine(ticket: Ticket): StateMachine<TriageState, ReadLog
         .map((log) => ({ type: "read-log", key: log, text: `Read ${log}`, log })),
     transition: (state, choice) =>
       Promise.resolve({ read: [...state.read, { log: choice.log, text: ticket.logs[choice.log] ?? "" }] }),
-    view: (state) => Promise.resolve({ json: { ticket: ticket.text, read: state.read }, images: [], omitted: [] }),
-    questions: () => [
-      {
+    view: (state) => Promise.resolve({ decisionState: { ticket: ticket.text, read: state.read }, decisionImages: [] }),
+    questions: () => ({
+      team: {
         type: "choice",
-        id: "team",
         instructions: "Which team should handle the ticket?",
-        choices: { billing: "Billing", infra: "Infrastructure", app: "Application" },
+        criteria: { billing: "Billing", infra: "Infrastructure", app: "Application" },
       },
-    ],
+    }),
   };
 }
 ```
 
-The model reads the ticket and opens logs one step at a time until it picks stop, then answers the question. Each
-question has a type, here a `choice`. Every answer comes with the model's probabilities. Only `initial`, `choices` and
-`transition` are needed: without a view function, the model reads the state as it is, and without questions, the run asks
-nothing. A choice function must leave out what the state says is done, because switch refuses a choice that the model
+The model reads the ticket and opens logs one step at a time until it picks stop, then answers the question. The
+questions are pi-ai's, by id: a `bool`, a `choice` or a `score` question, each with its `criteria`. Every answer comes
+with the model's probabilities. Only `initial`, `choices` and `transition` are needed: without a view function, the
+model reads the state as it is, and without questions, the run asks nothing. A view function also gets the most tokens
+that its view may take, and the decider's characters per token, so that it can measure with `estimateTokens`. A choice function must leave out what the state says is done, because switch refuses a choice that the model
 picked before. Any classifier model that pi-ai lists can decide, with its key from the environment:
 
 ```ts
@@ -186,18 +196,19 @@ that the model saw with the probability it gave it, and each pick. `result.ended
 picked stop, the state had no choices, the steps ran out, or the pick failed. A domain with several types of choice
 can give each type in a file of its own with `choiceType`, and join them with `joinTypes`. A domain that needs more
 than one round of questions, such as asking about each part of an item before deciding the item, adds an `answer`
-function that asks in stages.
+function that asks in stages; a stage can give a view function of its own.
 
 ## Write a harness
 
 A harness is a program that runs a domain on case folders. Its setup function returns a runner. The runner holds what
 every case shares, the definition, how to read a case's id, how to load a case folder's state machine, and, when the
 domain has one, how a case ended. The definition holds every text the model reads that does not come from a case, and
-the limits; `run.json` records it with its hash. This setup needs nothing:
+the limits; `run.json` records it with its hash. By default, it is the domain's stop text, instructions and limits,
+and a domain set up from a file of its own gives that file as its definition. This setup needs nothing:
 
 ```ts
 import { basename } from "node:path";
-import { definitionOf, type Runner, runnerOf } from "@osolmaz/switch";
+import { type Runner, runnerOf } from "@osolmaz/switch";
 import { TRIAGE, triageMachine } from "./index.ts";
 import { loadTicket } from "./load.ts";
 
@@ -205,11 +216,6 @@ export function triageSetup(): Promise<Runner> {
   return Promise.resolve(
     runnerOf({
       ...TRIAGE,
-      definition: definitionOf("triage", {
-        stop: TRIAGE.stop,
-        instructions: TRIAGE.instructions,
-        limits: { ...TRIAGE.limits },
-      }),
       caseId: (folder) => Promise.resolve(basename(folder)),
       load: async (folder) => triageMachine(await loadTicket(folder)),
     }),
@@ -230,11 +236,13 @@ await commandLine({ triage: { setup: triageSetup } })
   .parseAsync();
 ```
 
-A domain can bring flags of its own, which `run` and `replay` then take, and `setup` gets their values by name. For
-example, `legal-judge` declares `flags: [{ flag: "--judge <file>", description: "…" }]`, and its setup reads the judge
-file from `flags["judge"]`. A harness with more than one domain takes `--domain` to pick one. [`examples/legal-judge/`](examples/legal-judge) and
-[`examples/chess/`](examples/chess) are complete harnesses, and
-[docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) explains the design.
+Each domain of a harness is a `DomainSetup`: its setup function, and the flags of its own, which `run` and `replay`
+then take. `setup` gets their values by name. For example, `legal-judge` declares
+`flags: [{ flag: "--judge <file>", description: "…" }]`, and its setup reads the judge file from `flags["judge"]`. A
+harness with more than one domain takes `--domain` to pick one. The model's API key comes from the environment
+variable that `--api-key-env` names, or pi-ai finds the provider's own, such as `TYPESAFE_API_KEY`.
+[`examples/legal-judge/`](examples/legal-judge) and [`examples/chess/`](examples/chess) are complete harnesses, and
+[docs/MATH.md](docs/MATH.md) explains the loop in symbols.
 
 ## License
 

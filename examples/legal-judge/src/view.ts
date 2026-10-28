@@ -1,9 +1,7 @@
-import type { Json, JsonObject, View } from "@osolmaz/switch";
+import { estimateTokens, type JsonObject, type Purpose, type View } from "@osolmaz/switch";
 import type { CaseFile, LegalCase } from "./case.ts";
 import type { JudgeDefinition } from "./definition.ts";
-import { type CaseFolder, type LegalState, LIMITS, readParts } from "./state.ts";
-
-const size = (value: Json): number => Math.ceil(JSON.stringify(value).length / LIMITS.charsPerToken);
+import { type CaseFolder, type LegalState, readParts } from "./state.ts";
 
 function readStatus(file: CaseFile, read: ReadonlySet<number> | undefined): string {
 	if (read === undefined || read.size === 0) return "no";
@@ -21,7 +19,7 @@ function pickJson(legalCase: LegalCase, state: LegalState, texts: JudgeDefinitio
 		files: legalCase.files.map((file) => ({
 			path: file.path,
 			role: file.role,
-			kind: file.kind,
+			format: file.format,
 			words: file.words,
 			read: readStatus(file, read.get(file.id)),
 		})),
@@ -34,11 +32,18 @@ interface Evidence {
 	readonly text: string;
 }
 
-/** Cuts the longest evidence first until the evidence fits `room` tokens, and says what it cut. */
-export function fitEvidence(evidence: readonly Evidence[], room: number): { evidence: Evidence[]; omitted: string[] } {
-	const over = size(evidence.map(({ source, text }) => ({ source, text }))) - room;
-	if (over <= 0) return { evidence: [...evidence], omitted: [] };
-	let excess = over * LIMITS.charsPerToken;
+/**
+ * Cuts the longest evidence first until the evidence fits `room` tokens at `charsPerToken`. A cut text ends with a
+ * note that says how much it lost, so the model knows.
+ */
+export function fitEvidence(evidence: readonly Evidence[], room: number, charsPerToken: number): Evidence[] {
+	const over =
+		estimateTokens(
+			evidence.map(({ source, text }) => ({ source, text })),
+			charsPerToken,
+		) - room;
+	if (over <= 0) return [...evidence];
+	let excess = over * charsPerToken;
 	const cuts = new Map<number, number>();
 	const longest = evidence
 		.map((entry, index) => ({ index, length: entry.text.length }))
@@ -49,15 +54,12 @@ export function fitEvidence(evidence: readonly Evidence[], room: number): { evid
 		cuts.set(index, cut);
 		excess -= cut;
 	}
-	const omitted: string[] = [];
-	const fitted = evidence.map((entry, index) => {
+	return evidence.map((entry, index) => {
 		const cut = cuts.get(index);
 		if (cut === undefined) return entry;
-		omitted.push(`${String(cut)} characters of ${entry.source}`);
 		const kept = entry.text.slice(0, Math.max(0, entry.text.length - cut));
 		return { source: entry.source, text: `${kept}\n[cut: ${String(cut)} characters left out to fit the window]` };
 	});
-	return { evidence: fitted, omitted };
 }
 
 /**
@@ -68,15 +70,15 @@ export async function view(
 	texts: JudgeDefinition["texts"],
 	folder: CaseFolder,
 	state: LegalState,
-	purpose: "choose" | "answer",
+	purpose: Purpose,
 	tokens: number,
+	charsPerToken: number,
 ): Promise<View> {
-	const base = purpose === "choose" ? pickJson(folder.case, state, texts) : { request: folder.case.request };
-	const fitted = fitEvidence(state.evidence, tokens - size(base));
+	const base = purpose === "pick" ? pickJson(folder.case, state, texts) : { request: folder.case.request };
+	const fitted = fitEvidence(state.evidence, tokens - estimateTokens(base, charsPerToken), charsPerToken);
 	const renders = state.evidence.flatMap((entry) => (entry.image === undefined ? [] : [entry.image]));
 	return {
-		json: { ...base, evidence: fitted.evidence.map(({ source, text }) => ({ source, text })) },
-		images: await Promise.all(renders.map((render) => folder.image(render))),
-		omitted: fitted.omitted,
+		decisionState: { ...base, evidence: fitted.map(({ source, text }) => ({ source, text })) },
+		decisionImages: await Promise.all(renders.map((render) => folder.image(render))),
 	};
 }

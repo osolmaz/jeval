@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { type Moment, momentsOf, type Session } from "./model.ts";
-import { confidenceChart, decisionPanel, h, layout, type Parts, resultPanel } from "./panels.ts";
+import { decisionPanel, h, layout, type Parts, pickChart, resultPanel } from "./panels.ts";
 import { type DomainPart, partOf } from "./part.ts";
 
 /** How a page starts: with its session in it, or with the addresses to fetch it from while the case runs. */
@@ -12,7 +12,7 @@ export interface AppConfig {
 	readonly indexUrl?: string;
 	/** Each domain part's config by the domain's name, such as the images it draws with. */
 	readonly parts?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
-	/** Milliseconds one motion on the stage takes, a step stays on screen while playing, and between checks for news, at speed 1. */
+	/** Milliseconds one motion of the drawing takes, a step stays on screen while playing, and between checks for news, at speed 1. */
 	readonly motion?: number;
 	readonly dwell?: number;
 	readonly poll?: number;
@@ -35,9 +35,9 @@ export class App {
 	private session: Session | null = null;
 	private moments: Moment[] = [];
 	private index = 0;
-	/** Where the view is going: the last moment asked for, which the queue reaches one move at a time. */
+	/** Where the page is going: the last moment asked for, which the queue reaches one moment at a time. */
 	private goal = 0;
-	/** Whether the view moves on by itself when the case does. */
+	/** Whether the page moves on by itself when the case does. */
 	private following = false;
 	private playing = false;
 	private waiting = false;
@@ -88,7 +88,7 @@ export class App {
 		return this.moments.length - 1;
 	}
 
-	/** Takes a new session: the first one opens the case, later ones move on to the news when the view follows. */
+	/** Takes a new session: the first one opens the case, later ones move on to the news when the page follows. */
 	load(session: Session): void {
 		const first = this.session === null;
 		this.session = session;
@@ -124,7 +124,7 @@ export class App {
 		if (steps !== undefined) this.parts.stepsTitle.textContent = steps.title;
 	}
 
-	/** Shows moment `target`, moving the stage when it is the next one. */
+	/** Shows moment `target`, moving the drawing when it is the next one. */
 	go(target: number, animate: boolean): Promise<void> {
 		const next = Math.max(0, Math.min(this.last, target));
 		this.goal = next;
@@ -133,7 +133,7 @@ export class App {
 	}
 
 	private async move(target: number, animate: boolean): Promise<void> {
-		// Moments passed on the way to a later goal are drawn at once, so the stage keeps up with the clicks.
+		// Moments passed on the way to a later goal are drawn at once, so the drawing keeps up with the clicks.
 		const glide = animate && target === this.index + 1 && target === this.goal;
 		const from = glide ? (this.moments[this.index] ?? null) : null;
 		this.index = target;
@@ -158,22 +158,22 @@ export class App {
 		}
 	}
 
-	/** Draws the current moment: the part's stage, moved there from `from`, or the state as JSON. */
+	/** Draws the current moment: the part's drawing, moved there from `from`, or the state as JSON. */
 	private async draw(from: Moment | null): Promise<void> {
 		const moment = this.moments[this.index];
 		const session = this.session;
 		if (moment === undefined || session === null) return;
 		this.panels();
-		this.place(moment, (await this.part.stage?.(moment, from, session)) ?? null);
+		this.place(moment, (await this.part.draw?.(moment, from, session)) ?? null);
 	}
 
-	/** Puts the part's drawing on the stage, or the state as JSON when there is none. */
+	/** Puts the part's drawing on the page, or the state as JSON when there is none. */
 	private place(moment: Moment, drawing: HTMLElement | null): void {
 		if (drawing === null) {
 			const text = moment.state === null ? "No state yet." : JSON.stringify(moment.state, null, 2);
-			this.parts.stage.replaceChildren(h("div", { class: "state-card" }, text));
-		} else if (this.parts.stage.firstElementChild !== drawing) {
-			this.parts.stage.replaceChildren(drawing);
+			this.parts.drawing.replaceChildren(h("div", { class: "state-card" }, text));
+		} else if (this.parts.drawing.firstElementChild !== drawing) {
+			this.parts.drawing.replaceChildren(drawing);
 		}
 	}
 
@@ -182,7 +182,7 @@ export class App {
 		const session = this.session;
 		this.result(session);
 		if (moment === undefined || session === null) return;
-		this.parts.chart.replaceChildren(...confidenceChart(session, this.index));
+		this.parts.chart.replaceChildren(...pickChart(session, this.index));
 		this.parts.chart.hidden = this.parts.chart.childElementCount === 0;
 		this.parts.side.replaceChildren(decisionPanel(moment, this.part.stepNote?.(moment)));
 		this.steps(session);

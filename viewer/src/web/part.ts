@@ -19,16 +19,16 @@ export interface Download {
 	readonly text: string;
 }
 
-/** A domain's part of the page. Every hook is optional: without one, the page shows its own plain view. */
+/** A domain's part of the page. Every hook is optional: without one, the page shows its own plain parts. */
 export interface DomainPart {
 	/**
-	 * The stage for `moment` of `session`, moved to it from `from` when the page steps forward to it; null for the plain
-	 * view. The part draws all of the stage, and anything it needs on it.
+	 * The drawing of `moment` of `session`, moved to it from `from` when the page steps forward to it; null for the
+	 * state as JSON. The part draws all of it, and anything it needs with it.
 	 */
-	stage?(moment: Moment, from: Moment | null, session: Session): Promise<HTMLElement | null>;
+	draw?(moment: Moment, from: Moment | null, session: Session): Promise<HTMLElement | null>;
 	/** Text after a step's label, which starts with its own separator. */
 	stepNote?(moment: Moment): string;
-	/** A list of the steps beside the stage, with its title; each entry opens a moment. */
+	/** A list of the steps beside the drawing, with its title; each entry opens a moment. */
 	readonly steps?: {
 		readonly title: string;
 		list(session: Session, index: number, open: (moment: number) => void): HTMLElement[];

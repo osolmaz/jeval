@@ -2,10 +2,12 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { z } from "zod";
 import { packageRoot } from "./root.ts";
 
 const run = promisify(execFile);
 const ROOT = packageRoot(import.meta.url);
+const packageSchema = z.object({ version: z.string() });
 
 /** The switch code that ran: its package version and, in a Git checkout, its commit and whether it had changes. */
 export interface Source {
@@ -15,7 +17,7 @@ export interface Source {
 }
 
 export async function switchSource(root = ROOT): Promise<Source> {
-	const { version } = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { version: string };
+	const { version } = packageSchema.parse(JSON.parse(await readFile(join(root, "package.json"), "utf8")));
 	try {
 		const commit = (await run("git", ["-C", root, "rev-parse", "HEAD"])).stdout.trim();
 		const status = (await run("git", ["-C", root, "status", "--porcelain", "--untracked-files=no"])).stdout;

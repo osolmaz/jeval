@@ -502,9 +502,9 @@ The fourth PR follows the plan above, with these differences and additions:
 - **Word lists.** Each example lists its words in `domain-words.txt`, and the word check reads every example's list
   in place of a list of its own, so a new example is covered once it brings its list.
 
-## Next: the decision request
+## The decision request
 
-Status: planned, not built.
+Status: done in [#33](https://github.com/osolmaz/switch/pull/33), together with the discrepancies below.
 
 **Rule.** Everything that goes to a decision model or comes back from one follows pi-ai's standard forms, as far as
 switch can use them: the request, the questions, the answers, the result and the usage. switch reshapes only where it
@@ -656,7 +656,8 @@ these types, so that it imports nothing from pi-ai.
 
 ## Other discrepancies
 
-Status: noted, not fixed. A review of the code and the docs found these besides the reshapes of pi-ai's forms above.
+Status: done in [#33](https://github.com/osolmaz/switch/pull/33), as "How the build did them" below says. A review of
+the code and the docs found these besides the reshapes of pi-ai's forms above.
 
 **What a run records.**
 
@@ -805,6 +806,36 @@ and these besides. Each one was checked in the code, except item 34.
     `trace.ts`, `replay.ts` and `viewer/src/frames.ts`. To do: remove the unused exports, and use `startOf`.
 39. **Two kinds of `LIMITS`.** legal-judge's `LIMITS` holds its own sizes, but chess's `LIMITS` is switch's `Limits`.
     To do: another name in legal-judge, such as `SIZES`.
+
+### How the build did them
+
+The build follows the items above, with these choices:
+
+- **Replay in the loop.** A replay is no longer a decider that pretends to be a model. The loop takes each recorded
+  pick by its key, copies its probabilities and confidence and marks it `repeated`, takes the recorded states, ends
+  where the recorded steps ended, and repeats the recorded answers or their failure. `replayOf(entries, { fork })`
+  repeats a fork's steps, and `replayOf(entries, { askAgain: true })` is `run --state-from`. This fixes items 9 to 14
+  and 19 at one place. A whole replay runs with `recordedModel`, which the loop never asks.
+- **The trace.** It keeps no usage: the requests file keeps every request's usage once, which settles item 20. Its
+  entries have no `parent` and no `id`, since neither was read. It ends with an `end` entry: why the steps ended, and
+  why the answers failed. A failed answer thus leaves its error in the trace.
+- **Failures.** A case that throws gets a `result.json` with its error and no ending, and a note at the end of its
+  trace; a run that goes on runs it again. `run.json`'s totals count it, and every failed pick, as failed.
+- **`replay --out`.** It writes the replay as a run folder of one case, with `replay: { trace, fork }` in `run.json`.
+- **The pick.** Its question id and the view function's purpose are both `pick`. A domain question with that id is
+  refused.
+- **Names.** `HarnessDomain`, `domainOf` and `domainNamed` became `DomainSetup`, `setupOf` and `runnerNamed`.
+  `Exchange` became `RecordedRequest`, read with `parseRequests`. In the viewer, the `stage` hook became `draw`, its
+  area `.drawing`, `endingOf` became `outcomeOf`, and "Model confidence" became "Probability of each pick". In chess,
+  a piece's `kind` became `type` and `SoundKind` became `SoundEvent`; in legal-judge, a file's `kind` became `format`,
+  in `case.json` too, so case folders are ingested again.
+- **The view function** gets the decider's characters per token as its fourth argument, and measures with switch's
+  `estimateTokens`.
+- **Versions.** Both examples' versions are 0.5.0, since their traces and outcomes changed. legal-judge's version no
+  longer holds the judge's hash, which `run.json` records as the definition's.
+- **Node.** switch asks for Node 22.18, the first 22 release that runs TypeScript sources without a flag.
+- **Item 26.** `viewer/README.md` still names the chess example's part, as the main README names the examples: it
+  points to an example, and the viewer's code knows nothing of it.
 
 ## Out of scope
 

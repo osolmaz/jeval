@@ -36,8 +36,8 @@ likeliest moves, the players' bars, a sound button, the move list with the score
 A part has two halves:
 
 - Browser modules that call `registerPart` from `@osolmaz/switch-viewer/page` with the domain's name and the part's
-  hooks. Every hook is optional: `stage` draws a moment of the case, and gets the moment it moves on from, so that it
-  can animate the step; `stepNote` adds text after a step's label; `steps` lists the steps beside the stage; `hidden`
+  hooks. Every hook is optional: `draw` draws a moment of the case, and gets the moment it moves on from, so that it
+  can animate the step; `stepNote` adds text after a step's label; `steps` lists the steps beside the drawing; `hidden`
   names the outcome's fields that the result leaves out; and `download` offers a file of the case.
 - A `DomainViewer` for the server, which names those modules, the part's stylesheets and the config the part starts
   with, such as its images. It can also give `summary`, a short line on how a case ended, for the list of cases and

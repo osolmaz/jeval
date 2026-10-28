@@ -1,4 +1,4 @@
-import type { FileKind, Unit } from "../case.ts";
+import type { FileFormat, Unit } from "../case.ts";
 import { readDocx } from "./docx.ts";
 import { readEmail } from "./email.ts";
 import { readPdf, scannedPages } from "./pdf.ts";
@@ -15,7 +15,7 @@ export interface Picture {
 }
 
 export interface Extracted {
-	readonly kind: FileKind;
+	readonly format: FileFormat;
 	readonly units: Unit[];
 	readonly pictures: Picture[];
 	readonly formatting: string | null;
@@ -41,7 +41,13 @@ const extensionOf = (path: string): string => {
 	return name.includes(".") ? (name.split(".").at(-1) ?? "").toLowerCase() : "";
 };
 
-const plain = (kind: FileKind, units: Unit[]): Extracted => ({ kind, units, pictures: [], formatting: null, marks: 0 });
+const plain = (format: FileFormat, units: Unit[]): Extracted => ({
+	format,
+	units,
+	pictures: [],
+	formatting: null,
+	marks: 0,
+});
 
 async function pdf(bytes: Uint8Array, tools: Tools): Promise<Extracted> {
 	const units = await readPdf(bytes);
@@ -52,7 +58,7 @@ async function pdf(bytes: Uint8Array, tools: Tools): Promise<Extracted> {
 		const fitted = await tools.fitImage(png, "png", MAX_IMAGE_SIDE);
 		pictures.push({ label: `page ${String(page)} image`, ...fitted });
 	}
-	return { kind: "pdf", units, pictures, formatting: null, marks: 0 };
+	return { format: "pdf", units, pictures, formatting: null, marks: 0 };
 }
 
 function text(extension: string, bytes: Uint8Array): Extracted {
@@ -64,12 +70,12 @@ async function image(extension: string, bytes: Uint8Array, tools: Tools): Promis
 	const format = IMAGES[extension];
 	if (format === undefined || format === null) throw new Error(`${extension} images are not supported`);
 	const fitted = await tools.fitImage(bytes, format, MAX_IMAGE_SIDE);
-	return { kind: "image", units: [], pictures: [{ label: "image", ...fitted }], formatting: null, marks: 0 };
+	return { format: "image", units: [], pictures: [{ label: "image", ...fitted }], formatting: null, marks: 0 };
 }
 
 function docx(bytes: Uint8Array): Extracted {
 	const word = readDocx(bytes);
-	return { kind: "docx", units: word.units, pictures: [], formatting: word.formatting, marks: word.marks };
+	return { format: "docx", units: word.units, pictures: [], formatting: word.formatting, marks: word.marks };
 }
 
 const READERS: Readonly<Record<string, (bytes: Uint8Array, tools: Tools) => Promise<Extracted>>> = {

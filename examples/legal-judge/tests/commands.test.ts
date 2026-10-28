@@ -1,9 +1,9 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Answer, parseTrace, STOP_KEY } from "@osolmaz/switch";
+import { type Answer, parseRequests, parseTrace, PICK_ID, STOP_KEY } from "@osolmaz/switch";
 import { replayCase, resultSchema, RunMismatchError, runCases, runRecordSchema } from "@osolmaz/switch/cli";
-import { answering, fakeDecider, type Policy } from "@osolmaz/switch/testing";
+import { answering, failing, fakeDecider, type Policy } from "@osolmaz/switch/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_JUDGE } from "../src/index.ts";
 import { ingestCase } from "../src/ingest/ingest.ts";
@@ -18,10 +18,10 @@ const ingest = (input: string, output: string, id: string) => ingestCase(input, 
 function missingNothing(policy: Policy, probability = 0.1): Policy {
 	return (request, call) => {
 		const result = policy(request, call);
-		if (!result.ok) return result;
-		const answers: Record<string, Answer> = { ...result.answers };
+		if (result.stopReason !== "stop") return result;
+		const answers: Record<string, Answer> = { ...result.decisionAnswers };
 		for (const id of Object.keys(answers)) if (id.endsWith("/misses")) answers[id] = { type: "bool", probability };
-		return { ...result, answers };
+		return { ...result, decisionAnswers: answers };
 	};
 }
 
@@ -84,7 +84,7 @@ describe("the legal-judge harness", () => {
 		const run = runRecordSchema.parse(JSON.parse(await readFile(join(folder, "out", "run.json"), "utf8")));
 		expect(run).toMatchObject({
 			domain: "legal-judge",
-			version: `0.4.0 legal-judge@${legalJudge.definition.hash.slice(0, 12)}`,
+			version: "0.5.0",
 			definition: { name: "legal-judge", hash: legalJudge.definition.hash, content: { domain: "legal-judge" } },
 			model: "fake/decider",
 			limits: { steps: 8, choices: 30, windowShare: 0.9 },
@@ -94,18 +94,27 @@ describe("the legal-judge harness", () => {
 		const result = resultSchema.parse(
 			JSON.parse(await readFile(join(folder, "out", "cases", "c1", "result.json"), "utf8")),
 		);
-		expect(result).toMatchObject({ case: "c1", domain: "legal-judge", model: "fake/decider", steps: 1, error: null });
-		const requests = (await readFile(join(folder, "out", "cases", "c1", "requests.jsonl"), "utf8"))
-			.split("\n")
-			.filter(Boolean)
-			.map(
-				(line) => JSON.parse(line) as { request: { json: Record<string, unknown>; questions: { id: string }[] } },
-			);
-		expect(requests.map((exchange) => exchange.request.questions.map((question) => question.id))).toEqual([
-			["next"],
+		expect(result).toMatchObject({
+			case: "c1",
+			domain: "legal-judge",
+			model: "fake/decider",
+			steps: 1,
+			ended: "stop",
+			error: null,
+		});
+		const requests = parseRequests(await readFile(join(folder, "out", "cases", "c1", "requests.jsonl"), "utf8"));
+		expect(requests.map((recorded) => Object.keys(recorded.request.decisionQuestions))).toEqual([
+			[PICK_ID],
 			["S-1/meets", "S-1/misses"],
 		]);
-		expect(requests[1]?.request.json).toMatchObject({ rules: expect.any(String) as unknown });
+		// The check stage reads the view for the answers, with the process, the checking stage and the rules.
+		expect(Object.keys(requests[1]?.request.decisionState ?? {})).toEqual([
+			"request",
+			"evidence",
+			"process",
+			"stage",
+			"rules",
+		]);
 		expect(lines).toEqual(
 			expect.arrayContaining(["c1: stop", "c2: stop", expect.stringMatching(/^missing: FAILED/)]),
 		);
@@ -123,7 +132,7 @@ describe("the legal-judge harness", () => {
 			join(folder, "cases", "c1"),
 			join(folder, "out", "cases", "c1", "trace.jsonl"),
 		);
-		expect(replayed.result.answers).toEqual(result.answers);
+		expect(replayed.answers).toEqual(result.answers);
 
 		const set = await loadLabelledSet(await setOf(["c1", "c3"], { c1: true, c3: false }));
 		expect(set.folders).toEqual([join(folder, "cases", "c1"), join(folder, "cases", "c3")]);
@@ -151,9 +160,16 @@ describe("the legal-judge harness", () => {
 		);
 		await runCases(legalJudge, cases, first, { ...options, out: join(folder, "first") });
 
+		// A stricter judge, whose stop text differs too: the steps are repeated by their keys, not their texts.
 		const strict = join(folder, "strict.json");
-		const definition = JSON.parse(await readFile(DEFAULT_JUDGE, "utf8")) as { name: string };
-		await writeFile(strict, JSON.stringify({ ...definition, name: "strict" }));
+		const definition = JSON.parse(await readFile(DEFAULT_JUDGE, "utf8")) as {
+			name: string;
+			texts: Record<string, string>;
+		};
+		await writeFile(
+			strict,
+			JSON.stringify({ ...definition, name: "strict", texts: { ...definition.texts, stop: "Stop: enough." } }),
+		);
 		const second = fakeDecider(answering(0.3, () => STOP_KEY));
 		const out = join(folder, "second");
 		await runCases(await legalJudgeSetup(strict), cases, second, {
@@ -163,7 +179,10 @@ describe("the legal-judge harness", () => {
 		});
 
 		// Only the questions went to the model: the picks and states were repeated from the first run.
-		expect(second.requests.map((request) => request.questions[0]?.id)).toEqual(["S-1/meets", "S-1/meets"]);
+		expect(second.requests.map((request) => Object.keys(request.decisionQuestions)[0])).toEqual([
+			"S-1/meets",
+			"S-1/meets",
+		]);
 		const run = runRecordSchema.parse(JSON.parse(await readFile(join(out, "run.json"), "utf8")));
 		expect(run).toMatchObject({
 			definition: { name: "strict" },
@@ -193,15 +212,13 @@ describe("the legal-judge harness", () => {
 		await ingest(await inputFolder("c1"), join(folder, "cases", "c1"), "c1");
 		const lines: string[] = [];
 		const broken = fakeDecider((request, call) =>
-			request.questions[0]?.type === "choice"
-				? answering(0.5, () => STOP_KEY)(request, call)
-				: { ok: false, failure: "provider", message: "down", usage: { inputTokens: null, milliseconds: 0 } },
+			PICK_ID in request.decisionQuestions ? answering(0.5, () => STOP_KEY)(request, call) : failing("down"),
 		);
 		await runCases(legalJudge, [join(folder, "cases", "c1")], broken, {
 			out: join(folder, "out"),
 			concurrency: 1,
 			log: (line) => lines.push(line),
 		});
-		expect(lines).toEqual(["c1: stop | ERROR provider: down"]);
+		expect(lines).toEqual(["c1: stop | ERROR down"]);
 	});
 });

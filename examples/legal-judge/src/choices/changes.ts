@@ -12,7 +12,7 @@ export const changes = (legalCase: LegalCase) =>
 		type: "changes",
 		choices: (state) =>
 			legalCase.files
-				.filter((file) => file.role === "document" && file.kind === "docx" && file.marks > 0)
+				.filter((file) => file.role === "document" && file.format === "docx" && file.marks > 0)
 				.filter((file) => !found(state, `changes:${file.id}`))
 				.map((file) => ({
 					key: file.id,

@@ -167,8 +167,8 @@ class ChessBoard implements BoardView {
 	}
 
 	private paint(node: HTMLElement, piece: Piece): void {
-		node.style.backgroundImage = `url("${this.images[`${piece.color}${piece.kind.toUpperCase()}`] ?? ""}")`;
-		node.dataset["piece"] = `${piece.color}${piece.kind}`;
+		node.style.backgroundImage = `url("${this.images[`${piece.color}${piece.type.toUpperCase()}`] ?? ""}")`;
+		node.dataset["piece"] = `${piece.color}${piece.type}`;
 	}
 
 	private draw(piece: Piece): HTMLElement {
@@ -179,8 +179,8 @@ class ChessBoard implements BoardView {
 		return node;
 	}
 
-	private mark(square: string, kind: string): HTMLElement {
-		const node = layer(this.document, `mark ${kind}`);
+	private mark(square: string, name: string): HTMLElement {
+		const node = layer(this.document, `mark ${name}`);
 		this.place(node, square);
 		return node;
 	}

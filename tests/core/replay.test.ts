@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	limitsOf,
 	parseTrace,
+	PICK_ID,
+	recordedModel,
 	ReplayError,
 	replayOf,
 	run,
@@ -10,7 +12,16 @@ import {
 	STOP_KEY,
 	type TraceEntry,
 } from "../../src/core/index.ts";
-import { answering, type Facts, factsMachine, type FactsState, FACTS, fakeDecider } from "../helpers/fakes.ts";
+import {
+	answering,
+	type Facts,
+	factsMachine,
+	type FactsState,
+	FACTS,
+	failing,
+	fakeDecider,
+	type Policy,
+} from "../helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact b", c: "fact c" } };
 
@@ -21,22 +32,27 @@ const unrunnable: StateMachine<FactsState> = {
 	transition: () => Promise.reject(new Error("a transition ran again")),
 };
 
-async function recorded(): Promise<TraceEntry[]> {
+/** A recorded run that picks the second choice twice, then stops; `policy` overrides the decider. */
+async function recorded(policy?: Policy): Promise<TraceEntry[]> {
 	let calls = 0;
-	const decider = fakeDecider(answering(0.7, (labels) => (calls++ < 2 ? (labels[1] ?? STOP_KEY) : STOP_KEY)));
-	return (await run(FACTS, factsMachine(facts), decider)).trace.entries;
+	const fallback = answering(0.7, (labels) => (calls++ < 2 ? (labels[1] ?? STOP_KEY) : STOP_KEY));
+	return (await run(FACTS, factsMachine(facts), fakeDecider(policy ?? fallback))).trace.entries;
 }
 
-const picks = (list: readonly TraceEntry[]) => list.flatMap((entry) => (entry.type === "pick" ? [entry.key] : []));
+const picks = (list: readonly TraceEntry[]) => list.flatMap((entry) => (entry.type === "pick" ? [entry.choice] : []));
 const states = (list: readonly TraceEntry[]) => list.flatMap((entry) => (entry.type === "state" ? [entry.state] : []));
+const isPick = (request: { decisionQuestions: object }) => PICK_ID in request.decisionQuestions;
+/** Picks the first choice, then fails the second pick. */
+const failsSecondPick: Policy = (request, call) =>
+	call === 2 ? failing("down") : answering(0.4, (labels) => labels[0] ?? STOP_KEY)(request, call);
 
-describe("replayOf", () => {
-	it("repeats the recorded picks with their recorded states, and the answers, and runs no transition", async () => {
+describe("a replay of a whole trace", () => {
+	it("repeats the picks, the states, the ending and the answers, asks no model and runs no transition", async () => {
 		const entries = await recorded();
-		const { decider, replay } = replayOf(entries);
-		const again = await run(FACTS, unrunnable, decider, { replay });
+		const again = await run(FACTS, unrunnable, recordedModel(entries), { replay: replayOf(entries) });
 		expect(picks(again.trace.entries)).toEqual(picks(entries));
 		expect(states(again.trace.entries)).toEqual(states(entries));
+		expect(again).toMatchObject({ ended: "stop", error: null });
 		expect(again.state).toEqual({ looked: ["b", "c"], found: ["fact b", "fact c"] });
 		expect(again.answers).toEqual({
 			a: { type: "bool", probability: 0.7 },
@@ -45,39 +61,88 @@ describe("replayOf", () => {
 		});
 	});
 
-	it("forks: takes the state after some steps, then lets another model pick, and runs its transitions", async () => {
+	it("copies each recorded pick's probabilities and confidence, and marks it as repeated", async () => {
+		const entries = await recorded();
+		const again = await run(FACTS, unrunnable, recordedModel(entries), { replay: replayOf(entries) });
+		const recordedPicks = entries.filter((entry) => entry.type === "pick");
+		const repeated = again.trace.entries.filter((entry) => entry.type === "pick");
+		expect(repeated).toEqual(recordedPicks.map((pick) => ({ ...pick, repeated: true })));
+	});
+
+	it("finds each pick by its key, so a new stop text does not matter", async () => {
+		const entries = await recorded();
+		const renamed = { ...FACTS, stop: "Enough" };
+		const again = await run(renamed, unrunnable, recordedModel(entries), { replay: replayOf(entries) });
+		expect(picks(again.trace.entries)).toEqual(picks(entries));
+	});
+
+	it("ends with a failed pick where the recorded pick failed", async () => {
+		const entries = await recorded(failsSecondPick);
+		expect(entries.at(-1)).toEqual({ type: "end", ended: "pick failed", error: null });
+		const again = await run(FACTS, unrunnable, recordedModel(entries), { replay: replayOf(entries) });
+		expect(again).toMatchObject({ steps: 2, ended: "pick failed" });
+		expect(
+			again.trace.entries.some((entry) => entry.type === "note" && entry.message.includes("recorded pick")),
+		).toBe(true);
+	});
+
+	it("fails the answers as the recorded run did", async () => {
+		const entries = await recorded((request, call) =>
+			isPick(request) ? answering(0.5, () => STOP_KEY)(request, call) : failing("the provider is down"),
+		);
+		const again = await run(FACTS, unrunnable, recordedModel(entries), { replay: replayOf(entries) });
+		expect(again).toMatchObject({ answers: null, error: "the provider is down" });
+	});
+});
+
+describe("a replay that asks the questions again", () => {
+	it("repeats the steps and how they ended, and asks the model only the questions", async () => {
+		const entries = await recorded(failsSecondPick);
+		const model = fakeDecider(answering(0.9));
+		const again = await run(FACTS, unrunnable, model, { replay: replayOf(entries, { askAgain: true }) });
+		expect(again).toMatchObject({ steps: 2, ended: "pick failed" });
+		expect(model.requests.some(isPick)).toBe(false);
+		expect(again.answers?.["a"]).toEqual({ type: "bool", probability: 0.9 });
+	});
+});
+
+describe("a fork", () => {
+	it("takes the state after some steps, then lets the model pick and answer, and runs its transitions", async () => {
 		const entries = await recorded();
 		let calls = 0;
 		const then = fakeDecider(answering(0.2, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
-		const { decider, replay } = replayOf(entries, { steps: 1, then });
-		const forked = await run(FACTS, factsMachine(facts), decider, { replay });
+		const forked = await run(FACTS, factsMachine(facts), then, { replay: replayOf(entries, { fork: 1 }) });
 		expect(forked.steps).toBe(3);
 		expect(forked.state).toEqual({ looked: ["b", "a"], found: ["fact b", "fact a"] });
 		expect(forked.answers?.["a"]).toEqual({ type: "bool", probability: 0.2 });
 		expect(forked.trace.entries[0]).toMatchObject({ model: "fake/decider" });
+		expect(() => replayOf(entries, { fork: 9 })).toThrow("the trace has 3 steps, fewer than the fork's 9");
 	});
+});
 
-	it("stops once the recorded picks run out", async () => {
+describe("a replay that does not match", () => {
+	it("refuses a trace without a start or an end, and a pick that is not among the choices", async () => {
 		const entries = await recorded();
-		const shortened = entries.filter((entry) => !(entry.type === "pick" && entry.step === 3));
-		const { decider, replay } = replayOf(shortened);
-		expect((await run(FACTS, unrunnable, decider, { replay })).steps).toBe(3);
-	});
-
-	it("refuses a trace that does not match the run", async () => {
-		const entries = await recorded();
-		const again = (list: readonly TraceEntry[], machine: StateMachine<FactsState> = unrunnable) => {
-			const { decider, replay } = replayOf(list);
-			return run(FACTS, machine, decider, { replay });
-		};
-		expect(() => replayOf(entries.slice(1))).toThrow(ReplayError);
+		const again = (list: readonly TraceEntry[], machine: StateMachine<FactsState> = unrunnable) =>
+			run(FACTS, machine, recordedModel(list), { replay: replayOf(list) });
+		expect(() => replayOf(entries.slice(1))).toThrow(/start entry/);
+		expect(() => replayOf(entries.filter((entry) => entry.type !== "end"))).toThrow(ReplayError);
 		await expect(again(entries, factsMachine({ facts: { z: "other" } }))).rejects.toThrow(
 			/not among the choices any more/,
 		);
-		await expect(again(entries.filter((entry) => entry.type !== "answers"))).rejects.toThrow(/no answers/);
-		await expect(again(entries.filter((entry) => entry.type !== "choices"))).rejects.toThrow(/fewer picks/);
 		const missing = entries.map((entry) => (entry.type === "answers" ? { ...entry, answers: {} } : entry));
-		await expect(again(missing)).rejects.toThrow(/no answer for a/);
+		await expect(again(missing)).rejects.toThrow("the trace has no answer for a");
+	});
+
+	it("refuses a run that goes on past the recorded steps", async () => {
+		const entries = await recorded();
+		const cut = entries.filter((entry) => !(entry.type === "pick" && entry.step === 3));
+		await expect(run(FACTS, unrunnable, recordedModel(cut), { replay: replayOf(cut) })).rejects.toThrow(
+			"the recorded run ended with stop after 2 steps, but this run goes on",
+		);
+		await expect(
+			recordedModel(entries).decide({ decisionState: {}, decisionImages: [], decisionQuestions: {} }),
+		).rejects.toThrow(ReplayError);
 	});
 
 	it("refuses a trace whose states skip a step or end too early", async () => {
@@ -85,8 +150,10 @@ describe("replayOf", () => {
 		expect(() => replayOf(entries.filter((entry) => !(entry.type === "state" && entry.step === 1)))).toThrow(
 			"the trace's states skip to step 2",
 		);
-		const { decider, replay } = replayOf(entries.filter((entry) => !(entry.type === "state" && entry.step === 2)));
-		await expect(run(FACTS, unrunnable, decider, { replay })).rejects.toThrow("the trace has no state after step 2");
+		const list = entries.filter((entry) => !(entry.type === "state" && entry.step === 2));
+		await expect(run(FACTS, unrunnable, recordedModel(list), { replay: replayOf(list) })).rejects.toThrow(
+			"the trace has no state after step 2",
+		);
 	});
 });
 

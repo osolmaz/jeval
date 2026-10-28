@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerText, changesOf, confidence, momentsOf, percent, plain, ranked } from "../src/web/model.ts";
+import { answerText, changesOf, momentsOf, percent, pickProbabilities, plain, ranked } from "../src/web/model.ts";
 import { factsSession } from "./helpers/sessions.ts";
 
 describe("moments", () => {
@@ -18,7 +18,7 @@ describe("moments", () => {
 			"Step 2",
 			"Step 3",
 		]);
-		expect(confidence(session.story)).toEqual([0.9, 0.9, 0.9]);
+		expect(pickProbabilities(session.story)).toEqual([0.9, 0.9, 0.9]);
 	});
 });
 
@@ -26,8 +26,8 @@ describe("text", () => {
 	it("writes probabilities, answers and outcome values", () => {
 		expect([percent(null), percent(0.5), percent(0.0004)]).toEqual(["–", "50.0%", "0.04%"]);
 		expect(answerText({ type: "bool", probability: 0.25 })).toBe("yes 25.0%");
-		expect(answerText({ type: "choice", choice: "b", probabilities: { b: 0.6 } })).toBe("b 60.0%");
-		expect(answerText({ type: "choice", choice: "c", probabilities: {} })).toBe("c –");
+		expect(answerText({ type: "choice", choice: "b", probabilities: { b: 0.6 }, confidence: 0.4 })).toBe("b 60.0%");
+		expect(answerText({ type: "choice", choice: "c", probabilities: {}, confidence: 0 })).toBe("c –");
 		expect(answerText({ type: "score", score: 1.5, confidence: 0.4 })).toBe("1.50 (confidence 40.0%)");
 		expect(plain([1, "a", { b: true }])).toBe("1, a, b true");
 		expect(plain(null)).toBe("null");

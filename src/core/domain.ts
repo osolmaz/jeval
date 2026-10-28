@@ -24,7 +24,7 @@ export interface CaseRun {
 export interface CaseOptions {
 	readonly limits: Limits;
 	readonly trace: Trace;
-	/** A trace whose states the case takes again, up to a fork. */
+	/** A trace whose picks and states the case takes again. */
 	readonly replay?: Replay;
 }
 
@@ -38,13 +38,17 @@ export interface Runner {
 	run(folder: string, decider: Decider, options: CaseOptions): Promise<CaseRun>;
 }
 
-/** The runner of a domain: it loads a case folder's state machine, runs the loop on it and reports the case. */
+/**
+ * The runner of a domain: it loads a case folder's state machine, runs the loop on it and reports the case. A domain
+ * without a definition of its own is defined by its stop text, its instructions and its limits.
+ */
 export function runnerOf<S extends JsonObject, C extends Choice>(domain: Domain<S, C>): Runner {
+	const { name, stop, instructions, limits } = domain;
 	return {
-		name: domain.name,
+		name,
 		version: domain.version,
-		definition: domain.definition,
-		limits: domain.limits,
+		definition: domain.definition ?? definitionOf(name, { stop, instructions, limits: { ...limits } }),
+		limits,
 		caseId: (folder) => domain.caseId(folder),
 		async run(folder, decider, options) {
 			const id = await domain.caseId(folder);

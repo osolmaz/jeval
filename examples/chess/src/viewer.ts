@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { type DomainViewer, modulesNear } from "@osolmaz/switch-viewer";
-import type { SoundKind, SoundSet } from "./web/sound.ts";
+import type { SoundEvent, SoundSet } from "./web/sound.ts";
 
 /**
  * The chess part's files: the pieces, cburnett by Colin M.L. Burnett, the set lichess shows by default, under the BSD
@@ -11,7 +11,7 @@ const ASSETS = new URL("../assets/", import.meta.url);
 const PIECES = ["wK", "wQ", "wR", "wB", "wN", "wP", "bK", "bQ", "bR", "bB", "bN", "bP"] as const;
 
 /** The clip each event plays, by the file named after the event. Change a file here and nowhere else. */
-export const SOUND_SET: Readonly<Record<SoundKind, string>> = {
+export const SOUND_SET: Readonly<Record<SoundEvent, string>> = {
 	"game-start": "game-start.wav",
 	move: "move.wav",
 	castling: "castling.wav",

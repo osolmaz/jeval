@@ -5,7 +5,7 @@ import { formatReport, metrics, score, type Verdicts } from "../src/score/score.
 const yes: Answer = { type: "bool", probability: 0.9 };
 
 describe("metrics", () => {
-	it("counts accuracy, kappa, pass rates and the two kinds of error", () => {
+	it("counts accuracy, kappa, pass rates and the two sorts of error", () => {
 		const result = metrics([
 			[true, true],
 			[true, false],

@@ -1,5 +1,5 @@
 import { Chess } from "chess.js";
-import type { DomainShared, JsonObject, Limits, StateMachine } from "@osolmaz/switch";
+import type { DomainShared, Ending, JsonObject, Limits, StateMachine } from "@osolmaz/switch";
 import type { ChessCase, ChessGame } from "./case.ts";
 import {
 	boardOf,
@@ -25,7 +25,7 @@ export const LIMITS: Limits = { steps: 200, choices: 220, windowShare: 0.9 };
 /** What every game shares: the domain's name and version, the two texts of the pick question, and the limits. */
 export const CHESS: DomainShared = {
 	name: "chess",
-	version: "0.4.0",
+	version: "0.5.0",
 	stop: "Resign the game",
 	instructions: "Choose your next move. Win material, attack the opponent's king, and keep your own pieces safe.",
 	limits: LIMITS,
@@ -59,40 +59,44 @@ export function chessMachine(game: ChessGame): StateMachine<ChessState, MoveChoi
 		initial: () => opening(game),
 		choices: movesIn,
 		transition: (state, choice) => play(game, state, choice.lan),
-		view: (state, _purpose, tokens) => Promise.resolve(chessView(state, tokens)),
+		view: (state, _purpose, tokens, charsPerToken) => Promise.resolve(chessView(state, tokens, charsPerToken)),
 	};
 }
 
+/** A game that is still on: the steps ran out at the step limit, or a pick failed. */
+const unfinished = (ended: Ending): { result: string; reason: string } => ({ result: "unfinished", reason: ended });
+
 /** The result in self-play, where the side that did not have to move won a checkmate or a resignation. */
-function selfResult(board: Chess, status: Status, resigned: boolean): { result: string; reason: string } {
+function selfResult(board: Chess, status: Status, ended: Ending): { result: string; reason: string } {
 	const winner = `${board.turn() === "w" ? "black" : "white"} wins`;
-	if (resigned) return { result: winner, reason: "resignation" };
+	if (ended === "stop") return { result: winner, reason: "resignation" };
 	if (status === "checkmate") return { result: winner, reason: status };
-	return status === "playing" ? { result: "unfinished", reason: "move limit" } : { result: "draw", reason: status };
+	return status === "playing" ? unfinished(ended) : { result: "draw", reason: status };
 }
 
-/** The result for the model against an opponent: a win, a loss, a draw, or unfinished at the move limit. */
+/** The result for the model against an opponent: a win, a loss, a draw, or unfinished. */
 function modelResult(
 	side: ChessCase["side"],
 	board: Chess,
 	status: Status,
-	resigned: boolean,
+	ended: Ending,
 ): { result: string; reason: string } {
-	if (resigned) return { result: "loss", reason: "resignation" };
+	if (ended === "stop") return { result: "loss", reason: "resignation" };
 	if (status === "checkmate") return { result: board.turn() === colorOf(side) ? "loss" : "win", reason: status };
-	return status === "playing" ? { result: "unfinished", reason: "move limit" } : { result: "draw", reason: status };
+	return status === "playing" ? unfinished(ended) : { result: "draw", reason: status };
 }
 
 /**
- * How the game ended, from its last state: the result with its reason, the number of moves both sides made, the
- * material and the final position. Against an opponent the result is the model's: win, loss or draw. In self-play it
- * names the winner: white wins or black wins, or a draw. A game the move limit cut is unfinished.
+ * How the game ended, from its last state and why its steps ended: the result with its reason, the number of moves
+ * both sides made, the material and the final position. Stop is a resignation. Against an opponent the result is the
+ * model's: win, loss or draw. In self-play it names the winner: white wins or black wins, or a draw. A game that the
+ * step limit or a failed pick cut is unfinished, with that as its reason.
  */
-export function outcomeOf(state: ChessState, resigned: boolean): JsonObject {
+export function outcomeOf(state: ChessState, ended: Ending): JsonObject {
 	const board = boardOf(state);
 	const status = statusOf(board);
 	const ending =
-		state.you === "both" ? selfResult(board, status, resigned) : modelResult(state.you, board, status, resigned);
+		state.you === "both" ? selfResult(board, status, ended) : modelResult(state.you, board, status, ended);
 	return { ...ending, moves: board.history().length, material: materialOf(board), fen: board.fen() };
 }
 

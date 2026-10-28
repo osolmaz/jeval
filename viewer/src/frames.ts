@@ -1,4 +1,4 @@
-import type { Answer, JsonObject, TraceEntry } from "@osolmaz/switch";
+import { type Answer, type Ending, type JsonObject, startOf, type TraceEntry } from "@osolmaz/switch";
 
 /** One choice that the model saw, with the probability it gave it; null when the model never answered. */
 export interface FrameChoice {
@@ -34,7 +34,11 @@ export interface Story {
 	/** The latest state of the case. */
 	readonly last: JsonObject | null;
 	readonly answers: Readonly<Record<string, Answer>> | null;
-	/** Notes made outside a step, such as a failed answer. */
+	/** Why the steps ended; null until the run has ended. */
+	readonly ended: Ending | null;
+	/** Why the answers failed; null when they did not, or until the run has ended. */
+	readonly error: string | null;
+	/** Notes made after the steps, such as a retry of the answers. */
 	readonly notes: readonly string[];
 }
 
@@ -50,11 +54,11 @@ interface Building {
 type Entry<T extends TraceEntry["type"]> = Extract<TraceEntry, { type: T }>;
 
 function withPick(frame: Building, pick: Entry<"pick">): void {
-	frame.picked = pick.key;
+	frame.picked = pick.choice;
 	frame.choices = frame.choices.map((offered) => ({
 		...offered,
 		probability: pick.probabilities[offered.key] ?? null,
-		picked: offered.key === pick.key,
+		picked: offered.key === pick.choice,
 	}));
 }
 
@@ -75,6 +79,8 @@ interface Reading {
 	readonly notes: string[];
 	last: JsonObject | null;
 	answers: Readonly<Record<string, Answer>> | null;
+	ended: Ending | null;
+	error: string | null;
 }
 
 function stated(reading: Reading, entry: Entry<"state">): void {
@@ -89,39 +95,50 @@ function picked(reading: Reading, entry: Entry<"pick">): void {
 	if (frame !== undefined) withPick(frame, entry);
 }
 
+/** A note belongs to the step that is still waiting for its pick; a note after the picks belongs to the story. */
 function noted(reading: Reading, entry: Entry<"note">): void {
-	(reading.frames.at(-1)?.notes ?? reading.notes).push(entry.message);
+	const frame = reading.frames.at(-1);
+	if (frame?.picked === null && frame.after === null) frame.notes.push(entry.message);
+	else reading.notes.push(entry.message);
 }
+
+/** How each type of entry adds to the story; the start and the answer stages add nothing. */
+const READERS: { readonly [T in TraceEntry["type"]]: (reading: Reading, entry: Entry<T>) => void } = {
+	start: () => undefined,
+	state: stated,
+	choices: (reading, entry) => {
+		reading.frames.push(choicesFrame(entry, reading.last));
+	},
+	pick: picked,
+	stage: () => undefined,
+	answers: (reading, entry) => {
+		reading.answers = entry.answers;
+	},
+	note: noted,
+	end: (reading, entry) => {
+		reading.ended = entry.ended;
+		reading.error = entry.error;
+	},
+};
 
 function read(reading: Reading, entry: TraceEntry): void {
-	switch (entry.type) {
-		case "state":
-			stated(reading, entry);
-			return;
-		case "choices":
-			reading.frames.push(choicesFrame(entry, reading.last));
-			return;
-		case "pick":
-			picked(reading, entry);
-			return;
-		case "note":
-			noted(reading, entry);
-			return;
-		case "answers":
-			reading.answers = entry.answers;
-			return;
-		case "start":
-		case "stage":
-			return;
-	}
+	// The table gives each type its reader; TypeScript cannot tie the reader's entry type to the entry's.
+	(READERS[entry.type] as (reading: Reading, entry: TraceEntry) => void)(reading, entry);
 }
 
-/** Reads the trace of the case named `name` into its initial state, one frame per step, and its answers. */
+/** Reads the trace of the case named `name` into its initial state, one frame per step, its answers and its end. */
 export function storyOf(entries: readonly TraceEntry[], name: string): Story {
-	const head = entries[0];
-	if (head?.type !== "start") throw new Error("a trace starts with its start entry");
-	const reading: Reading = { initial: null, frames: [], notes: [], last: null, answers: null };
+	const head = startOf(entries);
+	const reading: Reading = {
+		initial: null,
+		frames: [],
+		notes: [],
+		last: null,
+		answers: null,
+		ended: null,
+		error: null,
+	};
 	for (const entry of entries) read(reading, entry);
-	const { initial, frames, notes, last, answers } = reading;
-	return { case: name, domain: head.domain, model: head.model, initial, frames, last, answers, notes };
+	const { initial, frames, notes, last, answers, ended, error } = reading;
+	return { case: name, domain: head.domain, model: head.model, initial, frames, last, answers, ended, error, notes };
 }

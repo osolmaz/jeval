@@ -14,7 +14,7 @@ export function file(
 		id,
 		path,
 		role,
-		kind: "text",
+		format: "text",
 		units,
 		words,
 		renders: [],
@@ -48,10 +48,10 @@ export function legalCase(overrides: Partial<LegalCase> = {}): LegalCase {
 				"documents/lease.pdf",
 				"document",
 				["Section 4.2 sets a notice period of 30 days.", "Rent is USD 2,500 a month."],
-				{ kind: "pdf" },
+				{ format: "pdf" },
 			),
 			file("d2", "documents/contract.docx", "document", ["P1: The parties agree."], {
-				kind: "docx",
+				format: "docx",
 				formatting:
 					"Tracked insertions: 1; tracked deletions: 0.\n  inserted: agree\nComments: 0.\nRuns with direct formatting: 0.",
 				marks: 1,

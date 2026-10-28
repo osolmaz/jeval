@@ -17,7 +17,7 @@ type Images = Readonly<Record<string, string>>;
 function checkSquare(state: ChessState): string | null {
 	if (!state.check) return null;
 	const turn = state.fen.split(" ")[1] === "b" ? "b" : "w";
-	return piecesOf(state.fen).find((piece) => piece.kind === "k" && piece.color === turn)?.square ?? null;
+	return piecesOf(state.fen).find((piece) => piece.type === "k" && piece.color === turn)?.square ?? null;
 }
 
 /** The arrows of a step: the likeliest moves and the picked one. */
@@ -121,7 +121,7 @@ export function soundButton(sounds: Sounds): HTMLButtonElement {
 export function playerRow(name: string, color: "w" | "b", fen: string, images: Images): HTMLElement {
 	const { lost, lead } = captures(fen);
 	const other = color === "w" ? "b" : "w";
-	const taken = lost[other].map((kind) => h("img", { src: images[`${other}${kind.toUpperCase()}`] ?? "", alt: "" }));
+	const taken = lost[other].map((type) => h("img", { src: images[`${other}${type.toUpperCase()}`] ?? "", alt: "" }));
 	const ahead = color === "w" ? lead : -lead;
 	const toMove = (fen.split(" ")[1] === "b" ? "b" : "w") === color;
 	return h(

@@ -1,5 +1,5 @@
 import type { Chess } from "chess.js";
-import type { JsonObject, View } from "@osolmaz/switch";
+import { estimateTokens, type JsonObject, type View } from "@osolmaz/switch";
 import { boardOf, colorOf, nameOf } from "./game.ts";
 import type { ChessState } from "./web/data.ts";
 
@@ -7,7 +7,6 @@ const LEGEND =
 	"Capital letters are white pieces and small letters black pieces: K king, Q queen, R rook, B bishop, N knight, P pawn. A dot is an empty square.";
 /** How many of the latest moves stay in the view when the whole game does not fit. */
 const RECENT = 20;
-const CHARS_PER_TOKEN = 3;
 
 /** The board as text, rank 8 at the top, with the files under it. */
 function boardRows(board: Chess): string[] {
@@ -42,8 +41,11 @@ export function numbered(start: string, san: readonly string[]): string[] {
 	});
 }
 
-/** The position the model picks a move in, with as many earlier moves as fit `tokens`. */
-export function chessView(state: ChessState, tokens: number): View {
+/**
+ * The position the model picks a move in, with every earlier move when they fit `tokens` at `charsPerToken`, or else
+ * the latest ones after an ellipsis.
+ */
+export function chessView(state: ChessState, tokens: number, charsPerToken: number): View {
 	const board = boardOf(state);
 	// In self-play the model plays the side to move.
 	const mine = state.you === "both" ? board.turn() : colorOf(state.you);
@@ -60,12 +62,8 @@ export function chessView(state: ChessState, tokens: number): View {
 		fen: board.fen(),
 	};
 	const whole = { ...base, moves: moves.join(" ") };
-	if (JSON.stringify(whole).length / CHARS_PER_TOKEN <= tokens || moves.length <= RECENT) {
-		return { json: whole, images: [], omitted: [] };
+	if (estimateTokens(whole, charsPerToken) <= tokens || moves.length <= RECENT) {
+		return { decisionState: whole, decisionImages: [] };
 	}
-	return {
-		json: { ...base, moves: `… ${moves.slice(-RECENT).join(" ")}` },
-		images: [],
-		omitted: [`the first ${String(moves.length - RECENT)} moves of the game`],
-	};
+	return { decisionState: { ...base, moves: `… ${moves.slice(-RECENT).join(" ")}` }, decisionImages: [] };
 }

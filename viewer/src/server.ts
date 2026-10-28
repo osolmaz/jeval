@@ -46,7 +46,7 @@ export async function onlyCase(run: string): Promise<string> {
 }
 
 /** A finished case's outcome, and the summary of it that its domain's viewer gives; null before the case finished. */
-async function endingOf(
+async function outcomeOf(
 	run: string,
 	id: string,
 	viewers: Viewers,
@@ -72,7 +72,7 @@ export async function caseVersion(run: string, id: string): Promise<string> {
 export async function caseSession(run: string, id: string, viewers: Viewers = {}): Promise<Session> {
 	const version = await caseVersion(run, id);
 	const story = storyOf(parseTrace(await readFile(caseFiles(run, id).trace, "utf8")), id);
-	const { outcome, summary } = await endingOf(run, id, viewers);
+	const { outcome, summary } = await outcomeOf(run, id, viewers);
 	return { story, outcome, summary, finished: version.endsWith(":true"), version };
 }
 
@@ -114,7 +114,7 @@ async function livePage(id: string, viewers: Viewers): Promise<string> {
 
 async function index(run: string, ids: readonly string[], viewers: Viewers): Promise<Reply> {
 	const cases = await Promise.all(
-		ids.map(async (id) => ({ id, summary: (await endingOf(run, id, viewers)).summary })),
+		ids.map(async (id) => ({ id, summary: (await outcomeOf(run, id, viewers)).summary })),
 	);
 	return { status: 200, type: HTML, body: indexPage(run, cases) };
 }

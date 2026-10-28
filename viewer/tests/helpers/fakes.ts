@@ -8,7 +8,7 @@ import {
 	type StateMachine,
 } from "@osolmaz/switch";
 
-export { answering, failing, fakeDecider, type Policy } from "@osolmaz/switch/testing";
+export { answered, answering, failing, fakeDecider, type Policy } from "@osolmaz/switch/testing";
 
 /** A toy domain's case: a list of named facts the model may look up, and one yes-or-no question per fact. */
 export interface Facts {
@@ -52,18 +52,13 @@ export function factsMachine(
 		initial: () => Promise.resolve(initial),
 		...joinTypes(lookUp(facts)),
 		view: (state, purpose, tokens) =>
-			Promise.resolve({
-				json: { purpose, tokens, seen: [...state.found] },
-				images: [],
-				omitted: tokens < 100 ? ["everything", "the rest"] : [],
-			}),
+			Promise.resolve({ decisionState: { purpose, tokens, seen: [...state.found] }, decisionImages: [] }),
 		questions: () =>
-			Object.keys(facts.facts).map((name): Question => ({
-				type: "bool",
-				id: name,
-				instructions: `Is ${name} true?`,
-				yes: "yes",
-				no: "no",
-			})),
+			Object.fromEntries(
+				Object.keys(facts.facts).map((name): [string, Question] => [
+					name,
+					{ type: "bool", instructions: `Is ${name} true?`, criteria: { true: "yes", false: "no" } },
+				]),
+			),
 	};
 }

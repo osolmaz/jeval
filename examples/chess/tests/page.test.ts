@@ -50,7 +50,7 @@ describe("the chess part of the page", () => {
 			"random legal moves, seed 7",
 			"fake/decider",
 		]);
-		expect(text(root, ".result-slot")).toContain("unfinished · move limit");
+		expect(text(root, ".result-slot")).toContain("unfinished · step limit");
 		expect(Array.from(root.querySelectorAll(".clock")).map((clock) => clock.className)).toEqual([
 			"clock b",
 			"clock w active",
@@ -290,7 +290,7 @@ describe("the chess part's sounds", () => {
 		// The model's move and the reply: a clip each.
 		expect(heard(made)).toHaveLength(2);
 		await next("End");
-		// The move limit ended this game, which sounds as a plain game over, a moment after the last move.
+		// The step limit ended this game, which sounds as a plain game over, a moment after the last move.
 		expect(made[0]?.started.at(-1)).toEqual({ clip: "game-over", at: 0.25 });
 		heard(made);
 		expect(soundButton(root)).toEqual([false, "Sound on", "true"]);

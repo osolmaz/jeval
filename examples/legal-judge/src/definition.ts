@@ -34,16 +34,16 @@ export const judgeSchema = z
 			.strict(),
 		texts: z
 			.object({
-				/** The whole process, in the state of every request. */
+				/** The whole process, in what the model reads in every request. */
 				process: z.string().min(1),
-				/** The gathering stage, in the state of every choice and, followed by `choose`, in the menu's instructions. */
+				/** The gathering stage, in what the model reads for every pick and, followed by `choose`, in the pick's instructions. */
 				gather: z.string().min(1),
 				choose: z.string().min(1),
 				/** The text of the stop choice, which ends gathering. */
 				stop: z.string().min(1),
-				/** The checking stage, in the state of every check. */
+				/** The checking stage, in what the model reads for every check. */
 				check: z.string().min(1),
-				/** How to apply the rubric, in the state of every check. */
+				/** How to apply the rubric, in what the model reads for every check. */
 				rules: z.string().min(1),
 			})
 			.strict(),
@@ -78,22 +78,21 @@ export const DEFAULT_JUDGE = fileURLToPath(new URL("../judges/legal-judge.json",
 export const itemLabel = (item: Item): string =>
 	`Rubric item ${item.id}${item.category === null ? "" : ` (${item.category})`}:\n${item.text}`;
 
-/** The judge's questions about one item. */
-export function itemQuestions(definition: JudgeDefinition, item: Item): BoolQuestion[] {
-	return definition.questions.map((question) => ({
-		type: "bool",
-		id: `${item.id}/${question.id}`,
-		instructions: question.instructions.replace("{item}", itemLabel(item)),
-		yes: question.yes,
-		no: question.no,
-	}));
+/** The judge's questions about one item, by id: `<item id>/<question id>`. */
+export function itemQuestions(definition: JudgeDefinition, item: Item): [string, BoolQuestion][] {
+	return definition.questions.map((question) => [
+		`${item.id}/${question.id}`,
+		{
+			type: "bool",
+			instructions: question.instructions.replace("{item}", itemLabel(item)),
+			criteria: { true: question.yes, false: question.no },
+		},
+	]);
 }
 
 /** The verdict on an item, which the judge gives from its questions; this question itself is never asked. */
 export const itemVerdict = (item: Item): BoolQuestion => ({
 	type: "bool",
-	id: item.id,
 	instructions: itemLabel(item),
-	yes: "The item passes.",
-	no: "The item fails.",
+	criteria: { true: "The item passes.", false: "The item fails." },
 });

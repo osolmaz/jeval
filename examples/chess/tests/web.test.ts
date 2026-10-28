@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { confidence } from "@osolmaz/switch-viewer/page";
+import { pickProbabilities } from "@osolmaz/switch-viewer/page";
 import { chessChoice, chessState, movesOfStep } from "../src/web/data.ts";
 import { captures, pgnOf, piecesOf, play, pliesOf, samePlaces, scoreOf } from "../src/web/model.ts";
 import { picking, stateOf } from "./helpers/chess.ts";
 import { chessSession } from "./helpers/sessions.ts";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-const squaresOf = (fen: string) => piecesOf(fen).map((piece) => `${piece.color}${piece.kind}${piece.square}`);
+const squaresOf = (fen: string) => piecesOf(fen).map((piece) => `${piece.color}${piece.type}${piece.square}`);
 
 describe("chess states", () => {
 	it("read a state and a choice only when every field is there", () => {
@@ -42,8 +42,8 @@ describe("piece motion", () => {
 	it("reads the pieces of a position in reading order", () => {
 		const pieces = piecesOf(START);
 		expect(pieces).toHaveLength(32);
-		expect(pieces[0]).toEqual({ id: 0, color: "b", kind: "r", square: "a8" });
-		expect(pieces.at(-1)).toEqual({ id: 31, color: "w", kind: "r", square: "h1" });
+		expect(pieces[0]).toEqual({ id: 0, color: "b", type: "r", square: "a8" });
+		expect(pieces.at(-1)).toEqual({ id: 31, color: "w", type: "r", square: "h1" });
 	});
 
 	it("moves a piece and takes the one on its target square", () => {
@@ -51,7 +51,7 @@ describe("piece motion", () => {
 		expect(motion.moved).toHaveLength(1);
 		expect(motion.taken).toHaveLength(1);
 		expect(squaresOf("k7/8/8/3P4/8/8/8/K7 b - - 0 1").sort()).toEqual(
-			motion.pieces.map((piece) => `${piece.color}${piece.kind}${piece.square}`).sort(),
+			motion.pieces.map((piece) => `${piece.color}${piece.type}${piece.square}`).sort(),
 		);
 	});
 
@@ -63,13 +63,13 @@ describe("piece motion", () => {
 		expect(long.moved.map((move) => move.to)).toEqual(["c1", "d1"]);
 	});
 
-	it("takes the passed pawn en passant, and changes a promoted pawn's kind", () => {
+	it("takes the passed pawn en passant, and changes a promoted pawn's type", () => {
 		const passant = play(piecesOf("k7/8/8/3pP3/8/8/8/K7 w - d6 0 1"), "e5d6");
 		expect(passant.taken).toHaveLength(1);
 		expect(samePlaces(passant.pieces, piecesOf("k7/8/3P4/8/8/8/8/K7 b - - 0 1"))).toBe(true);
 		const promotion = play(piecesOf("k7/4P3/8/8/8/8/8/K7 w - - 0 1"), "e7e8q");
-		expect(promotion.promoted).toEqual([{ id: 1, kind: "q" }]);
-		expect(promotion.pieces.find((piece) => piece.id === 1)).toMatchObject({ kind: "q", square: "e8" });
+		expect(promotion.promoted).toEqual([{ id: 1, type: "q" }]);
+		expect(promotion.pieces.find((piece) => piece.id === 1)).toMatchObject({ type: "q", square: "e8" });
 	});
 
 	it("changes nothing for a move from an empty square", () => {
@@ -77,7 +77,7 @@ describe("piece motion", () => {
 		expect(play(pieces, "e4e5")).toEqual({ pieces, moved: [], taken: [], promoted: [] });
 	});
 
-	it("compares positions by squares and kinds, not by numbers", () => {
+	it("compares positions by squares and types, not by numbers", () => {
 		expect(samePlaces(piecesOf(START), [...piecesOf(START)].reverse())).toBe(true);
 		expect(samePlaces(piecesOf(START), piecesOf("k7/8/8/8/8/8/8/K7 w - - 0 1"))).toBe(false);
 	});
@@ -105,7 +105,7 @@ describe("the move list and the PGN", () => {
 			["b", 2, false, 3, 3],
 		]);
 		expect(plies[0]?.probability).toBe(0.6);
-		expect(confidence(session.story)).toEqual([0.6, 0.6]);
+		expect(pickProbabilities(session.story)).toEqual([0.6, 0.6]);
 	});
 
 	it("starts with the opponent's first move when the model plays black", async () => {

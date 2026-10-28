@@ -57,7 +57,7 @@ function document(title: string, body: string, styles = ""): string {
 }
 
 const STYLE = `
-:root{--bg:#1C1D21;--panel:#25272C;--stripe:#212328;--raise:#32353C;--raise-hover:#3D4048;--line:#383B42;--ink:#FFFFFF;--text:#E4E5E8;--muted:#9EA1A8;--faint:#71747B;--accent:#5B8DEF;--accent-edge:#3D68C4;--accent-hover:#7AA3F2;--live:#E5484D;--track:#383B42;--bar:#8A8D94;--chart:#5B8DEF;--gutter:20px;color-scheme:dark}
+:root{--bg:#1C1D21;--panel:#25272C;--raise:#32353C;--raise-hover:#3D4048;--ink:#FFFFFF;--text:#E4E5E8;--muted:#9EA1A8;--faint:#71747B;--accent:#5B8DEF;--accent-edge:#3D68C4;--accent-hover:#7AA3F2;--live:#E5484D;--track:#383B42;--bar:#8A8D94;--chart:#5B8DEF;--gutter:20px;color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
@@ -75,7 +75,7 @@ button,select,.download{font:inherit;font-weight:600;min-height:36px;padding:4px
 button:hover,select:hover,.download:hover{background:var(--raise-hover)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .layout{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
-.stage{display:grid;gap:8px;min-width:0}
+.drawing{display:grid;gap:8px;min-width:0}
 .state-card{min-height:240px;padding:20px;border-radius:8px;background:var(--panel);white-space:pre-wrap;overflow-wrap:anywhere}
 .side{display:grid;gap:16px;min-width:0}
 .card{padding:14px 16px;border-radius:8px;background:var(--panel)}

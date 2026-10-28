@@ -1,29 +1,35 @@
 import { STOP_KEY } from "./trace.ts";
 import type { Choice } from "./types.ts";
 
-/** A choice function gave choices that the core cannot offer: two with one key or one text, or one picked before. */
+/**
+ * A choice function gave choices that the core cannot offer: two with one key or one text, one picked before, or one
+ * with the stop choice's key or text.
+ */
 export class ChoiceError extends Error {
 	override readonly name = "ChoiceError";
 }
 
 /**
  * The choices that the model sees in a state, without stop: the choice function's choices, checked, and at most `room`
- * of them, the ones of lowest priority value, in the order the choice function gave them.
+ * of them, the ones of lowest priority value, in the order the choice function gave them. `stop` is the stop choice's
+ * text, which no other choice may have.
  */
 export function offerChoices<C extends Choice>(
 	choices: readonly C[],
 	picked: ReadonlySet<string>,
 	room: number,
+	stop: string,
 ): readonly C[] {
-	assertOffered(choices, picked);
+	assertOffered(choices, picked, stop);
 	return cut(choices, room);
 }
 
-function assertOffered(choices: readonly Choice[], picked: ReadonlySet<string>): void {
+function assertOffered(choices: readonly Choice[], picked: ReadonlySet<string>, stop: string): void {
 	const keys = new Set<string>();
 	const texts = new Set<string>();
 	for (const choice of choices) {
 		if (choice.key === STOP_KEY) throw new ChoiceError(`the key ${STOP_KEY} belongs to the stop choice`);
+		if (choice.text === stop) throw new ChoiceError(`the text "${stop}" belongs to the stop choice`);
 		if (picked.has(choice.key)) throw new ChoiceError(`the choice ${choice.key} was picked before in this run`);
 		if (keys.has(choice.key)) throw new ChoiceError(`two choices share the key ${choice.key}`);
 		if (texts.has(choice.text)) throw new ChoiceError(`two choices share the text "${choice.text}"`);

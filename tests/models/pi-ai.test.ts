@@ -1,5 +1,6 @@
 import type { ClassifierContext, ClassifierModel, ClassifierResult } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
+import type { DecisionRequest } from "../../src/core/index.ts";
 import { type ClassifierRegistry, ModelNotFoundError, piAiDecider } from "../../src/models/pi-ai.ts";
 
 const MODEL = {
@@ -34,18 +35,18 @@ function registry(
 	};
 }
 
-const request = {
-	json: { a: 1 },
-	images: [{ label: "page", mimeType: "image/png", data: "AAAA" }],
-	questions: [
-		{ type: "bool", id: "b", instructions: "B?", yes: "yes", no: "no" },
-		{ type: "choice", id: "c", instructions: "C?", choices: { x: "X", y: "Y" } },
-		{ type: "score", id: "s", instructions: "S?", levels: ["low", "high"] },
-	],
-} as const;
+const request: DecisionRequest = {
+	decisionState: { a: 1 },
+	decisionImages: [{ label: "page", mimeType: "image/png", data: "AAAA" }],
+	decisionQuestions: {
+		b: { type: "bool", instructions: "B?", criteria: { true: "yes", false: "no" } },
+		c: { type: "choice", instructions: "C?", criteria: { x: "X", y: "Y" } },
+		s: { type: "score", instructions: "S?", criteria: ["low", "high"] },
+	},
+};
 
 describe("piAiDecider", () => {
-	it("sends typed questions and images, and reads typed answers back with the confidence of a choice", async () => {
+	it("passes the decision request to pi-ai as it is, and gives back pi-ai's result with two fields of its own", async () => {
 		const fake = registry({
 			answers: {
 				b: { type: "bool", probability: 0.75 },
@@ -76,35 +77,46 @@ describe("piAiDecider", () => {
 		});
 		expect(fake.keys).toEqual(["key"]);
 		expect(result).toEqual({
-			ok: true,
-			answers: {
+			decisionAnswers: {
 				b: { type: "bool", probability: 0.75 },
 				c: { type: "choice", choice: "x", probabilities: { x: 0.6, y: 0.4 }, confidence: 0.6 },
 				s: { type: "score", score: 1, confidence: 0.9 },
 			},
-			usage: { inputTokens: 120, milliseconds: 5 },
+			decisionUsage: {
+				input: 120,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 120,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			api: "typesafe-system-one",
+			provider: "typesafe",
+			model: "jev-latest",
+			stopReason: "stop",
+			timestamp: 0,
+			tooLong: false,
+			milliseconds: 5,
 		});
 	});
 
 	it("leaves images out when there are none, and the key to pi-ai when none is given", async () => {
 		const fake = registry({});
-		await piAiDecider("typesafe/jev-latest", { registry: fake }).decide({ ...request, images: [] });
+		await piAiDecider("typesafe/jev-latest", { registry: fake }).decide({ ...request, decisionImages: [] });
 		expect(fake.contexts[0]).not.toHaveProperty("images");
 		expect(fake.keys).toEqual([undefined]);
 	});
 
-	it("tells a window error from other errors", async () => {
+	it("tells an error that the request was too long from other errors", async () => {
 		const window = piAiDecider("typesafe/jev-latest", {
 			registry: registry({ stopReason: "error", errorMessage: '400 {"error_type":"max_tokens_exceeded"}' }),
 		});
-		await expect(window.decide(request)).resolves.toMatchObject({ ok: false, failure: "window" });
+		await expect(window.decide(request)).resolves.toMatchObject({ stopReason: "error", tooLong: true });
 		const other = piAiDecider("typesafe/jev-latest", { registry: registry({ stopReason: "aborted" }) });
-		await expect(other.decide(request)).resolves.toMatchObject({
-			ok: false,
-			failure: "provider",
-			message: "aborted",
-			usage: { inputTokens: null },
-		});
+		const aborted = await other.decide(request);
+		expect(aborted).toMatchObject({ stopReason: "aborted", tooLong: false });
+		expect(aborted).not.toHaveProperty("decisionUsage");
+		expect(aborted).not.toHaveProperty("errorMessage");
 	});
 
 	it("refuses a model name without a provider or a model pi-ai does not list", () => {

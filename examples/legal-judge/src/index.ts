@@ -12,17 +12,17 @@ import type { CaseFolder, LegalState } from "./state.ts";
 import { searchTerms } from "./terms.ts";
 import { view } from "./view.ts";
 
-/** The version of this domain's code; the judge definition's name and hash follow it in a run's version. */
-export const CODE_VERSION = "0.4.0";
+/** The version of this domain's code. A run records the judge apart, as its definition with its hash. */
+export const CODE_VERSION = "0.5.0";
 
 /**
  * What every case shares under a judge: the domain's name and version, the two texts of the pick question, and the
  * judge's limits.
  */
-export function legalJudge({ definition, hash }: Judge): DomainShared {
+export function legalJudge({ definition }: Judge): DomainShared {
 	return {
 		name: "legal-judge",
-		version: `${CODE_VERSION} ${definition.name}@${hash.slice(0, 12)}`,
+		version: CODE_VERSION,
 		stop: definition.texts.stop,
 		instructions: `${definition.texts.gather} ${definition.texts.choose}`,
 		limits: definition.limits,
@@ -48,9 +48,10 @@ export function legalMachine(
 			changes(legalCase),
 			compare(legalCase),
 		),
-		view: (state, purpose, tokens) => view(definition.texts, folder, state, purpose, tokens),
-		questions: () => legalCase.items.map(itemVerdict),
-		answer: judgeWith(definition, legalCase),
+		view: (state, purpose, tokens, charsPerToken) =>
+			view(definition.texts, folder, state, purpose, tokens, charsPerToken),
+		questions: () => Object.fromEntries(legalCase.items.map((item) => [item.id, itemVerdict(item)])),
+		answer: judgeWith(definition, folder),
 	};
 }
 

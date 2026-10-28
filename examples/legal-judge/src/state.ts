@@ -2,7 +2,7 @@ import type { Image, JsonObject } from "@osolmaz/switch";
 import type { CaseFile, LegalCase, Render } from "./case.ts";
 
 /** Sizes in estimated tokens, at three characters a token. */
-export const LIMITS = {
+export const SIZES = {
 	charsPerToken: 3,
 	/** The answer's text read before the first choice. */
 	answerTokens: 22_000,
@@ -45,7 +45,7 @@ export const withEvidence = (state: LegalState, found: Evidence): LegalState => 
 /** Whether the state holds the evidence of the choice with `key`. */
 export const found = (state: LegalState, key: string): boolean => state.evidence.some((entry) => entry.key === key);
 
-export const tokensOf = (text: string): number => Math.ceil(text.length / LIMITS.charsPerToken);
+export const tokensOf = (text: string): number => Math.ceil(text.length / SIZES.charsPerToken);
 
 /** A run of consecutive parts of a file. */
 export interface Part {
@@ -66,7 +66,7 @@ export function unreadParts(file: CaseFile, read: ReadonlySet<number>): (Part & 
 			return;
 		}
 		const tokens = tokensOf(unit.text);
-		if (current === null || current.tokens + tokens > LIMITS.chunkTokens) {
+		if (current === null || current.tokens + tokens > SIZES.chunkTokens) {
 			current = { file, from: index, to: index, tokens };
 			parts.push(current);
 		} else {
@@ -119,4 +119,4 @@ export const imagesSeen = (state: LegalState): number =>
 	state.evidence.filter((entry) => entry.image !== undefined).length;
 
 export const readable = (file: CaseFile): boolean =>
-	file.error === null && file.kind !== "image" && file.units.length > 0;
+	file.error === null && file.format !== "image" && file.units.length > 0;

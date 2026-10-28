@@ -1,24 +1,24 @@
 /// <reference lib="dom" />
 /** The board's sounds: recorded clips that the page carries, played with the Web Audio API. */
 
-export type SoundKind =
+export type SoundEvent =
 	"game-start" | "move" | "castling" | "capture" | "check" | "checkmate" | "stalemate" | "game-over";
 
 /** The clips by file name as data URLs, and the clip each event plays. */
 export interface SoundSet {
 	readonly clips: Readonly<Record<string, string>>;
-	readonly events: Readonly<Partial<Record<SoundKind, string>>>;
+	readonly events: Readonly<Partial<Record<SoundEvent, string>>>;
 }
 
 /** The sound of a move by its SAN, as chess.com plays them: a check sounds as a check, even when it takes a piece. */
-export function soundOf(san: string): SoundKind {
+export function soundOf(san: string): SoundEvent {
 	if (/[+#]/.test(san)) return "check";
 	if (san.startsWith("O-O")) return "castling";
 	return san.includes("x") ? "capture" : "move";
 }
 
 /** The sound of a game's end by the reason its outcome gives: checkmate and stalemate have their own. */
-export function endingOf(reason: unknown): SoundKind {
+export function endingOf(reason: unknown): SoundEvent {
 	return reason === "checkmate" || reason === "stalemate" ? reason : "game-over";
 }
 
@@ -83,9 +83,9 @@ export class Sounds {
 	}
 
 	/** Plays the event's clip `delay` seconds from now. */
-	play(kind: SoundKind, delay = 0): void {
+	play(event: SoundEvent, delay = 0): void {
 		const context = this.context;
-		const file = this.set.events[kind];
+		const file = this.set.events[event];
 		const buffer = file === undefined ? undefined : this.buffers.get(file);
 		if (!this.on || context?.state !== "running" || buffer === undefined) return;
 		const source = context.createBufferSource();

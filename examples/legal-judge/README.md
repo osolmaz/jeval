@@ -53,8 +53,9 @@ The case, its search terms and its folder stay inside these functions.
 
 A case starts as an input folder that holds the request in `request.md` and the rubric in `rubric.json`
 (`{"items": [{"id", "category", "text"}]}`), with the task's files under `documents/` and the answer's files under
-`answer/`. `ingest` turns it into a case folder, and `run` grades case folders with a pi-ai classifier model whose key
-it reads from `PROVIDER_API_KEY`, for example `TYPESAFE_API_KEY` for `typesafe/jev-latest`. The program is
+`answer/`. `ingest` turns it into a case folder, which records each file's `format`, and `run` grades case folders with
+a pi-ai classifier model. pi-ai finds the provider's key, for example `TYPESAFE_API_KEY` for `typesafe/jev-latest`, or
+`--api-key-env` names the variable that holds it. The program is
 [`src/main.ts`](src/main.ts). Run the commands from the repository root:
 
 ```bash
@@ -63,8 +64,9 @@ examples/legal-judge/src/main.ts run cases/case-1 --out results --model typesafe
 ```
 
 A run writes one folder. `run.json` records what ran, including the judge file as the run's definition, its hash and
-the switch commit. Each case keeps its answers and a trace of every state, and `requests.jsonl` keeps every request
-exactly as the model received it. A stopped run goes on in the same folder.
+the switch commit, and at the end the totals, with the cost. Each case keeps its answers and a trace of every state,
+and `requests.jsonl` keeps every decision request that switch passed to pi-ai, with each image by its label, and its
+result. A stopped run goes on in the same folder; a judge file with another hash needs another folder.
 
 ## Measure a judge
 
@@ -128,8 +130,9 @@ The report adds three more numbers:
 
 ## Replay a case
 
-`replay` runs a case again from its trace, with the judge file that the trace was made with, and with `--fork <steps>`
-it takes the state after that many recorded steps and lets the model go on from there. The
+`replay` runs a case again from its trace, with the judge file that `--judge` names, or the default judge. Give it the
+judge file that the run used, which the run's `run.json` records as its definition. With `--fork <steps>` it takes the
+state after that many recorded steps and lets the model go on from there. The
 [main README](../../README.md#replay-a-case) says how a replay repeats a case.
 
 ## Check

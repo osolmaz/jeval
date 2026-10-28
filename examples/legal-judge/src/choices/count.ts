@@ -42,7 +42,7 @@ export const count = (legalCase: LegalCase) =>
 				key: "count:words",
 				source: "word counts of the answer",
 				text: legalCase.files
-					.filter((file) => file.role === "answer" && file.kind !== "image")
+					.filter((file) => file.role === "answer" && file.format !== "image")
 					.map(countWords)
 					.join("\n"),
 			}),

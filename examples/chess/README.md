@@ -37,15 +37,16 @@ Each game is a state machine, in `src/index.ts` and `src/move.ts`:
 
 - The state holds the side that the model plays, the opponent's name, the start position, every move so far in long
   algebraic notation and in SAN, the position in FEN, the status, whether the side to move is in check, and in words
-  what the last step did. The board is never stored: chess.js works it out from the start position and the moves, so
-  it also sees a repeated position.
+  what the last step did. chess.js rebuilds the game from the start position and the moves, so it also sees a
+  repeated position; the FEN is kept for the view and the viewer.
 - The initial state is the start position, after the opponent's first move when the opponent is to move.
 - The choice function gives the legal moves of the state's position, and none once the game is over.
 - The transition function plays the model's move and, against an opponent, the reply: a random legal move, or
   Stockfish's.
 
-The case's seed, move time and engine stay inside these functions. The side, the opponent's name and the start
-position never change, and they are in the state because the viewer draws them.
+The case's random opponent, with its seed, and its engine with its move time stay inside these functions; the state
+names the opponent, with its seed or move time, only as text. The side, the opponent's name and the start position
+never change, and they are in the state because the viewer draws them.
 
 ## Play a game
 
@@ -59,7 +60,7 @@ STOCKFISH=/path/to/stockfish examples/chess/src/main.ts run examples/chess/cases
 Each case's `result.json` gets an `outcome`: the `result`, its `reason`, the number of `moves` both sides made, each
 side's `material` (pawn 1, knight and bishop 3, rook 5, queen 9) and the final position as `fen`. Against an opponent
 the result is the model's: win, loss or draw. In self-play it names the winner: white wins or black wins, or a draw. A
-game the step limit cut is unfinished.
+game that the step limit or a failed pick cut is unfinished, with that as its reason.
 
 The model sees the board as text with rank 8 at the top, each side's pieces, whether it is in check, what the last
 step did, and the moves so far; when the whole game does not fit the window, only the latest 20 moves. Each choice is
@@ -90,7 +91,7 @@ examples/chess/src/main.ts view runs/self-play
 The page looks like a game on chess.com: a green board, with each player's bar above and below it, the pieces they
 took and a box lit for the side to move. At each step the board shows the position the model picked in, with orange
 arrows for its five likeliest moves, as wide as their probabilities, the picked one solid; then the pieces move. Beside
-the board are the model's confidence in each move it picked, the step's choices with the model's probability for each
+the board are the probability of each move the model picked, the step's choices with the model's probability for each
 one, and the moves in numbered rows with piece icons, where a move opens its step, and the score once the game is
 over. The page plays the game back at four speeds, the arrow keys step through it, and it downloads the game as PGN.
 The start of the game, each move, a capture, castling, a check and the end (checkmate, stalemate, or another game

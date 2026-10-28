@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { definitionOf, type Runner, runnerOf } from "../../src/core/index.ts";
+import { type Runner, runnerOf } from "../../src/core/index.ts";
 import { FACTS, factsMachine } from "./fakes.ts";
 
 const caseSchema = z.object({ id: z.string(), facts: z.record(z.string(), z.string()) });
@@ -25,7 +25,6 @@ export function factsSetup(): Promise<Runner> {
 	return Promise.resolve(
 		runnerOf({
 			...FACTS,
-			definition: definitionOf("facts", { stop: FACTS.stop, instructions: FACTS.instructions }),
 			caseId: async (folder) => (await readCase(folder)).id,
 			load: async (folder) => factsMachine({ facts: (await readCase(folder)).facts }),
 			outcome: (state, result) => ({ result: "answered", reason: result.ended, looked: state.looked.length }),

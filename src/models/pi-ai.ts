@@ -1,5 +1,4 @@
 import type {
-	ClassifierAnswer,
 	ClassifierApi,
 	ClassifierContext,
 	ClassifierModel,
@@ -7,7 +6,7 @@ import type {
 	ClassifierResult,
 	ModelsClassifierOptions,
 } from "@earendil-works/pi-ai";
-import type { Answer, Decider, DecisionRequest, DecisionResult, Question } from "../core/index.ts";
+import type { Decider, DecisionRequest, DecisionResult, Question } from "../core/index.ts";
 
 /** The part of pi-ai's model registry that switch uses; tests pass a fake. */
 export interface ClassifierRegistry {
@@ -21,6 +20,7 @@ export interface ClassifierRegistry {
 
 export interface PiAiDeciderOptions {
 	readonly registry: ClassifierRegistry;
+	/** The API key; without it, pi-ai finds the provider's key itself, such as `TYPESAFE_API_KEY`. */
 	readonly apiKey?: string;
 	readonly timeoutMs?: number;
 	/** Characters per token for size estimates; 3 is safe for English and JSON. */
@@ -33,9 +33,12 @@ export class ModelNotFoundError extends Error {
 }
 
 /** Errors that mean the request was larger than the model's window. */
-const WINDOW_ERROR = /max_tokens_exceeded|context length|too long|too many tokens/i;
+const TOO_LONG = /max_tokens_exceeded|context length|too long|too many tokens/i;
 
-/** A decider for a pi-ai classifier model named `provider/id`, for example `typesafe/jev-latest`. */
+/**
+ * A decider for a pi-ai classifier model named `provider/id`, for example `typesafe/jev-latest`. It passes the decision
+ * request to pi-ai as it is and gives back pi-ai's result, with whether the request was too long and how long it took.
+ */
 export function piAiDecider(name: string, options: PiAiDeciderOptions): Decider {
 	const slash = name.indexOf("/");
 	if (slash <= 0) throw new ModelNotFoundError(`a model is named provider/id, not "${name}"`);
@@ -53,56 +56,46 @@ export function piAiDecider(name: string, options: PiAiDeciderOptions): Decider 
 		charsPerToken: options.charsPerToken ?? 3,
 		async decide(request: DecisionRequest): Promise<DecisionResult> {
 			const started = now();
-			const result = await options.registry.classify(model, toContext(request), requestOptions);
-			const usage = { inputTokens: result.usage?.input ?? null, milliseconds: now() - started };
-			if (result.stopReason !== "stop") {
-				const message = result.errorMessage ?? result.stopReason;
-				return { ok: false, failure: WINDOW_ERROR.test(message) ? "window" : "provider", message, usage };
-			}
-			return { ok: true, answers: fromAnswers(result.answers), usage };
+			const result = await options.registry.classify(model, contextOf(request), requestOptions);
+			return resultOf(result, now() - started);
 		},
 	};
 }
 
-/** The API's request: the API calls the JSON that the model reads `state`. */
-function toContext(request: DecisionRequest): ClassifierContext {
-	const questions = Object.fromEntries(request.questions.map((question) => [question.id, toQuestion(question)]));
-	const images = request.images.map(({ data, mimeType }) => ({ type: "image" as const, data, mimeType }));
-	return { state: request.json, questions, ...(images.length > 0 ? { images } : {}) };
+/** pi-ai's context: the decision request's state, images and questions, with each image's label left out. */
+function contextOf(request: DecisionRequest): ClassifierContext {
+	const questions = Object.fromEntries(
+		Object.entries(request.decisionQuestions).map(([id, question]) => [id, questionOf(question)]),
+	);
+	const images = request.decisionImages.map(({ data, mimeType }) => ({ type: "image" as const, data, mimeType }));
+	return { state: request.decisionState, questions, ...(images.length > 0 ? { images } : {}) };
 }
 
-/** The API's question for switch's: the same `type` and instructions, with switch's texts as the API's `criteria`. */
-function toQuestion(question: Question): ClassifierQuestion {
+/** The same question, as pi-ai's mutable type takes it. */
+function questionOf(question: Question): ClassifierQuestion {
 	switch (question.type) {
 		case "bool":
-			return {
-				type: "bool",
-				instructions: question.instructions,
-				criteria: { true: question.yes, false: question.no },
-			};
+			return { ...question, criteria: { ...question.criteria } };
 		case "choice":
-			return { type: "choice", instructions: question.instructions, criteria: { ...question.choices } };
+			return { ...question, criteria: { ...question.criteria } };
 		case "score":
-			return { type: "score", instructions: question.instructions, criteria: [...question.levels] };
+			return { ...question, criteria: [...question.criteria] };
 	}
 }
 
-function fromAnswers(answers: Readonly<Record<string, ClassifierAnswer>>): Record<string, Answer> {
-	return Object.fromEntries(Object.entries(answers).map(([id, answer]) => [id, fromAnswer(answer)]));
-}
-
-function fromAnswer(answer: ClassifierAnswer): Answer {
-	switch (answer.type) {
-		case "bool":
-			return { type: "bool", probability: answer.probability };
-		case "choice":
-			return {
-				type: "choice",
-				choice: answer.choice,
-				probabilities: answer.probabilities,
-				confidence: answer.confidence,
-			};
-		case "score":
-			return { type: "score", score: answer.score, confidence: answer.confidence };
-	}
+/** pi-ai's result as it is, with switch's two fields. */
+function resultOf(result: ClassifierResult, milliseconds: number): DecisionResult {
+	const { answers, usage, errorMessage, api, provider, model, stopReason, timestamp } = result;
+	return {
+		decisionAnswers: answers,
+		...(usage === undefined ? {} : { decisionUsage: usage }),
+		api,
+		provider,
+		model,
+		stopReason,
+		...(errorMessage === undefined ? {} : { errorMessage }),
+		timestamp,
+		tooLong: stopReason === "error" && TOO_LONG.test(errorMessage ?? ""),
+		milliseconds,
+	};
 }

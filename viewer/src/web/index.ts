@@ -8,10 +8,10 @@ export { App, type AppConfig, start } from "./app.ts";
 export {
 	answerText,
 	changesOf,
-	confidence,
 	type Moment,
 	momentsOf,
 	percent,
+	pickProbabilities,
 	plain,
 	ranked,
 	type Session,

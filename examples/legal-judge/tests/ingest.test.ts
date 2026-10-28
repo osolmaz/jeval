@@ -129,22 +129,22 @@ describe("extractFile", () => {
 		);
 		expect(pdf.pictures.map((picture) => picture.label)).toEqual(["page 1 image"]);
 		expect(MAX_RENDERS).toBe(12);
-		expect((await extractFile("a.docx", docxBytes(), tools)).kind).toBe("docx");
-		expect((await extractFile("a.xlsx", xlsxBytes(), tools)).kind).toBe("sheet");
-		expect((await extractFile("a.pptx", pptxBytes(), tools)).kind).toBe("slides");
-		expect((await extractFile("a.eml", emailBytes(), tools)).kind).toBe("email");
+		expect((await extractFile("a.docx", docxBytes(), tools)).format).toBe("docx");
+		expect((await extractFile("a.xlsx", xlsxBytes(), tools)).format).toBe("sheet");
+		expect((await extractFile("a.pptx", pptxBytes(), tools)).format).toBe("slides");
+		expect((await extractFile("a.eml", emailBytes(), tools)).format).toBe("email");
 		expect((await extractFile("a.doc", PNG, tools)).units).toEqual([{ label: "all", text: "legacy text" }]);
 		expect((await extractFile("page.html", strToU8("<b>Hi</b>"), tools)).units[0]?.text).toBe(" Hi ");
-		expect((await extractFile("NOTES", strToU8("plain"), tools)).kind).toBe("text");
+		expect((await extractFile("NOTES", strToU8("plain"), tools)).format).toBe("text");
 		expect(await extractFile("photo.JPG", PNG, tools)).toMatchObject({
-			kind: "image",
+			format: "image",
 			pictures: [{ mimeType: "image/jpeg" }],
 		});
 		expect(await extractFile("frame.ppm", PNG, tools)).toMatchObject({
-			kind: "image",
+			format: "image",
 			pictures: [{ mimeType: "image/png" }],
 		});
-		expect(await extractFile("model.bin", PNG, tools)).toMatchObject({ kind: "other", units: [] });
+		expect(await extractFile("model.bin", PNG, tools)).toMatchObject({ format: "other", units: [] });
 		await expect(extractFile("photo.webp", PNG, tools)).rejects.toThrow("webp images are not supported");
 	});
 });
@@ -190,7 +190,7 @@ describe("ingestCase and loadCase", () => {
 		await writeFile(join(input, "documents", "scan.pdf"), pdfBytes([""]));
 		await writeFile(join(input, "documents", "broken.docx"), strToU8("not a zip"));
 		const legalCase = await ingestCase(input, join(folder, "case"), { id: "case-1", tools });
-		expect(legalCase.files.map((file) => [file.id, file.path, file.kind, file.error === null])).toEqual([
+		expect(legalCase.files.map((file) => [file.id, file.path, file.format, file.error === null])).toEqual([
 			["a1", "output/files/memo.md", "text", true],
 			["d1", "documents/broken.docx", "other", false],
 			["d2", "documents/scan.pdf", "pdf", true],

@@ -2,11 +2,11 @@
 	"name": "@osolmaz/switch",
 	"version": "0.1.0",
 	"private": true,
-	"description": "A harness that lets decision models work through multi-step tasks by choosing from steps that code lists.",
+	"description": "A framework for decision-model harnesses: a decision model works through a task by picking from the choices that code gives.",
 	"license": "MIT",
 	"type": "module",
 	"engines": {
-		"node": ">=22.13.0"
+		"node": ">=22.18.0"
 	},
 	"packageManager": "pnpm@10.20.0",
 	"exports": {

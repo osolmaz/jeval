@@ -43,7 +43,7 @@ async function safeExtract(
 		return { ...(await extractFile(path, bytes, tools)), error: null };
 	} catch (error: unknown) {
 		const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-		return { kind: "other", units: [], pictures: [], formatting: null, marks: 0, error: message.slice(0, 300) };
+		return { format: "other", units: [], pictures: [], formatting: null, marks: 0, error: message.slice(0, 300) };
 	}
 }
 
@@ -84,12 +84,12 @@ async function caseFile(source: Source, output: string, tools: Tools): Promise<C
 		await writeFile(join(output, name), picture.bytes);
 		renders.push({ label: picture.label, path: name, mimeType: picture.mimeType });
 	}
-	const { kind, units, formatting, marks, error } = extracted;
+	const { format, units, formatting, marks, error } = extracted;
 	return {
 		id: source.id,
 		path: source.path,
 		role: source.role,
-		kind,
+		format,
 		units,
 		words: countWords(units),
 		renders,

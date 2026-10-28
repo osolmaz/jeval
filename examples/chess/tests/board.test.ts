@@ -15,7 +15,7 @@ const at = (fen: string, fields: Partial<Position> = {}): Position => ({
 });
 const place = (fen: string) =>
 	piecesOf(fen)
-		.map((piece) => `${piece.color}${piece.kind}@${piece.square}`)
+		.map((piece) => `${piece.color}${piece.type}@${piece.square}`)
 		.sort();
 
 /** Where the board shows its pieces, read back from their places on the grid. */

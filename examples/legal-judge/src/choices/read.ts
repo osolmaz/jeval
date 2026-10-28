@@ -2,7 +2,7 @@ import { choiceType, type TypedChoice } from "@osolmaz/switch";
 import type { CaseFile, LegalCase } from "../case.ts";
 import {
 	evidenceTokens,
-	LIMITS,
+	SIZES,
 	type LegalState,
 	type Part,
 	partKey,
@@ -16,7 +16,7 @@ import {
 } from "../state.ts";
 
 const describe = (file: CaseFile): string =>
-	`${file.path} (${file.kind}${file.units.length > 1 ? `, ${String(file.units.length)} parts` : ""}, ~${String(file.words)} words)`;
+	`${file.path} (${file.format}${file.units.length > 1 ? `, ${String(file.units.length)} parts` : ""}, ~${String(file.words)} words)`;
 
 function fileChoices(file: CaseFile, read: ReadonlySet<number>, room: number): TypedChoice<Part>[] {
 	const parts = unreadParts(file, read).filter((part) => part.tokens <= room);
@@ -30,7 +30,7 @@ function fileChoices(file: CaseFile, read: ReadonlySet<number>, room: number): T
 	) {
 		return [{ key: partKey(first), text: `Read all of ${describe(file)}`, arg: first }];
 	}
-	return parts.slice(0, LIMITS.partChoices).map((part, index) => ({
+	return parts.slice(0, SIZES.partChoices).map((part, index) => ({
 		key: partKey(part),
 		text: `Read ${partSource(part)} (${String(partWords(part))} words)`,
 		arg: part,
@@ -43,7 +43,7 @@ export const read = (legalCase: LegalCase) =>
 	choiceType<LegalState, Part>({
 		type: "read",
 		choices(state) {
-			const room = LIMITS.evidenceTokens - evidenceTokens(state);
+			const room = SIZES.evidenceTokens - evidenceTokens(state);
 			const done = readParts(state);
 			return legalCase.files
 				.filter(readable)

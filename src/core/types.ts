@@ -2,6 +2,10 @@
  * The building blocks of switch. A domain gives each case as a state machine: an initial state, a choice function that
  * gives the choices in a state, and a transition function that gives the state after a choice. The core runs the loop:
  * the decision model picks from the choices until it picks stop, then it answers the questions.
+ *
+ * What goes to the decision model and comes back follows pi-ai's classifier interface: its request, questions,
+ * answers, result and usage. A field that carries pi-ai's content takes the prefix `decision`, so that "state" in
+ * switch means only the state of a case.
  */
 import type { Trace } from "./trace.ts";
 
@@ -10,8 +14,9 @@ export interface JsonObject {
 	readonly [key: string]: Json;
 }
 
-/** An image sent with the view to a model that accepts images. */
+/** An image that the model reads with the decision state; pi-ai's image, with a label for the requests file. */
 export interface Image {
+	/** Names the image in the requests file, which keeps no image bytes; the model never sees it. */
 	readonly label: string;
 	readonly mimeType: string;
 	/** Base64-encoded bytes. */
@@ -32,39 +37,38 @@ export interface Choice {
 	readonly data?: JsonObject;
 }
 
+/** A yes-or-no question, as pi-ai has it: `criteria` says what true and false mean. */
 export interface BoolQuestion {
 	readonly type: "bool";
-	readonly id: string;
 	readonly instructions: string;
-	readonly yes: string;
-	readonly no: string;
+	readonly criteria: { readonly true: string; readonly false: string };
 }
+/** Which of these options fits: `criteria` gives each option's label and the text the model reads for it. */
 export interface ChoiceQuestion {
 	readonly type: "choice";
-	readonly id: string;
 	readonly instructions: string;
-	/** Each choice's label and the text the model reads for it. */
-	readonly choices: Readonly<Record<string, string>>;
+	readonly criteria: Readonly<Record<string, string>>;
 }
+/** Where on this scale it is: `criteria` gives the meaning of each level, from the lowest to the highest. */
 export interface ScoreQuestion {
 	readonly type: "score";
-	readonly id: string;
 	readonly instructions: string;
-	/** The meaning of each score, from the lowest to the highest. */
-	readonly levels: readonly string[];
+	readonly criteria: readonly string[];
 }
 export type Question = BoolQuestion | ChoiceQuestion | ScoreQuestion;
+/** Questions by id: the answers come back under the same ids. */
+export type Questions = Readonly<Record<string, Question>>;
 
 export interface BoolAnswer {
 	readonly type: "bool";
+	/** The probability of true. */
 	readonly probability: number;
 }
 export interface ChoiceAnswer {
 	readonly type: "choice";
 	readonly choice: string;
 	readonly probabilities: Readonly<Record<string, number>>;
-	/** How sure the model is of its choice, when the model reports it. */
-	readonly confidence?: number | undefined;
+	readonly confidence: number;
 }
 export interface ScoreAnswer {
 	readonly type: "score";
@@ -72,32 +76,92 @@ export interface ScoreAnswer {
 	readonly confidence: number;
 }
 export type Answer = BoolAnswer | ChoiceAnswer | ScoreAnswer;
+/** Answers by question id. */
+export type Answers = Readonly<Record<string, Answer>>;
 
-/** What the model reads in a state: JSON and images. `omitted` names what the view left out to fit. */
-export interface View {
-	readonly json: JsonObject;
-	readonly images: readonly Image[];
-	readonly omitted: readonly string[];
+/** One request to the decision model, in the form of pi-ai's ClassifierContext. */
+export interface DecisionRequest {
+	/** pi-ai's `state`: what the model reads. */
+	readonly decisionState: JsonObject;
+	/** pi-ai's `images`: what the model sees with it. */
+	readonly decisionImages: readonly Image[];
+	/** pi-ai's `questions`. */
+	readonly decisionQuestions: Questions;
 }
 
-/** How an answer stage asks questions: over the view, or over fixed JSON of the stage's own. */
+/** What the view function gives: the decision request without its questions, which switch adds. */
+export type View = Omit<DecisionRequest, "decisionQuestions">;
+
+/** Why the view function is called: for a pick, or for the answers at the end. */
+export type Purpose = "pick" | "answer";
+
+/** pi-ai's `Usage`: token counts, and their cost in US dollars at the model's catalog price. */
+export interface DecisionUsage {
+	readonly input: number;
+	readonly output: number;
+	readonly cacheRead: number;
+	readonly cacheWrite: number;
+	readonly cacheWrite1h?: number;
+	readonly reasoning?: number;
+	readonly totalTokens: number;
+	readonly cost: {
+		readonly input: number;
+		readonly output: number;
+		readonly cacheRead: number;
+		readonly cacheWrite: number;
+		readonly total: number;
+	};
+}
+
+/** The decision model's result, in the form of pi-ai's ClassifierResult, with two fields of switch's own. */
+export interface DecisionResult {
+	/** pi-ai's `answers`. Empty when `stopReason` is not "stop". */
+	readonly decisionAnswers: Answers;
+	/** pi-ai's `usage`, when the API reports token counts. */
+	readonly decisionUsage?: DecisionUsage;
+	readonly api: string;
+	readonly provider: string;
+	/** The model that was asked. */
+	readonly model: string;
+	readonly stopReason: "stop" | "error" | "aborted";
+	readonly errorMessage?: string;
+	readonly timestamp: number;
+	/** switch's own: the error says that the request was larger than the model's window, so a smaller view may fit. */
+	readonly tooLong: boolean;
+	/** switch's own: how long the call took, which pi-ai does not report. */
+	readonly milliseconds: number;
+}
+
+/** A decision model behind pi-ai's classifier interface. */
+export interface Decider {
+	/** The model, as `provider/id`. */
+	readonly model: string;
+	/** The model's window in tokens. */
+	readonly window: number;
+	/** Characters per token for the size estimate; lower is safer. */
+	readonly charsPerToken: number;
+	decide(request: DecisionRequest): Promise<DecisionResult>;
+}
+
+/** A view function of an answer stage's own, for `tokens` estimated tokens at `charsPerToken`. */
+export type StageView = (tokens: number, charsPerToken: number) => Promise<View>;
+
+/** How an answer stage asks questions: over the domain's view for the answers, or over a view of the stage's own. */
 export interface AskOptions {
 	/** The stage's name in the trace. */
 	readonly stage: string;
-	/** JSON to send in place of the view; it is sent as is and never cut. */
-	readonly json?: JsonObject;
-	/** Fields added to the view's JSON, such as a description of the stage. */
-	readonly extra?: JsonObject;
+	/** The stage's own view, such as the domain's view with a description of the stage added. */
+	readonly view?: StageView;
 }
 
 /** Asks questions in as many requests as the window needs and returns every answer; it throws `AskError` on failure. */
-export type Ask = (questions: readonly Question[], options: AskOptions) => Promise<Readonly<Record<string, Answer>>>;
+export type Ask = (questions: Questions, options: AskOptions) => Promise<Answers>;
 
 export interface AnswerContext<S> {
 	/** The last state of the case. */
 	readonly state: S;
 	/** The questions: the answer stages must answer every one. */
-	readonly questions: readonly Question[];
+	readonly questions: Questions;
 	readonly ask: Ask;
 }
 
@@ -112,39 +176,15 @@ export interface StateMachine<S extends JsonObject, C extends Choice = Choice> {
 	choices(state: S): readonly C[];
 	/** The transition function: the state after the model picked `choice` in `state`. */
 	transition(state: S, choice: C): Promise<S>;
-	/** What the model reads in a state, in at most `tokens` estimated tokens; the state as it is by default. */
-	view?(state: S, purpose: "choose" | "answer", tokens: number): Promise<View>;
-	/** The questions that the model answers over the last state; none by default. */
-	questions?(): readonly Question[];
+	/**
+	 * What the model reads in a state, in at most `tokens` tokens as `estimateTokens` counts them at `charsPerToken`;
+	 * the state as it is by default.
+	 */
+	view?(state: S, purpose: Purpose, tokens: number, charsPerToken: number): Promise<View>;
+	/** The questions that the model answers over the last state, by id; none by default. */
+	questions?(): Questions;
 	/** Answers the questions in stages of its own; without it, the questions are asked once over the view. */
-	answer?(context: AnswerContext<S>): Promise<Readonly<Record<string, Answer>>>;
-}
-
-export interface Usage {
-	readonly inputTokens: number | null;
-	readonly milliseconds: number;
-}
-
-export interface DecisionRequest {
-	/** The JSON that the model reads. */
-	readonly json: JsonObject;
-	readonly images: readonly Image[];
-	readonly questions: readonly Question[];
-}
-
-export type DecisionFailure = "window" | "provider";
-export type DecisionResult =
-	| { readonly ok: true; readonly answers: Readonly<Record<string, Answer>>; readonly usage: Usage }
-	| { readonly ok: false; readonly failure: DecisionFailure; readonly message: string; readonly usage: Usage };
-
-/** A decision model behind a typed-question interface. */
-export interface Decider {
-	readonly model: string;
-	/** The model's window in tokens. */
-	readonly window: number;
-	/** Characters per token for the size estimate; lower is safer. */
-	readonly charsPerToken: number;
-	decide(request: DecisionRequest): Promise<DecisionResult>;
+	answer?(context: AnswerContext<S>): Promise<Answers>;
 }
 
 export interface Limits {
@@ -171,9 +211,10 @@ export type Ending = "stop" | "no choices" | "step limit" | "pick failed";
 
 export interface RunResult<S extends JsonObject = JsonObject> {
 	/** Every question's answer, or null when the answers could not be obtained. */
-	readonly answers: Readonly<Record<string, Answer>> | null;
+	readonly answers: Answers | null;
 	readonly steps: number;
 	readonly ended: Ending;
+	/** Why the answers could not be obtained; null when they were. */
 	readonly error: string | null;
 	readonly trace: Trace;
 	/** The last state of the case. */
@@ -189,22 +230,13 @@ export interface Domain<S extends JsonObject, C extends Choice = Choice> {
 	readonly stop: string;
 	/** The text that tells the model how to pick from the choices. */
 	readonly instructions: string;
-	readonly definition: Definition;
 	readonly limits: Limits;
+	/** The domain's own definition, such as a file it was set up from; by default, its stop, instructions and limits. */
+	readonly definition?: Definition;
 	/** The case id in a case folder, read without loading the whole case. */
 	caseId(folder: string): Promise<string>;
 	/** The state machine of a case folder. */
 	load(folder: string): Promise<StateMachine<S, C>>;
 	/** How the case ended in the domain's own terms, from its last state; none when it is missing. */
 	outcome?(state: S, result: RunResult<S>): JsonObject;
-}
-
-/** One request to the decision model and its result, as a run's requests file keeps them. Images appear by label. */
-export interface Exchange {
-	readonly request: {
-		readonly json: JsonObject;
-		readonly images: readonly string[];
-		readonly questions: readonly Question[];
-	};
-	readonly result: DecisionResult;
 }

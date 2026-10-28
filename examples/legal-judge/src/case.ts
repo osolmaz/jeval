@@ -6,13 +6,13 @@ export const unitSchema = z.object({ label: z.string(), text: z.string() });
 /** An image of a file or of one of its pages, stored next to the case. */
 export const renderSchema = z.object({ label: z.string(), path: z.string(), mimeType: z.string() });
 
-export const fileKinds = ["text", "pdf", "docx", "sheet", "email", "slides", "image", "other"] as const;
+export const fileFormats = ["text", "pdf", "docx", "sheet", "email", "slides", "image", "other"] as const;
 
 export const fileSchema = z.object({
 	id: z.string(),
 	path: z.string(),
 	role: z.enum(["answer", "document"]),
-	kind: z.enum(fileKinds),
+	format: z.enum(fileFormats),
 	units: z.array(unitSchema),
 	words: z.number().int().nonnegative(),
 	renders: z.array(renderSchema),
@@ -37,7 +37,7 @@ export const caseSchema = z.object({
 
 export type Unit = z.infer<typeof unitSchema>;
 export type Render = z.infer<typeof renderSchema>;
-export type FileKind = (typeof fileKinds)[number];
+export type FileFormat = (typeof fileFormats)[number];
 export type CaseFile = z.infer<typeof fileSchema>;
 export type Item = z.infer<typeof itemSchema>;
 export type LegalCase = z.infer<typeof caseSchema>;

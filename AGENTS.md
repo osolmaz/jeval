@@ -1,7 +1,9 @@
 # AGENTS.md
 
-- Read [docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) before you change the design or start a
-  phase.
+- Read the README's "How it works", [docs/MATH.md](docs/MATH.md) and
+  [docs/DECISION_MODEL_API.md](docs/DECISION_MODEL_API.md) before you change the design. The dated docs in `docs/` are
+  plans and reports of their day; the latest plan is
+  [docs/2026-10-28-domains-as-examples.md](docs/2026-10-28-domains-as-examples.md).
 - Run `pnpm check` before you finish: format, lint, typecheck, tests with the 85% coverage gate, the DRY scan, the
   same checks in the viewer and each example, and `slophammer-ts check .`. CI does not run mutation tests; `pnpm mutate` runs them
   locally on request.
@@ -16,7 +18,8 @@
   function, choice, pick, transition function, step, view function, view, instructions, question, answer, trace and
   type. A case is a state machine: an initial state, a choice function from the latest state to its choices, and a
   transition function from the state and the picked choice to the next state. The view function turns a state into the
-  view, what the model reads. "State" means only that state; the JSON that the model reads is the view's `json`.
+  view, what the model reads. "State" means only that state; the JSON that the model reads is the view's
+  `decisionState`.
 - Do not use their old names: world, history, observation, menu, kind, workspace, log, entry for a step, option and
   action. Use judge only inside legal-judge, for its own judge files. "Entry" still means one line of a trace, and
   "options" still means a settings object, such as `RunOptions`.
@@ -36,6 +39,10 @@
   cases, and the fake decider for tests.
 - switch has no user interface. `src/` has no web page, HTTP server, styles or browser code. The web viewer is a
   package of its own in `viewer/`, which uses switch as the examples do.
+- What goes to a decision model and comes back follows pi-ai's classifier interface, as far as switch can use it: the
+  decision request, the questions, the answers, the decision result and its usage. A field that carries pi-ai's content
+  takes the prefix `decision`, such as `decisionState`. switch reshapes pi-ai's data only where it must, and says why in
+  the code: a result's `tooLong` and `milliseconds`, an image's label, and the pick's short labels.
 
 ## No domain in switch
 
@@ -71,14 +78,15 @@
   never by a path out of their folder. In this repository the `switch-source` condition points those names at
   switch's TypeScript sources: `tsconfig.json`, the Vitest configs and each example's `src/main.ts` shebang set it.
 - A domain's choice function reads only the state and the case's fixed data. In a run, only `load`, the initial state,
-  the transition and the view function's reads of the case's own files read files or start programs; the rest of the file and
-  process work stays in the domain's `ingest/` folder, `load.ts`, `setup.ts` and `viewer.ts`. A state machine may hold
-  a handle to a program outside, such as the chess engine that `load.ts` starts: a replay takes each recorded state and
-  runs no transition again.
+  the transition and the view function's reads of the case's own files read files or start programs. The rest of the
+  file and process work stays in the domain's setup and harness: its `ingest/` folder, `load.ts`, `setup.ts`,
+  `viewer.ts`, the reading of its definition file, and its own commands, such as legal-judge's scoring. A state
+  machine may hold a handle to a program outside, such as the chess engine that `load.ts` starts: a replay takes each
+  recorded state and runs no transition again.
 - Each domain's `setup.ts` exports the function that sets the domain up: it loads case folders and reports a case. A
-  domain that needs input from the command line, such as legal-judge's judge file, declares its own `flags`, and
-  `setup` gets their values. switch's commands have no flag of any one domain. The example's `src/main.ts` passes
-  the domain to `commandLine`, and adds the viewer's `viewCommand`.
+  domain that needs input from the command line, such as legal-judge's judge file, declares its own `flags` in its
+  `DomainSetup`, and `setup` gets their values. switch's commands have no flag of any one domain. The example's
+  `src/main.ts` passes the domain to `commandLine`, and adds the viewer's `viewCommand`.
 - Each example lists its own words in `domain-words.txt`, one a line. `tests/no-domain.test.ts` reads every example's
   list and fails when `src/` or `viewer/src` uses one of the words, or when an example has no list. A new example
   brings its list.

@@ -1,6 +1,15 @@
 /// <reference lib="dom" />
 /** The parts of the viewer's page, drawn from a session; `app.ts` puts them together and keeps them current. */
-import { answerText, changesOf, confidence, type Moment, percent, plain, ranked, type Session } from "./model.ts";
+import {
+	answerText,
+	changesOf,
+	type Moment,
+	percent,
+	pickProbabilities,
+	plain,
+	ranked,
+	type Session,
+} from "./model.ts";
 
 /** How many of the likeliest choices the list shows; the picked one always shows. */
 const LISTED = 8;
@@ -82,10 +91,14 @@ export function decisionPanel(moment: Moment, note = ""): HTMLElement {
 	);
 }
 
-function waitingPanel(session: Session | null, waiting: boolean): HTMLElement | null {
-	if (session === null) return h("p", { class: "quiet" }, waiting ? "Waiting for the case to start…" : "Loading…");
-	if (session.outcome !== null) return null;
-	return h("p", { class: "quiet" }, session.finished ? "The case ended without an outcome." : "The case is running.");
+/** How the case stands, when there is something to say beyond its facts: running, failed, or ended early. */
+function statusOf(session: Session, facts: number): string | null {
+	const { ended, error } = session.story;
+	if (!session.finished) return "The case is running.";
+	if (ended === null) return "The case failed before its steps ended.";
+	if (error !== null) return `The answers failed: ${error}`;
+	if (ended === "pick failed") return "A pick failed, so the steps ended early.";
+	return facts === 0 ? "The case ended with no outcome and no answers." : null;
 }
 
 /** The outcome's facts but the `hidden` ones, then the answers, as rows of a list. */
@@ -102,23 +115,30 @@ function factRows(session: Session, hidden: readonly string[]): HTMLElement[] {
 }
 
 /**
- * How the case ended: a banner with the domain's summary, and the outcome's facts and the answers. A domain's viewer
- * gives the summary, and its part the facts it leaves out.
+ * How the case ended: a banner with the domain's summary, how the case stands, the notes after its steps, and the
+ * outcome's facts and the answers, which show whether or not the domain gives an outcome. A domain's viewer gives the
+ * summary, and its part the facts it leaves out.
  */
 export function resultPanel(session: Session | null, waiting: boolean, hidden: readonly string[]): HTMLElement {
-	const pending = waitingPanel(session, waiting);
-	if (pending !== null || session === null) return h("section", { class: "result" }, pending ?? "");
+	if (session === null) {
+		const text = waiting ? "Waiting for the case to start…" : "Loading…";
+		return h("section", { class: "result" }, h("p", { class: "quiet" }, text));
+	}
+	const rows = factRows(session, hidden);
+	const status = statusOf(session, rows.length);
+	const lines = [...(status === null ? [] : [status]), ...session.story.notes];
 	return h(
 		"section",
 		{ class: "result" },
-		h("p", { class: "banner" }, session.summary ?? ""),
-		h("dl", { class: "facts" }, ...factRows(session, hidden)),
+		session.summary === null ? "" : h("p", { class: "banner" }, session.summary),
+		...lines.map((line) => h("p", { class: "quiet" }, line)),
+		rows.length === 0 ? "" : h("dl", { class: "facts" }, ...rows),
 	);
 }
 
-/** The picked choice's probability over the steps as a filled graph, with the current step marked. */
-export function confidenceChart(session: Session, index: number): HTMLElement[] {
-	const series = confidence(session.story);
+/** The probability of each step's pick as a filled graph, with the current step marked. */
+export function pickChart(session: Session, index: number): HTMLElement[] {
+	const series = pickProbabilities(session.story);
 	if (series.length < 2) return [];
 	const width = 300;
 	const x = (step: number) => ((step / (series.length - 1)) * width).toFixed(1);
@@ -130,13 +150,14 @@ export function confidenceChart(session: Session, index: number): HTMLElement[] 
 			? `<line x1="${x(index - 1)}" x2="${x(index - 1)}" y1="0" y2="64" class="now"/>`
 			: "";
 	const chart = h("div", { class: "spark" });
-	chart.innerHTML = `<svg viewBox="0 0 ${String(width)} 64" preserveAspectRatio="none" role="img" aria-label="The model's probability for each choice it made"><polygon points="${area}"/><line x1="0" x2="${String(width)}" y1="32" y2="32" class="mid"/>${marker}</svg>`;
-	return [h("h2", {}, "Model confidence"), chart];
+	chart.innerHTML = `<svg viewBox="0 0 ${String(width)} 64" preserveAspectRatio="none" role="img" aria-label="The probability of each pick"><polygon points="${area}"/><line x1="0" x2="${String(width)}" y1="32" y2="32" class="mid"/>${marker}</svg>`;
+	return [h("h2", {}, "Probability of each pick"), chart];
 }
 
 /** The parts of the page that change. */
 export interface Parts {
-	readonly stage: HTMLElement;
+	/** Where the domain's part draws the current moment, or the page shows the state as JSON. */
+	readonly drawing: HTMLElement;
 	readonly chart: HTMLElement;
 	readonly side: HTMLElement;
 	/** The title of the steps list, which a domain's part names. */
@@ -165,7 +186,7 @@ function speedSelect(): HTMLSelectElement {
 
 export function layout(root: HTMLElement): Parts {
 	const parts = {
-		stage: h("div", { class: "stage-slot" }),
+		drawing: h("div", { class: "drawing-slot" }),
 		chart: h("section", { class: "card chart" }),
 		side: h("div", { class: "card side-slot" }),
 		stepsTitle: h("h2", {}, "Result"),
@@ -193,9 +214,9 @@ export function layout(root: HTMLElement): Parts {
 		h("span", { class: "spacer" }),
 		parts.download,
 	);
-	const stage = h("section", { class: "stage", "aria-label": "The case" }, parts.stage);
+	const drawing = h("section", { class: "drawing", "aria-label": "The case" }, parts.drawing);
 	const timeline = h("div", { class: "card timeline" }, parts.stepsTitle, parts.steps, parts.result, parts.controls);
 	const side = h("aside", { class: "side" }, parts.chart, parts.side, timeline);
-	root.replaceChildren(h("div", { class: "app" }, header, h("main", { class: "layout" }, stage, side)));
+	root.replaceChildren(h("div", { class: "app" }, header, h("main", { class: "layout" }, drawing, side)));
 	return parts;
 }

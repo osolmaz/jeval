@@ -33,7 +33,7 @@ interface Pair {
 /** The task's document with the same name as an answer's Word file. */
 const originalOf = (files: readonly CaseFile[], edited: CaseFile): CaseFile | undefined =>
 	files.find(
-		(file) => file.role === "document" && file.kind === "docx" && basename(file.path) === basename(edited.path),
+		(file) => file.role === "document" && file.format === "docx" && basename(file.path) === basename(edited.path),
 	);
 
 /** Compare the answer's Word file with the task's document of the same name, once. */
@@ -42,7 +42,7 @@ export const compare = (legalCase: LegalCase) =>
 		type: "compare",
 		choices: (state) =>
 			legalCase.files
-				.filter((file) => file.role === "answer" && file.kind === "docx" && !found(state, `compare:${file.id}`))
+				.filter((file) => file.role === "answer" && file.format === "docx" && !found(state, `compare:${file.id}`))
 				.flatMap((edited) => {
 					const original = originalOf(legalCase.files, edited);
 					if (original === undefined) return [];

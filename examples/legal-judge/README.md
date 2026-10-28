@@ -5,11 +5,11 @@ task against the task's rubric. The model reads the answer and gathers what it n
 step at a time. Then it answers two questions per rubric item: whether the answer meets it, and whether it misses or
 contradicts any requirement. An item passes when both checks pass. Every text the model reads is in a judge file,
 [`judges/legal-judge.json`](judges/legal-judge.json). The judge file is this domain's definition, so a variant of the
-judge is another file passed with `--definition`.
+judge is another file passed with `--judge`.
 
 The example uses switch only by its package name, `@osolmaz/switch`, as a project outside switch would. Its program
 adds the [viewer](../../viewer/README.md)'s `view` and three commands of its own to switch's `run` and `replay`:
-`ingest`, `score` and `compare`.
+`ingest`, `score` and `compare`. The domain brings its own flag, `--judge <file>`, which `run` and `replay` take.
 
 ## Install
 
@@ -77,7 +77,7 @@ the cases that all of them answered:
 
 ```bash
 examples/legal-judge/src/main.ts run --set sets/quick.json --out results
-examples/legal-judge/src/main.ts run --set sets/quick.json --state-from results --out results-strict --definition judges/strict.json
+examples/legal-judge/src/main.ts run --set sets/quick.json --state-from results --out results-strict --judge judges/strict.json
 examples/legal-judge/src/main.ts compare results results-strict --set sets/quick.json
 ```
 

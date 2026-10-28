@@ -1,10 +1,22 @@
+import { Option } from "commander";
 import type { Runner } from "../core/index.ts";
 
-/** A domain of a harness: how to set it up. */
-export interface HarnessDomain {
-	/** Makes the domain's runner from a definition file, or from the domain's own definition. */
-	readonly setup: (definitionFile: string | undefined) => Promise<Runner>;
+/** A command-line flag of a domain's own, with a value, which `run` and `replay` take. */
+export interface DomainFlag {
+	/** The flag and its value in Commander's form, such as `--rules <file>`. */
+	readonly flag: string;
+	readonly description: string;
 }
+
+/** A domain of a harness: its own flags, and how to set it up from their values. */
+export interface HarnessDomain {
+	readonly flags?: readonly DomainFlag[];
+	/** Makes the domain's runner from the values of its own flags, by name, such as `rules` for `--rules`. */
+	readonly setup: (flags: Readonly<Record<string, string | undefined>>) => Promise<Runner>;
+}
+
+/** The name under which a flag's value comes, such as `rulesFile` for `--rules-file <file>`. */
+export const flagName = (flag: DomainFlag): string => new Option(flag.flag).attributeName();
 
 /** A harness's domains, by name. */
 export type Domains = Readonly<Record<string, HarnessDomain>>;
@@ -28,7 +40,24 @@ export function domainOf(domains: Domains, name: string | undefined): HarnessDom
 	return domain;
 }
 
-/** A domain ready to run, with the definition in `definitionFile` or with the domain's own. */
-export async function domainNamed(domains: Domains, name?: string, definitionFile?: string): Promise<Runner> {
-	return domainOf(domains, name).setup(definitionFile);
+/** Every domain's own flags, each flag once, for a command of the harness. */
+export function domainFlags(domains: Domains): Option[] {
+	const flags = new Map(
+		Object.values(domains).flatMap((domain) => (domain.flags ?? []).map((flag) => [flag.flag, flag])),
+	);
+	return [...flags.values()].map((flag) => new Option(flag.flag, flag.description));
+}
+
+/** A domain ready to run, set up with the values of its own flags among a command's `given` values. */
+export async function domainNamed(
+	domains: Domains,
+	name?: string,
+	given: Readonly<Record<string, unknown>> = {},
+): Promise<Runner> {
+	const domain = domainOf(domains, name);
+	const values = (domain.flags ?? []).map((flag) => {
+		const value = given[flagName(flag)];
+		return [flagName(flag), typeof value === "string" ? value : undefined] as const;
+	});
+	return domain.setup(Object.fromEntries(values));
 }

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_JUDGE } from "../src/index.ts";
 import { ingestCase } from "../src/ingest/ingest.ts";
 import { compareRuns, loadLabelledSet, scoreResults } from "../src/score/scores.ts";
-import { legalJudgeSetup } from "../src/setup.ts";
+import { legalJudgeDomain, legalJudgeSetup } from "../src/setup.ts";
 
 let folder = "";
 const legalJudge = await legalJudgeSetup(DEFAULT_JUDGE);
@@ -58,8 +58,14 @@ afterEach(async () => {
 });
 
 describe("the legal-judge harness", () => {
-	it("sets the domain up with its default judge when no definition file is given", async () => {
+	it("sets the domain up with the judge file of its own --judge flag, or with its default judge", async () => {
 		expect((await legalJudgeSetup(undefined)).definition).toEqual(legalJudge.definition);
+		expect(legalJudgeDomain.flags?.map((flag) => flag.flag)).toEqual(["--judge <file>"]);
+		const strict = join(folder, "strict.json");
+		const definition = JSON.parse(await readFile(DEFAULT_JUDGE, "utf8")) as { name: string };
+		await writeFile(strict, JSON.stringify({ ...definition, name: "strict" }));
+		expect((await legalJudgeDomain.setup({ judge: strict })).definition.name).toBe("strict");
+		expect((await legalJudgeDomain.setup({})).definition).toEqual(legalJudge.definition);
 	});
 
 	it("ingests and runs cases, writes results and traces, skips done cases, replays a trace and scores the results", async () => {

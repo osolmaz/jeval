@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { DefinitionError, definitionOf, type Runner, runnerOf } from "../../src/core/index.ts";
+import { definitionOf, type Runner, runnerOf } from "../../src/core/index.ts";
 import { FACTS, factsMachine } from "./fakes.ts";
 
 const caseSchema = z.object({ id: z.string(), facts: z.record(z.string(), z.string()) });
@@ -20,9 +20,8 @@ export async function factsFolder(
 	return folder;
 }
 
-/** The test domain: it takes no definition file, and a case's outcome says how the steps ended. */
-export function factsSetup(file: string | undefined): Promise<Runner> {
-	if (file !== undefined) return Promise.reject(new DefinitionError("the facts domain takes no definition file"));
+/** The test domain: it has no flags of its own, and a case's outcome says how the steps ended. */
+export function factsSetup(): Promise<Runner> {
 	return Promise.resolve(
 		runnerOf({
 			...FACTS,

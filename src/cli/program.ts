@@ -4,7 +4,7 @@ import { Command, InvalidArgumentError } from "commander";
 import type { Decider } from "../core/index.ts";
 import { piAiDecider } from "../models/pi-ai.ts";
 import { replayCase, runCases } from "./commands.ts";
-import { type Domains, domainNamed } from "./domains.ts";
+import { domainFlags, type Domains, domainNamed } from "./domains.ts";
 import { loadSet } from "./sets.ts";
 
 const positive = (value: string): number => {
@@ -48,15 +48,20 @@ interface RunFlags {
 	readonly out: string;
 	readonly set?: string;
 	readonly domain?: string;
-	readonly definition?: string;
 	readonly model: string;
 	readonly apiKeyEnv?: string;
 	readonly concurrency: number;
 	readonly stateFrom?: string;
 }
 
+/** `command` with the domains' own flags after its own. */
+function withDomainFlags(command: Command, domains: Domains): Command {
+	for (const flag of domainFlags(domains)) command.addOption(flag);
+	return command;
+}
+
 function runCommand(domains: Domains): Command {
-	return new Command("run")
+	const command = new Command("run")
 		.description(
 			"Run a domain on case folders into a run folder: run.json, and each case's result, trace and requests",
 		)
@@ -64,61 +69,60 @@ function runCommand(domains: Domains): Command {
 		.option("--set <file>", "an eval set file; its scheduled cases are run")
 		.requiredOption("--out <folder>", "the run folder; a stopped run goes on in its own folder")
 		.option("--domain <name>", DOMAIN)
-		.option("--definition <file>", "the domain's definition file; the domain's own by default")
 		.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
 		.option("--api-key-env <variable>", "the environment variable that holds the API key")
 		.option("--concurrency <n>", "cases at once", positive, 4)
-		.option("--state-from <run>", "take each case's states again from this run, and only ask the questions again")
-		.action(async (cases: string[], options: RunFlags) => {
-			const { folders, set } = await casesOf(cases, options.set);
-			const domain = await domainNamed(domains, options.domain, options.definition);
-			const model = decider(options.model, options.apiKeyEnv);
-			await runCases(domain, folders, model, {
-				out: options.out,
-				concurrency: options.concurrency,
-				log,
-				...(set === undefined ? {} : { set }),
-				...(options.stateFrom === undefined ? {} : { stateFrom: options.stateFrom }),
-			});
+		.option("--state-from <run>", "take each case's states again from this run, and only ask the questions again");
+	return withDomainFlags(command, domains).action(async (cases: string[], options: RunFlags, self: Command) => {
+		const { folders, set } = await casesOf(cases, options.set);
+		const domain = await domainNamed(domains, options.domain, self.opts());
+		const model = decider(options.model, options.apiKeyEnv);
+		await runCases(domain, folders, model, {
+			out: options.out,
+			concurrency: options.concurrency,
+			log,
+			...(set === undefined ? {} : { set }),
+			...(options.stateFrom === undefined ? {} : { stateFrom: options.stateFrom }),
 		});
+	});
 }
 
 interface ReplayFlags {
 	readonly domain?: string;
-	readonly definition?: string;
 	readonly fork?: number;
 	readonly model: string;
 	readonly apiKeyEnv?: string;
 }
 
 function replayCommand(domains: Domains): Command {
-	return new Command("replay")
+	const command = new Command("replay")
 		.description(
 			"Run a case again with the picks and states of its trace; with --fork, the model goes on after the fork",
 		)
 		.argument("<case>")
 		.argument("<trace>")
 		.option("--domain <name>", DOMAIN)
-		.option("--definition <file>", "the definition the trace was made with; the domain's own by default")
 		.option("--fork <steps>", "repeat this many recorded steps, then let --model decide", positive)
 		.option("--model <provider/id>", "the model for a fork", "typesafe/jev-latest")
-		.option("--api-key-env <variable>", "the environment variable that holds the API key")
-		.action(async (folder: string, trace: string, options: ReplayFlags) => {
+		.option("--api-key-env <variable>", "the environment variable that holds the API key");
+	return withDomainFlags(command, domains).action(
+		async (folder: string, trace: string, options: ReplayFlags, self: Command) => {
 			const fork =
 				options.fork === undefined
 					? undefined
 					: { steps: options.fork, then: decider(options.model, options.apiKeyEnv) };
-			const domain = await domainNamed(domains, options.domain, options.definition);
+			const domain = await domainNamed(domains, options.domain, self.opts());
 			const { result } = await replayCase(domain, folder, trace, fork);
 			process.stdout.write(
 				`${JSON.stringify({ answers: result.answers, steps: result.steps, error: result.error }, null, 1)}\n`,
 			);
-		});
+		},
+	);
 }
 
 /**
- * The command line of a harness with `domains`: `run` and `replay`. A harness can add commands of its own before it
- * parses the arguments, such as one that prepares case folders.
+ * The command line of a harness with `domains`: `run` and `replay`, which also take each domain's own flags. A harness
+ * can add commands of its own before it parses the arguments, such as one that prepares case folders.
  */
 export function commandLine(domains: Domains): Command {
 	return new Command()

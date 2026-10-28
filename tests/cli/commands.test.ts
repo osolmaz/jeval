@@ -39,7 +39,7 @@ describe("inPool", () => {
 
 describe("runCases", () => {
 	it("writes a run folder: run.json, and each case's result, trace and requests; skips done cases; replays a trace", async () => {
-		const domain = await factsSetup(undefined);
+		const domain = await factsSetup();
 		const cases = [
 			await factsFolder(folder, "c1"),
 			await factsFolder(folder, "c2"),
@@ -105,7 +105,7 @@ describe("runCases", () => {
 	});
 
 	it("answers a run's cases again over the states of another run, and records that run", async () => {
-		const domain = await factsSetup(undefined);
+		const domain = await factsSetup();
 		const cases = [await factsFolder(folder, "c1")];
 		const options = { concurrency: 1, log: () => undefined };
 		let calls = 0;
@@ -137,7 +137,7 @@ describe("runCases", () => {
 				? answering(0.5, () => STOP_KEY)(request, call)
 				: { ok: false, failure: "provider", message: "down", usage: { inputTokens: null, milliseconds: 0 } },
 		);
-		await runCases(await factsSetup(undefined), [await factsFolder(folder, "c1")], broken, {
+		await runCases(await factsSetup(), [await factsFolder(folder, "c1")], broken, {
 			out: join(folder, "out"),
 			concurrency: 1,
 			log: (line) => lines.push(line),

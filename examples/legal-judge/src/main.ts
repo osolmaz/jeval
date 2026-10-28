@@ -7,11 +7,9 @@ import { commandLine } from "@osolmaz/switch/cli";
 import { viewCommand } from "@osolmaz/switch-viewer";
 import { ingestCase } from "./ingest/ingest.ts";
 import { compareRuns, loadLabelledSet, scoreResults } from "./score/scores.ts";
-import { legalJudgeSetup } from "./setup.ts";
+import { legalJudgeDomain } from "./setup.ts";
 
-const program = commandLine({ "legal-judge": { setup: legalJudgeSetup } })
-	.name("legal-judge")
-	.addCommand(viewCommand());
+const program = commandLine({ "legal-judge": legalJudgeDomain }).name("legal-judge").addCommand(viewCommand());
 
 program
 	.command("ingest")

@@ -495,6 +495,12 @@ The fourth PR follows the plan above, with these differences and additions:
   plays its own sounds when its board moves, and shows the score under its move list. The word check now also covers
   `viewer/src`, with the words sound and player, and a test checks that `src/` has no browser, HTML, style or HTTP
   server code.
+- **Domain flags.** `run` and `replay` lost `--definition <file>`, which existed for legal-judge's judge files, and
+  `DefinitionError` went with it. A `HarnessDomain` can declare `flags` of its own, which both commands take, and its
+  `setup` gets their values by name. legal-judge declares `--judge <file>`; chess declares none, and its setup takes
+  nothing. The `Definition` record in `run.json` stays.
+- **Word lists.** Each example lists its words in `domain-words.txt`, and the word check reads every example's list
+  in place of a list of its own, so a new example is covered once it brings its list.
 
 ## Out of scope
 

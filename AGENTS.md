@@ -75,8 +75,13 @@
   process work stays in the domain's `ingest/` folder, `load.ts`, `setup.ts` and `viewer.ts`. A state machine may hold
   a handle to a program outside, such as the chess engine that `load.ts` starts: a replay takes each recorded state and
   runs no transition again.
-- Each domain's `setup.ts` exports the function that sets the domain up from a definition file: it loads case folders
-  and reports a case. The example's `src/main.ts` passes it to `commandLine`, and adds the viewer's `viewCommand`.
+- Each domain's `setup.ts` exports the function that sets the domain up: it loads case folders and reports a case. A
+  domain that needs input from the command line, such as legal-judge's judge file, declares its own `flags`, and
+  `setup` gets their values. switch's commands have no flag of any one domain. The example's `src/main.ts` passes
+  the domain to `commandLine`, and adds the viewer's `viewCommand`.
+- Each example lists its own words in `domain-words.txt`, one a line. `tests/no-domain.test.ts` reads every example's
+  list and fails when `src/` or `viewer/src` uses one of the words, or when an example has no list. A new example
+  brings its list.
 
 ## Dependencies and docs
 

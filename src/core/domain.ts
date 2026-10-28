@@ -38,11 +38,6 @@ export interface Runner {
 	run(folder: string, decider: Decider, options: CaseOptions): Promise<CaseRun>;
 }
 
-/** A domain was given a definition that it does not take. */
-export class DefinitionError extends Error {
-	override readonly name = "DefinitionError";
-}
-
 /** The runner of a domain: it loads a case folder's state machine, runs the loop on it and reports the case. */
 export function runnerOf<S extends JsonObject, C extends Choice>(domain: Domain<S, C>): Runner {
 	return {

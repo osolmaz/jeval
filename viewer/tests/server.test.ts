@@ -23,7 +23,7 @@ afterEach(async () => {
 async function factsRun(ids: readonly string[]): Promise<string> {
 	const folders = await Promise.all(ids.map((id) => factsFolder(folder, id)));
 	const out = join(folder, "run");
-	await runCases(await factsSetup(undefined), folders, fakeDecider(answering(0.6, () => STOP_KEY)), {
+	await runCases(await factsSetup(), folders, fakeDecider(answering(0.6, () => STOP_KEY)), {
 		out,
 		concurrency: 1,
 		log: () => undefined,

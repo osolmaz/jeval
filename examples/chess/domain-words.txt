@@ -1,0 +1,24 @@
+# Words of the chess domain, which switch and the viewer must not use. switch's word test reads this file.
+chess
+game
+board
+piece
+pawn
+knight
+bishop
+rook
+queen
+king
+castling
+capture
+checkmate
+stalemate
+resign
+opponent
+player
+stockfish
+engine
+pgn
+fen
+uci
+sound

@@ -2,12 +2,29 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+const EXAMPLES = new URL("../examples/", import.meta.url);
+
+/** Each example's words, from its `domain-words.txt`: one word a line, and `#` starts a comment. */
+async function exampleWords(): Promise<Record<string, string[]>> {
+	const folders = (await readdir(EXAMPLES, { withFileTypes: true })).filter((entry) => entry.isDirectory());
+	const lists = await Promise.all(
+		folders.map(async ({ name }) => {
+			const text = await readFile(new URL(`${name}/domain-words.txt`, EXAMPLES), "utf8");
+			const words = text.split("\n").filter((line) => line.trim() !== "" && !line.startsWith("#"));
+			return [name, words.map((word) => word.trim().toLowerCase())] as const;
+		}),
+	);
+	return Object.fromEntries(lists);
+}
+
 /**
- * Words of the examples that switch must not know: AGENTS.md has the rule that switch knows nothing of any domain. A
- * word counts at the start of a word or of a part of a camelCase name, so `chessPart` and `toPgn` count too.
+ * The words of the examples, which switch must not know: AGENTS.md has the rule that switch knows nothing of any
+ * domain. A word counts at the start of a word or of a part of a camelCase name, so `chessPart` and `toPgn` count too.
  */
-const DOMAIN_WORDS =
-	/\b(chess|legal|judge|rubric|stockfish|pgn|game|board|opponent|player|checkmate|fen|uci|engine|pawn|knight|bishop|rook|queen|sound|evidence|verdict|grader|qualifier)/i;
+async function domainWords(): Promise<RegExp> {
+	const words = Object.values(await exampleWords()).flat();
+	return new RegExp(`\\b(${words.join("|")})`, "i");
+}
 
 /** The words of a line, with each camelCase name split into its parts. */
 const wordsOf = (line: string): string => line.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
@@ -44,19 +61,22 @@ const WEB = /lib="dom"|\bHTML|\bdocument\.|<html|<style|\.css\b|node:http|\bbrow
 
 describe("switch's sources", () => {
 	it("name no domain, in code, comments, help texts or styles, and neither does the viewer", async () => {
-		expect(await linesMatching(["src", "viewer/src"], DOMAIN_WORDS)).toEqual([]);
+		expect(await linesMatching(["src", "viewer/src"], await domainWords())).toEqual([]);
 	});
 
 	it("have no web page, server or browser code: the viewer is a package of its own", async () => {
 		expect(await linesMatching(["src"], WEB)).toEqual([]);
 	});
 
-	it("are checked for words inside names too, and for web code", () => {
+	it("are checked for the words that every example lists, also inside names, and for web code", async () => {
+		const lists = await exampleWords();
+		for (const [name, words] of Object.entries(lists)) expect(words.length, name).toBeGreaterThan(5);
+		const words = await domainWords();
 		for (const name of ["chessPart", "toPgn", "legalCase", "judgeDefinition", "rubricItems", "chess_board"]) {
-			expect(DOMAIN_WORDS.test(wordsOf(name))).toBe(true);
+			expect(words.test(wordsOf(name))).toBe(true);
 		}
 		for (const name of ["keyboard", "removeEventListener", "criteria", "labels", "checkSquare"]) {
-			expect(DOMAIN_WORDS.test(wordsOf(name))).toBe(false);
+			expect(words.test(wordsOf(name))).toBe(false);
 		}
 		for (const line of ['/// <reference lib="dom" />', "): HTMLElement {", 'from "node:http";', "page.css"]) {
 			expect(WEB.test(line)).toBe(true);

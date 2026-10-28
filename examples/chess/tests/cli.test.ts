@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DefinitionError, hashOf } from "@osolmaz/switch";
+import { hashOf } from "@osolmaz/switch";
 import { resultSchema, runCases, runRecordSchema } from "@osolmaz/switch/cli";
 import { route } from "@osolmaz/switch-viewer";
 import { fakeDecider } from "@osolmaz/switch/testing";
@@ -31,7 +31,7 @@ async function chessRun(ids: readonly string[]): Promise<string> {
 	);
 	const out = join(folder, "run");
 	const lines: string[] = [];
-	await runCases(await chessSetup(undefined), folders, fakeDecider(picking("stop")), {
+	await runCases(await chessSetup(), folders, fakeDecider(picking("stop")), {
 		out,
 		concurrency: 1,
 		log: (line) => lines.push(line),
@@ -43,11 +43,6 @@ async function chessRun(ids: readonly string[]): Promise<string> {
 }
 
 describe("the chess harness", () => {
-	it("takes no definition file", async () => {
-		await expect(chessSetup("definition.json")).rejects.toThrow(DefinitionError);
-		await expect(chessSetup("definition.json")).rejects.toThrow(/takes no definition file/);
-	});
-
 	it("records a game's outcome, and its texts and limits as its definition", async () => {
 		const out = await chessRun(["g1"]);
 		const result = resultSchema.parse(JSON.parse(await readFile(join(out, "cases", "g1", "result.json"), "utf8")));

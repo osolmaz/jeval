@@ -190,20 +190,18 @@ function that asks in stages.
 
 ## Write a harness
 
-A harness is a program that runs a domain on case folders. Its setup function takes a definition file, or none, and
-returns a runner. The runner holds what every case shares, the definition, how to read a case's id, how to load a case
-folder's state machine, and, when the domain has one, how a case ended. The definition holds every text the
-model reads that does not come from a case, and the limits; `run.json` records it with its hash. `--definition <file>`
-passes a file to the function, such as a judge file to `legal-judge`. This setup takes no file:
+A harness is a program that runs a domain on case folders. Its setup function returns a runner. The runner holds what
+every case shares, the definition, how to read a case's id, how to load a case folder's state machine, and, when the
+domain has one, how a case ended. The definition holds every text the model reads that does not come from a case, and
+the limits; `run.json` records it with its hash. This setup needs nothing:
 
 ```ts
 import { basename } from "node:path";
-import { DefinitionError, definitionOf, type Runner, runnerOf } from "@osolmaz/switch";
+import { definitionOf, type Runner, runnerOf } from "@osolmaz/switch";
 import { TRIAGE, triageMachine } from "./index.ts";
 import { loadTicket } from "./load.ts";
 
-export function triageSetup(file: string | undefined): Promise<Runner> {
-  if (file !== undefined) return Promise.reject(new DefinitionError("triage takes no definition file"));
+export function triageSetup(): Promise<Runner> {
   return Promise.resolve(
     runnerOf({
       ...TRIAGE,
@@ -232,7 +230,9 @@ await commandLine({ triage: { setup: triageSetup } })
   .parseAsync();
 ```
 
-A harness with more than one domain takes `--domain` to pick one. [`examples/legal-judge/`](examples/legal-judge) and
+A domain can bring flags of its own, which `run` and `replay` then take, and `setup` gets their values by name. For
+example, `legal-judge` declares `flags: [{ flag: "--judge <file>", description: "…" }]`, and its setup reads the judge
+file from `flags["judge"]`. A harness with more than one domain takes `--domain` to pick one. [`examples/legal-judge/`](examples/legal-judge) and
 [`examples/chess/`](examples/chess) are complete harnesses, and
 [docs/2026-10-25-switch-plan.md](docs/2026-10-25-switch-plan.md) explains the design.
 

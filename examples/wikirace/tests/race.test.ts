@@ -157,6 +157,15 @@ describe("a whole race", () => {
 		expect(outcomeOf(cut)).toMatchObject({ result: "unfinished", reason: "step limit", hops: 1 });
 	});
 
+	it("ends at a dead end without asking the model to give up, as an unfinished race", async () => {
+		const { machine } = await raceOf();
+		const decider = fakeDecider(following(["Pond"]));
+		const stuck = await run(WIKIRACE, machine, decider);
+		expect(stuck).toMatchObject({ steps: 1, ended: "done" });
+		expect(decider.requests).toHaveLength(1);
+		expect(outcomeOf(stuck)).toEqual({ result: "unfinished", reason: "dead end", hops: 1, path: ["Duck", "Pond"] });
+	});
+
 	it("replays from its trace without reading Wikipedia again", async () => {
 		const { machine } = await raceOf();
 		const first = await run(WIKIRACE, machine, fakeDecider(following(["Bird", "Sky", "Moon"])));

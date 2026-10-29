@@ -1,4 +1,4 @@
-import type { Answer, Choice, ChoiceQuestion, JsonObject, StateMachine } from "./types.ts";
+import type { Answer, Choice, ChoiceQuestion, Json, JsonObject, Question, StateMachine } from "./types.ts";
 
 /** The id of the pick question that `picking` asks, unless its domain names another. */
 export const PICK_ID = "pick";
@@ -62,6 +62,24 @@ export function pickQuestion<C extends Choice>(
 	const cut = choices.length - offered.length;
 	const data = cut > 0 ? { choices: labels, cut } : { choices: labels };
 	return { question: { type: "choice", instructions, criteria, data }, choices: offered };
+}
+
+const isObject = (value: Json | undefined): value is JsonObject =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The key behind each label of a pick, from the facts that `pickQuestion` writes into its question; null for a
+ * question that is no pick. This is how the loop and the tools that read a trace tell a pick from other questions.
+ */
+export function pickKeys(question: Question | undefined): Map<string, string> | null {
+	const choices = question?.type === "choice" ? question.data?.["choices"] : undefined;
+	if (!isObject(choices)) return null;
+	const keys = new Map<string, string>();
+	for (const [label, facts] of Object.entries(choices)) {
+		const key = isObject(facts) ? facts["key"] : undefined;
+		if (typeof key === "string") keys.set(label, key);
+	}
+	return keys;
 }
 
 /** The choice that `answer` picked in `pick`. */

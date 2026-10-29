@@ -53,15 +53,14 @@ describe("text", () => {
 	});
 
 	it("ranks choices by probability, with unanswered ones last", () => {
-		const choice = (key: string, probability: number | null) => ({
-			label: key,
-			key,
-			text: key,
+		const choice = (label: string, probability: number | null) => ({
+			label,
+			text: label,
 			probability,
 			picked: false,
 			data: null,
 		});
-		expect(ranked([choice("a", null), choice("b", 0.2), choice("c", 0.7)]).map((item) => item.key)).toEqual([
+		expect(ranked([choice("a", null), choice("b", 0.2), choice("c", 0.7)]).map((item) => item.label)).toEqual([
 			"c",
 			"b",
 			"a",

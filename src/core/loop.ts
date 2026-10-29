@@ -1,4 +1,5 @@
 import { definitionFor } from "./definition.ts";
+import { pickKeys } from "./pick.ts";
 import { type RecordedStep, recordedState, type Replay, ReplayError } from "./replay.ts";
 import { Trace, type TraceEntry } from "./trace.ts";
 import type {
@@ -10,7 +11,6 @@ import type {
 	DecisionResult,
 	Domain,
 	Ending,
-	Json,
 	JsonObject,
 	Limits,
 	Question,
@@ -196,21 +196,6 @@ function fitAnswer(id: string, question: Question, before: Question | undefined,
 	return answer.type === "choice" && question.type === "choice" ? fitChoice(id, question, before, answer) : answer;
 }
 
-const isObject = (value: Json | undefined): value is JsonObject =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
-/** The key behind each label of a pick, from the facts that `pickQuestion` writes; null for another question. */
-function keysOf(question: Question | undefined): Map<string, string> | null {
-	const choices = question?.data?.["choices"];
-	if (!isObject(choices)) return null;
-	const keys = new Map<string, string>();
-	for (const [label, facts] of Object.entries(choices)) {
-		const key = isObject(facts) ? facts["key"] : undefined;
-		if (typeof key === "string") keys.set(label, key);
-	}
-	return keys;
-}
-
 /** A recorded choice answer, under the labels that the domain's question has now. */
 function fitChoice(
 	id: string,
@@ -218,8 +203,8 @@ function fitChoice(
 	before: Question | undefined,
 	answer: ChoiceAnswer,
 ): ChoiceAnswer {
-	const was = keysOf(before);
-	const now = keysOf(question);
+	const was = pickKeys(before);
+	const now = pickKeys(question);
 	if (was !== null && now !== null) return relabeled(id, answer, was, now);
 	const text = before?.type === "choice" ? before.criteria[answer.choice] : undefined;
 	if (text === undefined || question.criteria[answer.choice] !== text) {

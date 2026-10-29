@@ -267,13 +267,6 @@ describe("runCases, when a case fails", () => {
 	});
 });
 
-describe("the run command", () => {
-	it("has no flag that repeats an earlier run's steps: a fork does that", () => {
-		const run = commandLine({ facts: { setup: factsSetup } }).commands.find((command) => command.name() === "run");
-		expect(run?.options.map((option) => option.long)).not.toContain("--state-from");
-	});
-});
-
 describe("replayCase", () => {
 	it("repeats a case from its trace, and with --out writes it as a run of one case", async () => {
 		const domain = await factsSetup();

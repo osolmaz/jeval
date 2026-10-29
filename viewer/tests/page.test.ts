@@ -54,23 +54,45 @@ describe("storyOf", () => {
 		expect(first).toMatchObject({ step: 1, pick: 0, answered: true, before: opened, after: afterA });
 		const pick = first?.questions[0];
 		expect(pick).toMatchObject({ id: PICK_ID, cut: 0, answer: { type: "choice", choice: "o1" } });
-		expect(pick?.choices.map((choice) => [choice.label, choice.key, choice.probability, choice.picked])).toEqual([
-			["o1", "look-up:a", 0.9, true],
-			["o2", "look-up:b", null, false],
-			["o3", "stop:stop", null, false],
+		expect(pick?.choices.map((choice) => [choice.label, choice.text, choice.probability, choice.picked])).toEqual([
+			["o1", "Look up a", 0.9, true],
+			["o2", "Look up b", null, false],
+			["o3", "Stop looking", null, false],
 		]);
 	});
 
-	it("reads a failed step as a step without answers, and the run's failure", async () => {
+	it("reads a failed step as a step without answers, with the run's failure", async () => {
 		const story = storyOf(await traced(), "c1");
 		const second = story.frames[1];
-		expect(second).toMatchObject({ step: 2, answered: false, after: null, before: afterA, notes: [] });
+		expect(second).toMatchObject({
+			step: 2,
+			answered: false,
+			failed: "down",
+			after: null,
+			before: afterA,
+			notes: [],
+		});
 		expect(second?.questions[0]?.answer).toBeNull();
 		expect(story.last).toEqual(afterA);
 		expect(story).toMatchObject({ ended: "failed", error: "down", thrown: null });
 	});
 
-	it("reads the answers of questions of every type, and a choice question without facts by its labels", () => {
+	it("gives the step that a thrown error stopped that error, and no step a failure while it waits", () => {
+		const asked: TraceEntry[] = [
+			START_ENTRY,
+			{ type: "state", step: 0, state: opened },
+			{
+				type: "questions",
+				step: 1,
+				questions: { sure: { type: "bool", instructions: "Sure?", criteria: { true: "yes", false: "no" } } },
+			},
+		];
+		expect(storyOf(asked, "c1").frames[0]).toMatchObject({ answered: false, failed: null });
+		const stopped = storyOf([...asked, { type: "thrown", error: "broken" }], "c1");
+		expect(stopped.frames[0]).toMatchObject({ answered: false, failed: "broken" });
+	});
+
+	it("reads the answers of questions of every type, and takes a choice question without a pick's facts for no pick", () => {
 		const entries: TraceEntry[] = [
 			START_ENTRY,
 			{ type: "state", step: 0, state: opened },
@@ -92,9 +114,9 @@ describe("storyOf", () => {
 			},
 		];
 		const [frame] = storyOf(entries, "c1").frames;
-		expect(frame?.pick).toBe(1);
+		expect(frame?.pick).toBeNull();
 		expect(frame?.questions[0]).toMatchObject({ id: "sure", answer: { probability: 0.6 }, choices: [] });
-		expect(frame?.questions[1]?.choices.map((choice) => [choice.key, choice.probability, choice.picked])).toEqual([
+		expect(frame?.questions[1]?.choices.map((choice) => [choice.label, choice.probability, choice.picked])).toEqual([
 			["x", 0.2, false],
 			["y", 0.8, true],
 		]);

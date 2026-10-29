@@ -1,8 +1,8 @@
 # switch viewer
 
 The viewer plays a switch run back in the browser, step by step. It shows each step's questions with the model's
-answers, and what the step changed in the state. For a pick, it shows the choices with the model's probability for
-every one, how many choices the limit cut, and the picked choice. At the end it shows how the run ended, and why the
+answers, and what the step changed in the state. For each choice question, it shows the choices with the model's
+probability for every one and the picked choice, and for a pick, how many choices the limit cut. At the end it shows how the run ended, and why the
 case failed if it did. It reads only a run folder, so it works for any domain, and a case's page follows the case live
 while it runs, also when a stopped run runs it again.
 

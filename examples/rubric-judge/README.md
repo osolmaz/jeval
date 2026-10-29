@@ -55,8 +55,8 @@ Each case is a state machine, in `src/index.ts`:
   the answer's Word file with the original. Each of these leaves out what the evidence already holds. The seventh is
   stop, with the judge file's stop text, which is always among the choices.
 - The transition function of a pick adds the evidence of the picked choice, or ends the gathering at stop, and counts
-  the step.
-- After stop, or after the most gathering steps that the judge file allows, the question function asks the judge's two
+  the step. When the count reaches the most gathering steps that the judge file allows, it ends the gathering too.
+- Once the gathering has ended, or when nothing is left to gather but stop, the question function asks the judge's two
   questions about every rubric item in one step. Its transition keeps their probabilities, and then the question
   function asks nothing, so the run ends.
 - The view function shows the request, the rubric, the files and what has been read of them, and the evidence, cut to
@@ -82,8 +82,7 @@ examples/rubric-judge/src/main.ts run cases/case-1 --out results --model typesaf
 
 A run writes one folder. `run.json` records what ran, including the judge file as the run's definition, its hash and
 the switch commit, and at the end the totals, with the cost. Each case keeps its outcome in `result.json`, with each
-rubric item's probability of passing under `verdicts` and the gathering steps under `steps`, and a trace of every
-state. Its `requests.jsonl` keeps every decision request that switch passed to pi-ai, with each image by its label,
+rubric item's probability of passing under `verdicts`, and a trace of every state. Its `requests.jsonl` keeps every decision request that switch passed to pi-ai, with each image by its label,
 and its result. A stopped run goes on in the same folder; a judge file with another hash needs another folder.
 
 ## Measure a judge
@@ -98,10 +97,10 @@ examples/rubric-judge/src/main.ts run --set sets/quick.json --out results-legal 
 examples/rubric-judge/src/main.ts compare results results-legal --set sets/quick.json
 ```
 
-To ask another judge file or model over the evidence that a run gathered, fork a case's trace after its gathering
-steps, which the case's outcome counts under `steps`. The fork repeats those steps from the trace and asks only the
-checks again, for about a third of the cost of a new run, and writes a run folder of one case. There is no command yet
-that forks every case of a set:
+To ask another judge file or model over the evidence that a run gathered, fork a case's trace before its checks, which
+are its last step: at one less than the `steps` of its `result.json`. The fork repeats the gathering from the trace
+and asks only the checks again, for about a third of the cost of a new run, and writes a run folder of one case. There
+is no command yet that forks every case of a set:
 
 ```bash
 examples/rubric-judge/src/main.ts replay cases/case-1 results/cases/case-1/trace.jsonl --fork 5 --out forks/case-1 --judge examples/rubric-judge/judges/legal.json

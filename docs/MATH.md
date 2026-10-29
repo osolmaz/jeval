@@ -155,12 +155,14 @@ A run thus ends when the domain has nothing more to ask, and the step limit only
 does. A domain that must ask something last, before a limit of its own, counts its steps in its state.
 
 The trace keeps the probabilities of every answer of every step. From it follows one number that switch does not
-compute but any tool can: the probability that a model which drew each answer at random from its probabilities would
-take this exact path, with the product over every bool and choice answer of the run:
+compute but any tool can: the probability that a model which drew each choice answer at random from its probabilities
+would take this exact path. With $K_t$ the choice questions of step $t$, and $p_{t,j}(a_{t,j})$ the probability of
+the label that the answer to question $j$ named:
 
-$$P(\text{path}) = \prod_{t} \prod_{j} p_{t,j}(a_{t,j})$$
+$$P(\text{path}) = \prod_{t} \prod_{j \in K_t} p_{t,j}(a_{t,j})$$
 
-A long run of confident answers keeps this high, and one unsure answer lowers it by its whole factor.
+A bool or score answer names no label, so it adds no factor. A long run of confident picks keeps this high, and one
+unsure pick lowers it by its whole factor.
 
 ## Why a replay is exact
 

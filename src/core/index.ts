@@ -16,6 +16,7 @@ export {
 	PICK_ID,
 	pickedChoice,
 	picking,
+	pickKeys,
 	type PickQuestion,
 	pickQuestion,
 	type PickSpec,

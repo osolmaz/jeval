@@ -8,6 +8,7 @@ import {
 	PICK_ID,
 	pickedChoice,
 	picking,
+	pickKeys,
 	pickQuestion,
 	typedKey,
 } from "../../src/core/index.ts";
@@ -71,6 +72,21 @@ describe("pickQuestion", () => {
 		const pick = pickQuestion(joinTypes(ranked).choices(START), "Pick.", 3);
 		expect(pick?.question.data).toMatchObject({ cut: 1 });
 		expect(pickQuestion([], "Pick.", 3)).toBeNull();
+	});
+});
+
+describe("pickKeys", () => {
+	it("gives the key behind each label of a pick, and null for a question that is no pick", () => {
+		const pick = pickQuestion([choice("x"), choice("y")], "Pick.", 5);
+		expect(pickKeys(pick?.question)).toEqual(
+			new Map([
+				["o1", "x"],
+				["o2", "y"],
+			]),
+		);
+		expect(pickKeys({ type: "choice", instructions: "Which?", criteria: { a: "A" } })).toBeNull();
+		expect(pickKeys({ type: "bool", instructions: "Sure?", criteria: { true: "yes", false: "no" } })).toBeNull();
+		expect(pickKeys(undefined)).toBeNull();
 	});
 });
 

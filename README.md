@@ -99,7 +99,7 @@ installed and how to run it. Its program is `src/main.ts`, which runs from the r
 
 ## Watch a run
 
-A run folder keeps every case's trace, so another program can show it. The [viewer](viewer/README.md) is one: both
+A run folder keeps every case's trace, so another program can show it. The [viewer](viewer/README.md) is one: the
 examples add its `view` command, which plays a run back in the browser step by step, and follows each case live while
 it runs.
 
@@ -272,7 +272,7 @@ export function triageSetup(): Promise<Runner> {
 
 `commandLine` turns the setup into the harness's program, with switch's `run` and `replay` commands. It is a
 [Commander](https://github.com/tj/commander.js) program, so the harness can add its own commands, as `rubric-judge`
-adds `ingest`, `score` and `compare`, and both examples add the viewer's `view`:
+adds `ingest`, `score` and `compare`, and the examples add the viewer's `view`:
 
 ```ts
 import { commandLine } from "@osolmaz/switch/cli";
@@ -288,7 +288,8 @@ then take. `setup` gets their values by name. For example, `rubric-judge` declar
 `flags: [{ flag: "--judge <file>", description: "…" }]`, and its setup reads the judge file from `flags["judge"]`. A
 harness with more than one domain takes `--domain` to pick one. The model's API key comes from the environment
 variable that `--api-key-env` names, or pi-ai finds the provider's own, such as `TYPESAFE_API_KEY`.
-[`examples/rubric-judge/`](examples/rubric-judge) and [`examples/chess/`](examples/chess) are complete harnesses, and
+[`examples/rubric-judge/`](examples/rubric-judge), [`examples/chess/`](examples/chess) and
+[`examples/wikirace/`](examples/wikirace) are complete harnesses, and
 [docs/MATH.md](docs/MATH.md) explains the loop in symbols.
 
 ## License

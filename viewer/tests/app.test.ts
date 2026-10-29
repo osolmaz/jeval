@@ -195,6 +195,20 @@ describe("a running case", () => {
 		expect(text(root, ".result-slot")).toContain("The case ended with no outcome.");
 	});
 
+	it("says that a step failed, with the reason, where the model gave no answers", async () => {
+		const session = await factsSession({ steps: 1 });
+		const frame = session.story.frames[0];
+		if (frame === undefined) throw new Error("no step");
+		const failed = { ...frame, answered: false, failed: "down", after: null };
+		const story = { ...session.story, frames: [failed], ended: "failed" as const, error: "down" };
+		const { root } = mount({ ...QUICK, session: { ...session, story } });
+		click(root, "button.next");
+		await vi.waitFor(() => {
+			expect(text(root, ".decision h2")).toBe("The step failed");
+		});
+		expect(text(root, ".decision")).toContain("down");
+	});
+
 	it("says when the run failed, a step limit ended it, or the case failed before or after its run ended", async () => {
 		const session = await factsSession({ steps: 1 });
 		const show = async (story: Partial<typeof session.story>, finished = true): Promise<string> => {

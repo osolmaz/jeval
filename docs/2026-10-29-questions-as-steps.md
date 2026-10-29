@@ -51,7 +51,8 @@ What an answer is, and how its probabilities come from the model's scores, belon
 switch: `docs/DECISION_MODEL_API.md` gives the answers of pi-ai's `bool`, `choice` and `score` questions, and a type
 that pi-ai adds later works in switch with no change. switch can use only what pi-ai offers, so System One's `box`
 questions and the probabilities of a score answer stay out. The probability of a run's path is the product of the
-probabilities of its answers, and it covers bool and choice answers only, since pi-ai gives none for a score answer.
+probabilities of the labels that its choice answers named; a bool or a score answer names no label, so it adds no
+factor.
 
 ## The interface
 

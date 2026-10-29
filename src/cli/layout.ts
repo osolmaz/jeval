@@ -10,9 +10,9 @@ export const casesFolder = (out: string): string => join(out, "cases");
 
 export interface CaseFiles {
 	readonly folder: string;
-	/** The case's answers and outcome. */
+	/** The case's steps, how its run ended, and its outcome. */
 	readonly result: string;
-	/** Every state, the choices and the pick of each step, and the answers, in order. */
+	/** Every state, and the questions and answers of each step, in order. */
 	readonly trace: string;
 	/** Every request sent to the decision model for the case, as sent, with its result. */
 	readonly requests: string;

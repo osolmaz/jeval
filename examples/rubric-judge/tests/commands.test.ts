@@ -104,7 +104,7 @@ describe("the rubric-judge harness", () => {
 			steps: 2,
 			ended: "done",
 			error: null,
-			outcome: { verdicts: { "S-1": 0.8 }, steps: 1 },
+			outcome: { verdicts: { "S-1": 0.8 } },
 		});
 		const requests = parseRequests(await readFile(join(folder, "out", "cases", "c1", "requests.jsonl"), "utf8"));
 		expect(requests.map((recorded) => Object.keys(recorded.request.decisionQuestions))).toEqual([
@@ -121,7 +121,7 @@ describe("the rubric-judge harness", () => {
 		]);
 		expect(lines).toEqual(
 			expect.arrayContaining([
-				expect.stringMatching(/^c1: 2 steps, \{"verdicts":\{"S-1":0\.8\},"steps":1\}$/),
+				expect.stringMatching(/^c1: 2 steps, \{"verdicts":\{"S-1":0\.8\}\}$/),
 				expect.stringMatching(/^missing: 0 steps \| ERROR .*ENOENT/),
 			]),
 		);
@@ -221,6 +221,6 @@ describe("the rubric-judge harness", () => {
 			concurrency: 1,
 			progress: (line) => lines.push(line),
 		});
-		expect(lines).toEqual(['c1: 2 steps, {"verdicts":null,"steps":1} (failed) | ERROR down']);
+		expect(lines).toEqual(['c1: 2 steps, {"verdicts":null} (failed) | ERROR down']);
 	});
 });

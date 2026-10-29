@@ -143,10 +143,18 @@ const section = choiceType<RaceState, number>({
 	}),
 });
 
-/** Give up the race, which loses it: always among the choices while the race is on, and never cut. */
+/** A dead end: the race is on, but the current article has no link and no section left to pick. */
+const deadEnd = (state: RaceState): boolean =>
+	!over(state) && shownLinks(state).length === 0 && shownSections(state).length === 0;
+
+/**
+ * Give up the race, which loses it: among the choices while there is a link or a section to pick, and never cut. At a
+ * dead end nothing is left to pick, so the race ends there without a request.
+ */
 const giveUp = choiceType<RaceState, null>({
 	type: "give-up",
-	choices: (state) => (over(state) ? [] : [{ key: "give-up", text: TEXTS.giveUp, arg: null, priority: -1 }]),
+	choices: (state) =>
+		over(state) || deadEnd(state) ? [] : [{ key: "give-up", text: TEXTS.giveUp, arg: null, priority: -1 }],
 	transition: (state) => ({ ...state, gaveUp: true, last: `Gave up the race at ${current(state).title}.` }),
 });
 
@@ -208,10 +216,13 @@ export function raceMachine(race: OpenedRace, wiki: Wiki): StateMachine<RaceStat
 	};
 }
 
-/** How a race ended: reached, given up or unfinished, with the hops between articles and the path. */
+/**
+ * How a race ended: reached, given up or unfinished, with the hops between articles and the path. An unfinished race
+ * says why: a dead end, the step limit, or a failed request.
+ */
 export function outcomeOf({ state, ended }: Pick<RunResult<RaceState>, "state" | "ended">): JsonObject {
 	const facts = { hops: state.path.length - 1, path: state.path.map((visit) => visit.title) };
 	if (reached(state)) return { result: "reached", ...facts };
 	if (state.gaveUp) return { result: "gave up", ...facts };
-	return { result: "unfinished", reason: ended, ...facts };
+	return { result: "unfinished", reason: deadEnd(state) ? "dead end" : ended, ...facts };
 }

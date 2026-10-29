@@ -3,7 +3,7 @@ import {
 	type Answers,
 	type Ending,
 	type JsonObject,
-	PICK_ID,
+	pickKeys,
 	type Question,
 	startOf,
 	type TraceEntry,
@@ -13,8 +13,6 @@ import {
 export interface FrameChoice {
 	/** The choice's label in the question. */
 	readonly label: string;
-	/** The choice's own key, from the question's facts; its label when the question has none. */
-	readonly key: string;
 	readonly text: string;
 	readonly probability: number | null;
 	readonly picked: boolean;
@@ -39,10 +37,12 @@ export interface Frame {
 	/** The state before the step. */
 	readonly before: JsonObject | null;
 	readonly questions: readonly FrameQuestion[];
-	/** The place among `questions` of the step's pick: switch's pick question, or else its first choice question. */
+	/** The place among `questions` of the step's first pick, the choice question that `picking` built; null for none. */
 	readonly pick: number | null;
 	/** Whether the model answered the step. */
 	readonly answered: boolean;
+	/** Why the step got no answers: its request failed, or the case stopped; null when it did not. */
+	readonly failed: string | null;
 	/** The state after the transition; null until then, or when the step failed. */
 	readonly after: JsonObject | null;
 	readonly notes: readonly string[];
@@ -75,6 +75,7 @@ interface Building {
 	questions: FrameQuestion[];
 	pick: number | null;
 	answered: boolean;
+	failed: string | null;
 	after: JsonObject | null;
 	notes: string[];
 }
@@ -84,12 +85,11 @@ type Entry<T extends TraceEntry["type"]> = Extract<TraceEntry, { type: T }>;
 const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** What the question's facts say about the choice under `label`: its key and its own facts, as a pick writes them. */
-function factsOf(question: Question, label: string): { key: string; data: unknown } {
+/** The facts of the choice under `label`, as a pick writes them into its question. */
+function factsOf(question: Question, label: string): unknown {
 	const choices = isObject(question.data) ? question.data["choices"] : undefined;
 	const facts = isObject(choices) ? choices[label] : undefined;
-	if (!isObject(facts)) return { key: label, data: undefined };
-	return { key: typeof facts["key"] === "string" ? facts["key"] : label, data: facts["data"] };
+	return isObject(facts) ? facts["data"] : undefined;
 }
 
 /** A question of a step, before its answer: a choice question with its choices. */
@@ -101,7 +101,7 @@ function frameQuestion(id: string, question: Question): FrameQuestion {
 		text,
 		probability: null,
 		picked: false,
-		...factsOf(question, label),
+		data: factsOf(question, label),
 	}));
 	return { id, question, answer: null, choices, cut };
 }
@@ -118,17 +118,22 @@ function withAnswer(question: FrameQuestion, answer: Answer | undefined): FrameQ
 	return { ...question, answer, choices };
 }
 
-/** The place of a step's pick among its questions: switch's pick question, or else the first choice question. */
+/** The place of a step's first pick among its questions, as `pickKeys` tells a pick from other questions. */
 function pickAmong(questions: readonly FrameQuestion[]): number | null {
-	const named = questions.findIndex((question) => question.id === PICK_ID);
-	const first = questions.findIndex((question) => question.question.type === "choice");
-	const found = named >= 0 ? named : first;
+	const found = questions.findIndex((question) => pickKeys(question.question) !== null);
 	return found >= 0 ? found : null;
 }
 
 function questionsFrame(entry: Entry<"questions">, before: JsonObject | null): Building {
 	const questions = Object.entries(entry.questions).map(([id, question]) => frameQuestion(id, question));
-	return { step: entry.step, before, questions, pick: pickAmong(questions), answered: false, after: null, notes: [] };
+	const pick = pickAmong(questions);
+	return { step: entry.step, before, questions, pick, answered: false, failed: null, after: null, notes: [] };
+}
+
+/** The last step, when it is still without answers: a run or a case that ends there failed in that step. */
+function unanswered(reading: Reading): Building | null {
+	const frame = reading.frames.at(-1);
+	return frame === undefined || frame.answered ? null : frame;
 }
 
 interface Reading {
@@ -174,10 +179,14 @@ const READERS: { readonly [T in TraceEntry["type"]]: (reading: Reading, entry: E
 	ended: (reading, entry) => {
 		reading.ended = entry.ended;
 		reading.error = entry.error;
+		const frame = unanswered(reading);
+		if (frame !== null && entry.ended === "failed") frame.failed = entry.error ?? "the request failed";
 	},
 	note: noted,
 	thrown: (reading, entry) => {
 		reading.thrown = entry.error;
+		const frame = unanswered(reading);
+		if (frame !== null) frame.failed ??= entry.error;
 	},
 };
 

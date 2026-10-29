@@ -47,9 +47,12 @@ const yesOf = (answers: Answers): Record<string, number> =>
 	);
 
 /**
- * The state machine of one case. The model gathers evidence with one pick in each state, until it picks stop or takes
- * as many steps as the judge allows. Then one step asks the judge's questions about every rubric item, and the run is
- * over: the outcome joins each item's answers into its verdict.
+ * The state machine of one case. The model gathers evidence with one pick in each state, until it picks stop, takes as
+ * many steps as the judge allows, or has nothing left to gather. Then one step asks the judge's questions about every
+ * rubric item, and the run is over: the outcome joins each item's answers into its verdict.
+ *
+ * The state says when gathering is over, also at the judge's limit, so that a fork of the state before the checks
+ * under another judge, with another limit, asks only the checks again.
  */
 export function judgeMachine(definition: JudgeDefinition, folder: CaseFolder): StateMachine<JudgeState> {
 	const judgeCase = folder.case;
@@ -67,10 +70,16 @@ export function judgeMachine(definition: JudgeDefinition, folder: CaseFolder): S
 		instructions: `${texts.gather} ${texts.choose}`,
 		limit: limits.choices,
 		choices: gathering.choices,
-		transition: async (state, choice) => ({ ...(await gathering.transition(state, choice)), steps: state.steps + 1 }),
+		transition: async (state, choice) => {
+			const next = await gathering.transition(state, choice);
+			const steps = state.steps + 1;
+			return { ...next, steps, gathered: next.gathered || steps >= limits.steps };
+		},
 	});
 	const checks = Object.fromEntries(judgeCase.items.flatMap((item) => itemQuestions(definition, item)));
-	const checking = (state: JudgeState) => state.gathered || state.steps >= limits.steps;
+	// Stop alone is no pick worth a request: the checks follow at once.
+	const onlyStop = (state: JudgeState) => gathering.choices(state).every((choice) => choice.type === "stop");
+	const checking = (state: JudgeState) => state.gathered || state.steps >= limits.steps || onlyStop(state);
 	return {
 		initial: () => Promise.resolve(openAnswer(judgeCase)),
 		questions: (state) => {
@@ -84,14 +93,13 @@ export function judgeMachine(definition: JudgeDefinition, folder: CaseFolder): S
 }
 
 /**
- * How a case ended under `definition`: each rubric item's probability of passing, by the item's id, and the gathering
- * steps taken. The verdicts are null when the run ended before the checks, such as when a request failed.
+ * How a case ended under `definition`: each rubric item's probability of passing, by the item's id. The verdicts are
+ * null when the run ended before the checks, such as when a request failed.
  */
 export const judgeOutcome =
 	(definition: JudgeDefinition) =>
 	({ state }: Pick<RunResult<JudgeState>, "state">): JsonObject => ({
 		verdicts: state.checks === null ? null : verdictsFrom(definition, state.checks),
-		steps: state.steps,
 	});
 
 export { type JudgeCase, caseSchema } from "./case.ts";

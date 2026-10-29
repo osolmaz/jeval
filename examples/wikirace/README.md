@@ -44,8 +44,9 @@ Each race is a state machine, in [`src/race.ts`](src/race.ts):
 - The view shows the target and what it is about, the current article, the path so far, what the step shows and what
   the last step did. The links themselves are the pick's choices.
 
-A race's outcome is `reached`, `gave up` or `unfinished`, with the number of hops between articles and the path. A
-race that the step limit or a failed request cut is unfinished.
+A race's outcome is `reached`, `gave up` or `unfinished`, with the number of hops between articles and the path. An
+unfinished race says why: a dead end, where every link was visited before and nothing is left to pick but giving up,
+the step limit, or a failed request. A dead end ends the race without a request.
 
 [`src/wiki.ts`](src/wiki.ts) reads an article's HTML from the API and keeps the links to other articles, grouped by
 the top-level sections. It leaves out files, categories, help pages and the like, the pages that only list the

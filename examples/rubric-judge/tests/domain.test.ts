@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { PICK_ID, run } from "@osolmaz/switch";
+import { PICK_ID, replayOf, run } from "@osolmaz/switch";
 import { answering, fakeDecider } from "@osolmaz/switch/testing";
 import { itemQuestions } from "../src/definition.ts";
 import { DEFAULT_JUDGE, judgeMachine, judgeOf, judgeOutcome, loadJudge, rubricJudge } from "../src/index.ts";
@@ -175,19 +175,39 @@ describe("rubricJudge", () => {
 		// Every question answered 0.9: the answer meets each item, but also misses something, so both fail.
 		expect(judgeOutcome(judge.definition)(result)).toEqual({
 			verdicts: { "S-001": expect.closeTo(0.1) as unknown, "F-001": expect.closeTo(0.1) as unknown },
-			steps: 2,
 		});
 	});
 
-	it("goes on to the checks after the judge's most gathering steps, and has no verdicts when it never got there", async () => {
+	it("ends gathering at the judge's most steps, in the state, so a fork under a looser judge asks only the checks", async () => {
 		const short = { ...judge.definition, limits: { ...judge.definition.limits, steps: 1 } };
 		const decider = fakeDecider(gathersThenStops(5));
 		const result = await run(rubricJudge(judge), judgeMachine(short, folderOf(judgeCase())), decider);
 		expect(result).toMatchObject({ steps: 2, ended: "done" });
-		expect(result.state).toMatchObject({ steps: 1, gathered: false });
+		expect(result.state).toMatchObject({ steps: 1, gathered: true });
 		expect(Object.keys(decider.requests.at(-1)?.decisionQuestions ?? {})).toHaveLength(4);
+		const again = fakeDecider(gathersThenStops(5));
+		const replay = replayOf(result.trace.entries, { fork: 1 });
+		const forked = await run(rubricJudge(judge), judgeMachine(judge.definition, folderOf(judgeCase())), again, {
+			replay,
+		});
+		expect(forked).toMatchObject({ steps: 2, ended: "done" });
+		expect(again.requests).toHaveLength(1);
+		expect(Object.keys(again.requests[0]?.decisionQuestions ?? {})).toHaveLength(4);
+	});
+
+	it("asks the checks at once when nothing is left to gather but stop, and has no verdicts before the checks", async () => {
+		const bare = judgeCase({
+			files: [file("a1", "output/memo.md", "answer", ["Short."])],
+			items: [{ id: "S-1", category: null, text: "PASS if it is short." }],
+		});
+		const decider = fakeDecider(gathersThenStops(5));
+		const result = await run(rubricJudge(judge), judgeMachine(judge.definition, folderOf(bare)), decider);
+		expect(result).toMatchObject({ steps: 1, ended: "done" });
+		expect(decider.requests.map((request) => Object.keys(request.decisionQuestions))).toEqual([
+			["S-1/meets", "S-1/misses"],
+		]);
 		const unjudged = judgeMachine(judge.definition, folderOf(judgeCase()));
-		expect(judgeOutcome(judge.definition)({ state: await unjudged.initial() })).toEqual({ verdicts: null, steps: 0 });
+		expect(judgeOutcome(judge.definition)({ state: await unjudged.initial() })).toEqual({ verdicts: null });
 	});
 });
 

@@ -93,17 +93,19 @@ export function decisionPanel(moment: Moment, note = ""): HTMLElement {
 		return h("section", { class: "decision" }, h("h2", {}, moment.label), h("p", { class: "quiet" }, texts));
 	}
 	const { frame } = moment;
-	const waiting = !frame.answered && frame.notes.length === 0;
+	const title = frame.failed !== null ? "The step failed" : frame.answered ? "The answers" : "The model is answering…";
 	const choices = frame.questions.filter((question) => question.question.type === "choice");
 	const lists = choices.flatMap((question) => [
 		...(choices.length > 1 ? [h("h3", {}, question.id)] : []),
 		choiceList(question),
 	]);
-	const notes = frame.notes.map((text) => h("p", { class: "quiet" }, text));
+	const notes = [...frame.notes, ...(frame.failed === null ? [] : [frame.failed])].map((text) =>
+		h("p", { class: "quiet" }, text),
+	);
 	return h(
 		"section",
 		{ class: "decision" },
-		h("h2", {}, waiting ? "The model is answering…" : "The answers"),
+		h("h2", {}, title),
 		h("p", { class: "step" }, `${moment.label}${note}`),
 		...lists,
 		answerList(frame.questions.filter((question) => question.question.type !== "choice")),

@@ -58,6 +58,7 @@ describe("text", () => {
 			text: label,
 			probability,
 			picked: false,
+			type: null,
 			data: null,
 		});
 		expect(ranked([choice("a", null), choice("b", 0.2), choice("c", 0.7)]).map((item) => item.label)).toEqual([

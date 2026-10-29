@@ -33,7 +33,10 @@ that opens without the viewer.
 
 Without a part, the page shows each state as JSON and lists what each step changed. A domain can give its own part,
 which draws its states in its own way. The chess example draws a board with moving pieces, arrows for the model's
-likeliest moves, the players' bars, a sound button, the move list with the score, and a PGN download.
+likeliest moves, the players' bars, a sound button, the move list with the score, and a PGN download. The WikiRace
+example draws the route of the articles so far and each step's likeliest branches with their probabilities. A part
+reads each step's questions from the page, and each choice of a pick comes with its type and its data, as the domain's
+choice function gave them.
 
 A part has two halves:
 

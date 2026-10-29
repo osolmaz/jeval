@@ -54,10 +54,17 @@ describe("storyOf", () => {
 		expect(first).toMatchObject({ step: 1, pick: 0, answered: true, before: opened, after: afterA });
 		const pick = first?.questions[0];
 		expect(pick).toMatchObject({ id: PICK_ID, cut: 0, answer: { type: "choice", choice: "o1" } });
-		expect(pick?.choices.map((choice) => [choice.label, choice.text, choice.probability, choice.picked])).toEqual([
-			["o1", "Look up a", 0.9, true],
-			["o2", "Look up b", null, false],
-			["o3", "Stop looking", null, false],
+		const read = pick?.choices.map(({ label, text, probability, picked, type }) => [
+			label,
+			text,
+			probability,
+			picked,
+			type,
+		]);
+		expect(read).toEqual([
+			["o1", "Look up a", 0.9, true, "look-up"],
+			["o2", "Look up b", null, false, "look-up"],
+			["o3", "Stop looking", null, false, "stop"],
 		]);
 	});
 
@@ -116,9 +123,11 @@ describe("storyOf", () => {
 		const [frame] = storyOf(entries, "c1").frames;
 		expect(frame?.pick).toBeNull();
 		expect(frame?.questions[0]).toMatchObject({ id: "sure", answer: { probability: 0.6 }, choices: [] });
-		expect(frame?.questions[1]?.choices.map((choice) => [choice.label, choice.probability, choice.picked])).toEqual([
-			["x", 0.2, false],
-			["y", 0.8, true],
+		expect(
+			frame?.questions[1]?.choices.map((choice) => [choice.label, choice.probability, choice.picked, choice.type]),
+		).toEqual([
+			["x", 0.2, false, null],
+			["y", 0.8, true, null],
 		]);
 	});
 

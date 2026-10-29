@@ -126,7 +126,10 @@ const link = (wiki: Wiki) =>
 const sampleOf = (links: readonly string[]): string =>
 	links.length <= 3 ? links.join(", ") : `${links.slice(0, 3).join(", ")} and ${String(links.length - 3)} more`;
 
-/** Open a section of an article with more links than one step shows, to see its links; each section at most once. */
+/**
+ * Open a section of an article with more links than one step shows, to see its links; each section at most once. Its
+ * data names the section and counts its links, for the viewer.
+ */
 const section = choiceType<RaceState, number>({
 	type: "section",
 	choices: (state) =>
@@ -134,6 +137,7 @@ const section = choiceType<RaceState, number>({
 			key: `${String(state.path.length)}:${String(index)}`,
 			text: `Open section ${String(index)}, "${name}": ${sampleOf(links)}`,
 			arg: index,
+			data: { section: name, links: links.length },
 		})),
 	transition: (state, index) => ({
 		...state,

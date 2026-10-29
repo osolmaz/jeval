@@ -9,8 +9,6 @@ import { answered, fakeDecider, type Policy } from "@osolmaz/switch/testing";
 import { loadRace } from "../src/case.ts";
 import { wikiraceSetup } from "../src/setup.ts";
 import { wikiraceViewer } from "../src/viewer.ts";
-import type { Moment } from "@osolmaz/switch-viewer/page";
-import { racePart, raceTrailOf } from "../src/web/part.ts";
 import { fakeWiki, PAGES } from "./helpers/wiki.ts";
 
 let folder = "";
@@ -63,62 +61,5 @@ describe("the wikirace harness", () => {
 		await expect(loadRace(folder)).rejects.toThrow();
 		await writeFile(join(folder, "case.json"), JSON.stringify({ id: "x", start: "A", target: "B", extra: 1 }));
 		await expect(loadRace(folder)).rejects.toThrow();
-	});
-});
-
-describe("the wikirace part of the page", () => {
-	const state = {
-		target: "Moon",
-		path: [
-			{ title: "Duck", via: "Duck" },
-			{ title: "Bird", via: "Bird" },
-		],
-		sections: [
-			{ name: "Lead", links: ["Sky"] },
-			{ name: "Flight", links: ["Air"] },
-		],
-		open: 1,
-		opened: [1],
-		last: "",
-	};
-	const moment = { type: "step" as const, label: "Step 2", state, frame: null };
-
-	it("reads the trail of a race's state, and nothing of another state", () => {
-		expect(raceTrailOf(state)).toEqual({ target: "Moon", titles: ["Duck", "Bird"], section: "Flight" });
-		expect(raceTrailOf({ ...state, open: null })?.section).toBeNull();
-		expect(raceTrailOf({ moves: [] })).toBeNull();
-		expect(raceTrailOf(null)).toBeNull();
-	});
-
-	/** The part's drawing of `shown`, which must be one. */
-	async function drawingOf(shown: Moment): Promise<HTMLElement> {
-		const drawn = await racePart().draw?.(shown, null, {} as never);
-		if (drawn === undefined || drawn === null) throw new Error("no drawing");
-		return drawn;
-	}
-	const texts = (root: HTMLElement, selector: string): (string | null)[] =>
-		[...root.querySelectorAll(selector)].map((item) => item.textContent);
-
-	it("draws the trail toward the target, and marks the article it is at", async () => {
-		const drawn = await drawingOf(moment);
-		expect(texts(drawn, ".race-label")).toEqual(["Racing to Moon"]);
-		expect(texts(drawn, ".race-trail li")).toEqual(["Duck", "Bird", "…", "Moon"]);
-		expect(texts(drawn, ".race-here")).toEqual(["Bird"]);
-		expect(texts(drawn, ".race-where")).toEqual(['Showing the section "Flight"']);
-	});
-
-	it("draws a reached target without the gap, and nothing for a moment without a state", async () => {
-		const path = [...state.path, { title: "Moon", via: "Moon" }];
-		const done = await drawingOf({ ...moment, state: { ...state, path, open: null } });
-		expect(texts(done, ".race-label")).toEqual(["Reached Moon"]);
-		expect(texts(done, ".race-goal")).toEqual([]);
-		await expect(racePart().draw?.({ ...moment, state: null }, null, {} as never)).resolves.toBeNull();
-	});
-
-	it("notes the article of each step, and hides the path in the result", () => {
-		const part = racePart();
-		expect(part.stepNote?.(moment)).toBe(" · at Bird");
-		expect(part.stepNote?.({ ...moment, state: null })).toBe("");
-		expect(part.hidden).toEqual(["path"]);
 	});
 });

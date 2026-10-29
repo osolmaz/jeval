@@ -16,6 +16,8 @@ export interface FrameChoice {
 	readonly text: string;
 	readonly probability: number | null;
 	readonly picked: boolean;
+	/** The choice's type, from the question's facts, as a pick writes them; null for a question without them. */
+	readonly type: string | null;
 	/** The choice's own facts for tools, from the question's facts. */
 	readonly data: unknown;
 }
@@ -85,11 +87,12 @@ type Entry<T extends TraceEntry["type"]> = Extract<TraceEntry, { type: T }>;
 const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** The facts of the choice under `label`, as a pick writes them into its question. */
-function factsOf(question: Question, label: string): unknown {
+/** The type and the facts of the choice under `label`, as a pick writes them into its question. */
+function factsOf(question: Question, label: string): Pick<FrameChoice, "type" | "data"> {
 	const choices = isObject(question.data) ? question.data["choices"] : undefined;
 	const facts = isObject(choices) ? choices[label] : undefined;
-	return isObject(facts) ? facts["data"] : undefined;
+	if (!isObject(facts)) return { type: null, data: undefined };
+	return { type: typeof facts["type"] === "string" ? facts["type"] : null, data: facts["data"] };
 }
 
 /** A question of a step, before its answer: a choice question with its choices. */
@@ -101,7 +104,7 @@ function frameQuestion(id: string, question: Question): FrameQuestion {
 		text,
 		probability: null,
 		picked: false,
-		data: factsOf(question, label),
+		...factsOf(question, label),
 	}));
 	return { id, question, answer: null, choices, cut };
 }

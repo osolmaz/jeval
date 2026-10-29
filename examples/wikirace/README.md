@@ -77,9 +77,13 @@ The harness has the `view` command of switch's [viewer](../../viewer/README.md):
 examples/wikirace/src/main.ts view runs/wikirace
 ```
 
-The wikirace part of the page, in [`src/web/`](src/web), draws each step's trail of articles from the start, the
-current one lit, toward the target, and says which section the step showed. The viewer shows the step's choices with
-the model's probability for each link.
+The wikirace part of the page, in [`src/web/`](src/web), looks like Wikipedia, in its light or night colors as the
+system asks. At the left it draws the route of the articles so far, like the stops of a train line, with the target
+at its end. At the right it draws the step's branches from the article the race is at: the eight likeliest links,
+sections and giving up, each with a bar for the model's probability, and a curve to each that is thicker for a likelier
+branch. The picked branch is marked, and it is always among the eight. Beside the drawing, the list of steps says
+where each step went and how likely the model found it. Each article is a link to Wikipedia. A section's choice keeps
+its name and its number of links in its data, so the page can name it.
 
 ## Check
 

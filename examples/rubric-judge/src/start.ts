@@ -48,5 +48,5 @@ export function openAnswer(judgeCase: JudgeCase): JudgeState {
 			if (file.formatting !== null) evidence.push(formatting(file));
 		}
 	}
-	return { evidence };
+	return { evidence, steps: 0, gathered: false, checks: null };
 }

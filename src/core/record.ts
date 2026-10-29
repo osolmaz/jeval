@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { answerSchema } from "./trace.ts";
+import { answerSchema, questionSchema } from "./trace.ts";
 import type { Decider, DecisionRequest, DecisionResult, Json } from "./types.ts";
 
 /** One request to the decision model and its result, as a run's requests file keeps them: images by their labels. */
@@ -9,7 +9,6 @@ export interface RecordedRequest {
 }
 
 const json: z.ZodType<Json> = z.json();
-const text = z.string();
 export const decisionUsageSchema = z.object({
 	input: z.number(),
 	output: z.number(),
@@ -26,12 +25,6 @@ export const decisionUsageSchema = z.object({
 		total: z.number(),
 	}),
 });
-const questionSchema = z.discriminatedUnion("type", [
-	z.object({ type: z.literal("bool"), instructions: text, criteria: z.object({ true: text, false: text }) }),
-	z.object({ type: z.literal("choice"), instructions: text, criteria: z.record(z.string(), text) }),
-	z.object({ type: z.literal("score"), instructions: text, criteria: z.array(text) }),
-]);
-
 /** One line of a run's requests file. */
 export const recordedRequestSchema = z.object({
 	request: z.object({

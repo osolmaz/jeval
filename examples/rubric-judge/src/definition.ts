@@ -91,10 +91,3 @@ export function itemQuestions(definition: JudgeDefinition, item: Item): [string,
 		},
 	]);
 }
-
-/** The verdict on an item, which the judge gives from its questions; this question itself is never asked. */
-export const itemVerdict = (item: Item): BoolQuestion => ({
-	type: "bool",
-	instructions: itemLabel(item),
-	criteria: { true: "The item passes.", false: "The item fails." },
-});

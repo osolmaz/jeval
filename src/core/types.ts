@@ -1,7 +1,7 @@
 /**
- * The building blocks of switch. A domain gives each case as a state machine: an initial state, a choice function that
- * gives the choices in a state, and a transition function that gives the state after a choice. The core runs the loop:
- * the decision model picks from the choices until it picks stop, then it answers the questions.
+ * The building blocks of switch. A domain gives each case as a state machine: an initial state, a question function
+ * that gives the questions that the model must answer in a state, and a transition function that gives the next state
+ * from the answers. The core runs the loop: it asks the questions of each state until the domain asks nothing more.
  *
  * What goes to the decision model and comes back follows pi-ai's classifier interface: its request, questions,
  * answers, result and usage. A field of the decision request or the decision result that carries pi-ai's content takes
@@ -25,36 +25,28 @@ export interface Image {
 	readonly data: string;
 }
 
-/** One thing that the model can do in a state. Stop is a choice too, which the core adds. */
-export interface Choice {
-	/** What sort of choice it is, for the trace. */
-	readonly type: string;
-	/** Unique in a run: the model picks a key at most once. */
-	readonly key: string;
-	/** What the model reads. */
-	readonly text: string;
-	/** Lower keeps the choice when the choices must be cut; 0 by default. */
-	readonly priority?: number;
-	/** Facts about the choice for tools that read the trace; the model never sees them. */
-	readonly data?: JsonObject;
-}
-
-/** A yes-or-no question, as pi-ai has it: `criteria` says what true and false mean. */
-export interface BoolQuestion {
-	readonly type: "bool";
+/** What every question has: its instructions, and facts of switch's own that the model never sees. */
+interface QuestionBase {
 	readonly instructions: string;
+	/**
+	 * switch's own: facts about the question for the trace and the tools that read it, such as what each label of a
+	 * pick stands for. switch takes them out of the request, so the model never sees them.
+	 */
+	readonly data?: JsonObject | undefined;
+}
+/** A yes-or-no question, as pi-ai has it: `criteria` says what true and false mean. */
+export interface BoolQuestion extends QuestionBase {
+	readonly type: "bool";
 	readonly criteria: { readonly true: string; readonly false: string };
 }
-/** Which of these fits: `criteria` gives each answer's label and the text the model reads for it. */
-export interface ChoiceQuestion {
+/** Which of these fits: `criteria` gives each choice's label and the text the model reads for it. */
+export interface ChoiceQuestion extends QuestionBase {
 	readonly type: "choice";
-	readonly instructions: string;
 	readonly criteria: Readonly<Record<string, string>>;
 }
 /** Where on this scale it is: `criteria` gives the meaning of each level, from the lowest to the highest. */
-export interface ScoreQuestion {
+export interface ScoreQuestion extends QuestionBase {
 	readonly type: "score";
-	readonly instructions: string;
 	readonly criteria: readonly string[];
 }
 export type Question = BoolQuestion | ChoiceQuestion | ScoreQuestion;
@@ -68,7 +60,9 @@ export interface BoolAnswer {
 }
 export interface ChoiceAnswer {
 	readonly type: "choice";
+	/** The label of the picked choice. */
 	readonly choice: string;
+	/** The probability of each choice, by label. */
 	readonly probabilities: Readonly<Record<string, number>>;
 	readonly confidence: number;
 }
@@ -87,15 +81,12 @@ export interface DecisionRequest {
 	readonly decisionState: JsonObject;
 	/** pi-ai's `images`: what the model sees with it, when anything. */
 	readonly decisionImages?: readonly Image[];
-	/** pi-ai's `questions`. */
+	/** pi-ai's `questions`, without switch's own `data`. */
 	readonly decisionQuestions: Questions;
 }
 
 /** What the view function gives: the decision request without its questions, which switch adds. */
 export type View = Omit<DecisionRequest, "decisionQuestions">;
-
-/** Why the view function is called: for a pick, or for the answers at the end. */
-export type Purpose = "pick" | "answer";
 
 /** pi-ai's `Usage`: token counts, and their cost in US dollars at the model's catalog price. */
 export interface DecisionUsage {
@@ -145,54 +136,41 @@ export interface Decider {
 	decide(request: DecisionRequest): Promise<DecisionResult>;
 }
 
-/** A view function of an answer stage's own, for `tokens` estimated tokens at `charsPerToken`. */
-export type StageView = (tokens: number, charsPerToken: number) => Promise<View>;
-
-/** How an answer stage asks questions: over the domain's view for the answers, or over a view of the stage's own. */
-export interface AskOptions {
-	/** The stage's name in the trace. */
-	readonly stage: string;
-	/** The stage's own view, such as the domain's view with a description of the stage added. */
-	readonly view?: StageView;
-}
-
-/** Asks questions in as many requests as the window needs and returns every answer; it throws `AskError` on failure. */
-export type Ask = (questions: Questions, options: AskOptions) => Promise<Answers>;
-
-export interface AnswerContext<S> {
-	/** The last state of the case. */
-	readonly state: S;
-	/** The questions: the answer stages must answer every one. */
-	readonly questions: Questions;
-	readonly ask: Ask;
-}
-
 /**
  * One case as a state machine: the interface between a domain and switch. The case's fixed data stays inside the
  * functions, and a state is JSON, so that the trace can keep every one.
  */
-export interface StateMachine<S extends JsonObject, C extends Choice = Choice> {
-	/** The state before the first pick. */
+export interface StateMachine<S extends JsonObject> {
+	/** The state before the first step. */
 	initial(): Promise<S>;
-	/** The choice function: the choices in a state. */
-	choices(state: S): readonly C[];
-	/** The transition function: the state after the model picked `choice` in `state`. */
-	transition(state: S, choice: C): Promise<S>;
+	/** The question function: the questions that the model must answer in a state, by id. Nothing to ask ends the run. */
+	questions(state: S): Questions;
+	/** The transition function: the next state, from the state and the model's answer to each of its questions. */
+	transition(state: S, answers: Answers): Promise<S>;
 	/**
 	 * What the model reads in a state, in at most `tokens` tokens as `estimateTokens` counts them at `charsPerToken`;
 	 * the state as it is by default.
 	 */
-	view?(state: S, purpose: Purpose, tokens: number, charsPerToken: number): Promise<View>;
-	/** The questions that the model answers over the last state, by id; none by default. */
-	questions?(): Questions;
-	/** Answers the questions in stages of its own; without it, the questions are asked once over the view. */
-	answer?(context: AnswerContext<S>): Promise<Answers>;
+	view?(state: S, tokens: number, charsPerToken: number): Promise<View>;
+}
+
+/** One answer that a pick offers: what the model reads for it, and what the domain knows of it. */
+export interface Choice {
+	/** What sort of choice it is, for the trace. */
+	readonly type: string;
+	/** Unique among the choices of a state. */
+	readonly key: string;
+	/** What the model reads. */
+	readonly text: string;
+	/** Lower keeps the choice when the choices must be cut; 0 by default. */
+	readonly priority?: number;
+	/** Facts about the choice for tools that read the trace; the model never sees them. */
+	readonly data?: JsonObject;
 }
 
 export interface Limits {
-	readonly steps: number;
-	/** The most choices that the model sees in one step, stop included: at least 2. */
-	readonly choices: number;
+	/** The most steps of a run: a safety net against a run that never ends. None by default. */
+	readonly steps?: number | undefined;
 	/** Tokens a request may use, as a share of the model's window. */
 	readonly windowShare: number;
 }
@@ -209,17 +187,15 @@ export interface Definition {
 }
 
 /**
- * Why the steps ended: the model picked stop, the state had no choices, the run took as many steps as its limits
- * allow, or the pick failed.
+ * Why a run ended: the domain asked nothing more, the run took as many steps as its limits allow, or a request failed
+ * or gave answers that do not fit its questions.
  */
-export type Ending = "stop" | "no choices" | "step limit" | "pick failed";
+export type Ending = "done" | "step limit" | "failed";
 
 export interface RunResult<S extends JsonObject = JsonObject> {
-	/** Every question's answer, or null when the answers could not be obtained. */
-	readonly answers: Answers | null;
 	readonly steps: number;
 	readonly ended: Ending;
-	/** Why the answers could not be obtained; null when they were. */
+	/** Why the run failed; null when it did not. */
 	readonly error: string | null;
 	readonly trace: Trace;
 	/** The last state of the case. */
@@ -227,21 +203,17 @@ export interface RunResult<S extends JsonObject = JsonObject> {
 }
 
 /** A domain, as a harness runs it on case folders: what every case shares, and the state machine of a case folder. */
-export interface Domain<S extends JsonObject, C extends Choice = Choice> {
+export interface Domain<S extends JsonObject> {
 	/** The name and the version go into the trace and the run's record. */
 	readonly name: string;
 	readonly version: string;
-	/** The text of the stop choice, which ends the steps. */
-	readonly stop: string;
-	/** The text that tells the model how to pick from the choices. */
-	readonly instructions: string;
 	readonly limits: Limits;
-	/** The domain's own definition, such as a file it was set up from; by default, its stop, instructions and limits. */
+	/** The domain's own definition, such as a file it was set up from; by default, its limits. */
 	readonly definition?: Definition;
 	/** The case id in a case folder, read without loading the whole case. */
 	caseId(folder: string): Promise<string>;
 	/** The state machine of a case folder. */
-	load(folder: string): Promise<StateMachine<S, C>>;
+	load(folder: string): Promise<StateMachine<S>>;
 	/** How the case ended in the domain's own terms, from the run's result and its last state; none when it is missing. */
 	outcome?(result: RunResult<S>): JsonObject;
 }

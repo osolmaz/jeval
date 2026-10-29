@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Script } from "node:vm";
 import { describe, expect, it } from "vitest";
-import { run, STOP_KEY, type TraceEntry } from "@osolmaz/switch";
+import { PICK_ID, run, type TraceEntry } from "@osolmaz/switch";
 import {
 	buildScript,
 	escape,
@@ -17,23 +17,29 @@ import {
 	viewerPage,
 	viewerScript,
 } from "../src/index.ts";
-import { answering, type Facts, factsMachine, FACTS, failing, fakeDecider } from "./helpers/fakes.ts";
+import { answering, type Facts, factsMachine, FACTS, failing, fakeDecider, START } from "./helpers/fakes.ts";
 
 const facts: Facts = { facts: { a: "fact a", b: "fact <b>" } };
-const opened = { looked: ["intro"], found: ["Hello"] };
-const afterA = { looked: ["intro", "a"], found: ["Hello", "fact a"] };
+const opened = { ...START, looked: ["intro"], found: ["Hello"] };
+const afterA = { ...START, looked: ["intro", "a"], found: ["Hello", "fact a"] };
 
+/** A run that looks up a, then fails at its second request. */
 async function traced(): Promise<TraceEntry[]> {
-	let calls = 0;
-	const decider = fakeDecider((request, call) => {
-		calls = call;
-		if (call === 2) return failing("down");
-		return answering(0.7, (labels) => labels[0] ?? STOP_KEY)(request, call);
-	});
-	const result = await run(FACTS, factsMachine(facts, opened), decider);
-	expect(calls).toBeGreaterThan(2);
-	return result.trace.entries;
+	const decider = fakeDecider((request, call) =>
+		call === 2 ? failing("down") : answering(0.7, (labels) => labels[0] ?? "o1")(request, call),
+	);
+	return (await run(FACTS, factsMachine(facts, opened), decider)).trace.entries;
 }
+
+const START_ENTRY: TraceEntry = {
+	type: "start",
+	domain: "facts",
+	version: "1",
+	definition: "d",
+	case: "c1",
+	model: "m",
+	limits: FACTS.limits,
+};
 
 describe("storyOf", () => {
 	it("reads the case's name, its domain and model, and its initial state", async () => {
@@ -43,52 +49,78 @@ describe("storyOf", () => {
 		expect(story.frames).toHaveLength(2);
 	});
 
-	it("reads each step: the state it picked in, every choice's probability, its pick and the state after", async () => {
+	it("reads each step: the state it asked in, every choice's probability, the pick and the state after", async () => {
 		const [first] = storyOf(await traced(), "c1").frames;
-		expect(first).toMatchObject({ step: 1, picked: "look-up:a", before: opened, after: afterA });
-		expect(first?.choices.map((choice) => [choice.key, choice.probability, choice.picked])).toEqual([
-			["look-up:a", 0.9, true],
-			["look-up:b", null, false],
-			["stop", null, false],
+		expect(first).toMatchObject({ step: 1, pick: 0, answered: true, before: opened, after: afterA });
+		const pick = first?.questions[0];
+		expect(pick).toMatchObject({ id: PICK_ID, cut: 0, answer: { type: "choice", choice: "o1" } });
+		expect(pick?.choices.map((choice) => [choice.label, choice.key, choice.probability, choice.picked])).toEqual([
+			["o1", "look-up:a", 0.9, true],
+			["o2", "look-up:b", null, false],
+			["o3", "stop:stop", null, false],
 		]);
 	});
 
-	it("reads a failed pick as a step without a pick, with its note, then the answers and the end", async () => {
+	it("reads a failed step as a step without answers, and the run's failure", async () => {
 		const story = storyOf(await traced(), "c1");
 		const second = story.frames[1];
-		expect(second).toMatchObject({ step: 2, picked: null, after: null, before: afterA });
-		expect(second?.notes[0]).toBe("the pick failed: down; the case goes on to its answers");
+		expect(second).toMatchObject({ step: 2, answered: false, after: null, before: afterA, notes: [] });
+		expect(second?.questions[0]?.answer).toBeNull();
 		expect(story.last).toEqual(afterA);
-		expect(story.answers).toEqual({ a: { type: "bool", probability: 0.7 }, b: { type: "bool", probability: 0.7 } });
-		expect(story).toMatchObject({ ended: "pick failed", error: null, thrown: null });
+		expect(story).toMatchObject({ ended: "failed", error: "down", thrown: null });
 	});
 
-	it("gives the notes after the steps ended to the story, also after a failed pick, and reads a failure", () => {
-		const retry = "the request did not fit the model's window; trying a view of 9 tokens";
+	it("reads the answers of questions of every type, and a choice question without facts by its labels", () => {
 		const entries: TraceEntry[] = [
-			{
-				type: "start",
-				domain: "facts",
-				version: "1",
-				definition: "d",
-				case: "c1",
-				model: "m",
-				limits: FACTS.limits,
-			},
+			START_ENTRY,
 			{ type: "state", step: 0, state: opened },
-			{ type: "choices", step: 1, choices: [{ key: "stop", type: "stop", text: "Stop" }], cut: 3 },
-			{ type: "note", message: "the pick failed: down; the case goes on to its answers" },
-			{ type: "ended", ended: "pick failed", steps: 1 },
+			{
+				type: "questions",
+				step: 1,
+				questions: {
+					sure: { type: "bool", instructions: "Sure?", criteria: { true: "yes", false: "no" } },
+					which: { type: "choice", instructions: "Which?", criteria: { x: "X", y: "Y" } },
+				},
+			},
+			{
+				type: "answers",
+				step: 1,
+				answers: {
+					sure: { type: "bool", probability: 0.6 },
+					which: { type: "choice", choice: "y", probabilities: { x: 0.2, y: 0.8 }, confidence: 0.6 },
+				},
+			},
+		];
+		const [frame] = storyOf(entries, "c1").frames;
+		expect(frame?.pick).toBe(1);
+		expect(frame?.questions[0]).toMatchObject({ id: "sure", answer: { probability: 0.6 }, choices: [] });
+		expect(frame?.questions[1]?.choices.map((choice) => [choice.key, choice.probability, choice.picked])).toEqual([
+			["x", 0.2, false],
+			["y", 0.8, true],
+		]);
+	});
+
+	it("gives a note to the step that waits for its answers, and the notes after the run ended to the story", () => {
+		const retry = "the request did not fit the model's window; trying a view of 9 tokens";
+		const pick = {
+			type: "choice" as const,
+			instructions: "Pick.",
+			criteria: { o1: "Stop" },
+			data: { choices: { o1: { key: "stop", type: "stop" } }, cut: 3 },
+		};
+		const entries: TraceEntry[] = [
+			START_ENTRY,
+			{ type: "state", step: 0, state: opened },
+			{ type: "questions", step: 1, questions: { [PICK_ID]: pick } },
 			{ type: "note", message: retry },
-			{ type: "answers", answers: null, error: "too long" },
+			{ type: "ended", ended: "failed", steps: 1, error: "too long" },
+			{ type: "note", message: "after" },
 		];
 		const story = storyOf(entries, "c1");
-		expect(story.frames[0]).toMatchObject({
-			cut: 3,
-			notes: ["the pick failed: down; the case goes on to its answers"],
-		});
-		expect(story.notes).toEqual([retry]);
-		expect(story).toMatchObject({ ended: "pick failed", error: "too long", answers: null, thrown: null });
+		expect(story.frames[0]?.questions[0]).toMatchObject({ cut: 3 });
+		expect(story.frames[0]?.notes).toEqual([retry]);
+		expect(story.notes).toEqual(["after"]);
+		expect(story).toMatchObject({ ended: "failed", error: "too long", thrown: null });
 		const failed = storyOf([...entries, { type: "thrown", error: "no outcome" }], "c1");
 		expect(failed.thrown).toBe("no outcome");
 	});

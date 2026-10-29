@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { pickProbabilities } from "@osolmaz/switch-viewer/page";
+import { pickOf, pickProbabilities } from "@osolmaz/switch-viewer/page";
 import { chessChoice, chessState, movesOfStep } from "../src/web/data.ts";
 import { captures, pgnOf, piecesOf, play, pliesOf, samePlaces, scoreOf } from "../src/web/model.ts";
-import { picking, stateOf } from "./helpers/chess.ts";
+import { choosing, stateOf } from "./helpers/chess.ts";
 import { chessSession } from "./helpers/sessions.ts";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -34,7 +34,10 @@ describe("chess states", () => {
 		expect(steps.map((step) => step.lan.length)).toEqual([2, 2]);
 		expect(movesOfStep(null, stateOf(["e2e4"]))).toEqual({ lan: ["e2e4"], san: ["e4"] });
 		expect(movesOfStep(stateOf(["e2e4"]), null)).toEqual({ lan: [], san: [] });
-		expect(session.story.frames[0]?.choices.filter((choice) => chessChoice(choice.data) !== null)).toHaveLength(20);
+		// Twenty moves, and resigning, which is no move.
+		const choices = pickOf(session.story.frames[0] ?? null)?.choices ?? [];
+		expect(choices.filter((choice) => chessChoice(choice.data) !== null)).toHaveLength(20);
+		expect(choices).toHaveLength(21);
 	});
 });
 
@@ -124,7 +127,7 @@ describe("the move list and the PGN", () => {
 	});
 
 	it("writes the game as PGN with the players, the result and a set-up position", async () => {
-		const won = await chessSession({ start: "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", policy: picking(/checkmate/) });
+		const won = await chessSession({ start: "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", policy: choosing(/checkmate/) });
 		const pgn = pgnOf(won);
 		expect(pgn).toContain('[White "fake/decider"]');
 		expect(pgn).toContain('[Black "random legal moves, seed 7"]');
@@ -140,7 +143,7 @@ describe("the move list and the PGN", () => {
 
 	it("has the model on both sides of a self-play game, and gives the winner's score", async () => {
 		const mate = "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1";
-		const won = await chessSession({ opponent: "self", start: mate, policy: picking(/checkmate/) });
+		const won = await chessSession({ opponent: "self", start: mate, policy: choosing(/checkmate/) });
 		const pgn = pgnOf(won);
 		expect(pgn).toContain('[White "fake/decider"]');
 		expect(pgn).toContain('[Black "fake/decider"]');

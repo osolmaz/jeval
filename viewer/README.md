@@ -1,9 +1,10 @@
 # switch viewer
 
-The viewer plays a switch run back in the browser, step by step. It shows each step's choices with the model's
-probability for every one, how many choices the limit cut, the model's pick and what the step changed in the state.
-At the end it shows the answers, and why the case failed if it did. It reads only a run folder, so it works for any
-domain, and a case's page follows the case live while it runs, also when a stopped run runs it again.
+The viewer plays a switch run back in the browser, step by step. It shows each step's questions with the model's
+answers, and what the step changed in the state. For a pick, it shows the choices with the model's probability for
+every one, how many choices the limit cut, and the picked choice. At the end it shows how the run ended, and why the
+case failed if it did. It reads only a run folder, so it works for any domain, and a case's page follows the case live
+while it runs, also when a stopped run runs it again.
 
 The viewer is a package of its own, `@osolmaz/switch-viewer`. It uses switch as an outside project would, and switch
 knows nothing of it. Like the examples, it runs from its TypeScript sources.

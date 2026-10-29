@@ -20,14 +20,18 @@ export async function factsFolder(
 	return folder;
 }
 
-/** The test domain: it has no flags of its own, and a case's outcome says how the steps ended. */
+/** The test domain: it has no flags of its own, and a case's outcome says how the run ended and what it answered. */
 export function factsSetup(): Promise<Runner> {
 	return Promise.resolve(
 		runnerOf({
 			...FACTS,
 			caseId: async (folder) => (await readCase(folder)).id,
 			load: async (folder) => factsMachine({ facts: (await readCase(folder)).facts }),
-			outcome: (result) => ({ result: "answered", reason: result.ended, looked: result.state.looked.length }),
+			outcome: (result) => ({
+				reason: result.ended,
+				looked: result.state.looked.length,
+				answers: result.state.answers,
+			}),
 		}),
 	);
 }

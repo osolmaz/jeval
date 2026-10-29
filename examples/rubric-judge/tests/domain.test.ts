@@ -1,10 +1,10 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { type Answer, PICK_ID, run, STOP_KEY } from "@osolmaz/switch";
+import { PICK_ID, run } from "@osolmaz/switch";
 import { answering, fakeDecider } from "@osolmaz/switch/testing";
-import { itemQuestions, itemVerdict } from "../src/definition.ts";
-import { DEFAULT_JUDGE, judgeOf, rubricJudge, judgeMachine, loadJudge } from "../src/index.ts";
-import { combine } from "../src/judge.ts";
+import { itemQuestions } from "../src/definition.ts";
+import { DEFAULT_JUDGE, judgeMachine, judgeOf, judgeOutcome, loadJudge, rubricJudge } from "../src/index.ts";
+import { combine, verdictsFrom } from "../src/judge.ts";
 import { openAnswer } from "../src/start.ts";
 import { SIZES } from "../src/state.ts";
 import { searchTerms, termsIn } from "../src/terms.ts";
@@ -84,10 +84,10 @@ describe("openAnswer", () => {
 });
 
 describe("view", () => {
-	it("shows the rubric, the files and the steps for a pick, and only the request and evidence for the answers", async () => {
+	it("shows the rubric, the files and the steps while gathering, and the evidence with the rules for the checks", async () => {
 		const folder = folderOf(judgeCase());
 		const state = stateOf({ ...evidence("read:d1:0-0", "Section 4.2"), source: "documents/lease.pdf, page 1" });
-		const picking = await view(texts, folder, state, "pick", 50_000, 3);
+		const picking = await view(texts, folder, state, false, 50_000, 3);
 		expect(Object.keys(picking.decisionState)).toEqual([
 			"process",
 			"stage",
@@ -105,18 +105,19 @@ describe("view", () => {
 		expect(picking.decisionState["evidence"]).toEqual([
 			{ source: "documents/lease.pdf, page 1", text: "Section 4.2" },
 		]);
-		const answering = await view(texts, folder, state, "answer", 50_000, 3);
-		expect(Object.keys(answering.decisionState)).toEqual(["request", "evidence"]);
+		const checking = await view(texts, folder, state, true, 50_000, 3);
+		expect(Object.keys(checking.decisionState)).toEqual(["request", "evidence", "process", "stage", "rules"]);
+		expect(checking.decisionState).toMatchObject({ stage: texts.check, rules: texts.rules });
 	});
 
 	it("loads the images that the evidence names from the case folder", async () => {
 		const render = { label: "page 1 image", path: "images/d1-1.png", mimeType: "image/png" };
 		const state = stateOf(evidence("read:a1:0-0"), evidence("look:d1:0", "[image]", { image: render }));
-		const seen = await view(texts, folderOf(judgeCase()), state, "answer", 50_000, 3);
+		const seen = await view(texts, folderOf(judgeCase()), state, true, 50_000, 3);
 		expect(seen.decisionImages).toEqual([
 			{ type: "image", label: "page 1 image", mimeType: "image/png", data: "data:images/d1-1.png" },
 		]);
-		const textOnly = await view(texts, folderOf(judgeCase()), stateOf(evidence("read:a1:0-0")), "answer", 50_000, 3);
+		const textOnly = await view(texts, folderOf(judgeCase()), stateOf(evidence("read:a1:0-0")), true, 50_000, 3);
 		expect(textOnly).not.toHaveProperty("decisionImages");
 	});
 
@@ -134,25 +135,29 @@ describe("view", () => {
 });
 
 describe("rubricJudge", () => {
-	it("gathers evidence, then asks whether each item is met and whether anything is missed", async () => {
+	/** Picks the first choice `n` times, then stop, which is the last choice. */
+	const gathersThenStops = (n: number) => {
+		let calls = 0;
+		return answering(0.9, (labels) => (calls++ < n ? (labels[0] ?? "o1") : (labels.at(-1) ?? "o1")));
+	};
+
+	it("gathers evidence, then asks whether each item is met and whether anything is missed, in one step", async () => {
 		const item = { id: "S-1", category: null, text: "PASS if x." };
 		expect(itemQuestions(judge.definition, item).map(([id, question]) => [id, question.instructions])).toEqual([
 			["S-1/meets", "Rubric item S-1:\nPASS if x.\n\nDoes the submitted answer meet this item?"],
 			["S-1/misses", expect.stringMatching(/^Rubric item S-1:\nPASS if x\.\n\nCheck each requirement/) as unknown],
 		]);
-		expect(itemVerdict({ ...item, category: "form" })).toMatchObject({
-			instructions: "Rubric item S-1 (form):\nPASS if x.",
-			criteria: { true: "The item passes.", false: "The item fails." },
-		});
 		const domain = rubricJudge(judge);
-		expect(domain.version).toBe("0.5.0");
-		let calls = 0;
-		const decider = fakeDecider(answering(0.9, (labels) => (calls++ === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
+		expect(domain).toMatchObject({ version: "0.6.0", limits: { windowShare: judge.definition.limits.windowShare } });
+		const decider = fakeDecider(gathersThenStops(1));
 		const result = await run(domain, judgeMachine(judge.definition, folderOf(judgeCase())), decider);
-		expect(result.steps).toBe(2);
+		// Two gathering steps, a read and stop, then the checks.
+		expect(result).toMatchObject({ steps: 3, ended: "done" });
+		expect(result.state).toMatchObject({ steps: 2, gathered: true });
 		expect(result.state.evidence.map((entry) => entry.key)).toEqual(["read:a1:0-0", "read:d1:0-1"]);
-		expect(result.trace.entries.filter((entry) => entry.type === "stage")).toHaveLength(1);
-		expect(decider.requests[0]?.decisionQuestions[PICK_ID]?.instructions).toBe(`${texts.gather} ${texts.choose}`);
+		const pick = decider.requests[0]?.decisionQuestions[PICK_ID];
+		expect(pick?.instructions).toBe(`${texts.gather} ${texts.choose}`);
+		expect(pick?.type === "choice" ? Object.values(pick.criteria).at(-1) : undefined).toBe(texts.stop);
 		const last = decider.requests.at(-1);
 		expect(Object.keys(last?.decisionQuestions ?? {})).toEqual([
 			"S-001/meets",
@@ -161,11 +166,28 @@ describe("rubricJudge", () => {
 			"F-001/misses",
 		]);
 		expect(last?.decisionState).toMatchObject({ process: texts.process, stage: texts.check, rules: texts.rules });
-		// Every question answered 0.9: the answer meets each item, but also misses something, so both fail.
-		expect(result.answers).toEqual({
-			"S-001": { type: "bool", probability: expect.closeTo(0.1) as unknown },
-			"F-001": { type: "bool", probability: expect.closeTo(0.1) as unknown },
+		expect(result.state.checks).toEqual({
+			"S-001/meets": 0.9,
+			"S-001/misses": 0.9,
+			"F-001/meets": 0.9,
+			"F-001/misses": 0.9,
 		});
+		// Every question answered 0.9: the answer meets each item, but also misses something, so both fail.
+		expect(judgeOutcome(judge.definition)(result)).toEqual({
+			verdicts: { "S-001": expect.closeTo(0.1) as unknown, "F-001": expect.closeTo(0.1) as unknown },
+			steps: 2,
+		});
+	});
+
+	it("goes on to the checks after the judge's most gathering steps, and has no verdicts when it never got there", async () => {
+		const short = { ...judge.definition, limits: { ...judge.definition.limits, steps: 1 } };
+		const decider = fakeDecider(gathersThenStops(5));
+		const result = await run(rubricJudge(judge), judgeMachine(short, folderOf(judgeCase())), decider);
+		expect(result).toMatchObject({ steps: 2, ended: "done" });
+		expect(result.state).toMatchObject({ steps: 1, gathered: false });
+		expect(Object.keys(decider.requests.at(-1)?.decisionQuestions ?? {})).toHaveLength(4);
+		const unjudged = judgeMachine(judge.definition, folderOf(judgeCase()));
+		expect(judgeOutcome(judge.definition)({ state: await unjudged.initial() })).toEqual({ verdicts: null, steps: 0 });
 	});
 });
 
@@ -203,16 +225,20 @@ describe("judge definitions", () => {
 });
 
 describe("combine", () => {
-	const item = { id: "S-1", category: null, text: "PASS if x." };
-	const bool = (probability: number): Answer => ({ type: "bool", probability });
 	const definition = judge.definition;
 
 	it("passes an item only when every question for it says yes and every question against it says no", () => {
-		expect(combine(definition, item, { "S-1/meets": bool(0.9), "S-1/misses": bool(0.2) })).toEqual(bool(0.8));
-		expect(combine(definition, item, { "S-1/meets": bool(0.9), "S-1/misses": bool(0.7) })).toEqual(
-			bool(expect.closeTo(0.3) as unknown as number),
-		);
-		expect(combine(definition, item, { "S-1/meets": bool(0.4), "S-1/misses": bool(0.1) })).toEqual(bool(0.4));
-		expect(combine(definition, item, {})).toEqual(bool(0));
+		expect(combine(definition, "S-1", { "S-1/meets": 0.9, "S-1/misses": 0.2 })).toBeCloseTo(0.8);
+		expect(combine(definition, "S-1", { "S-1/meets": 0.9, "S-1/misses": 0.7 })).toBeCloseTo(0.3);
+		expect(combine(definition, "S-1", { "S-1/meets": 0.4, "S-1/misses": 0.1 })).toBe(0.4);
+		expect(combine(definition, "S-1", {})).toBe(0);
+	});
+
+	it("gives every item's verdict from the checks' answers", () => {
+		const checks = { "S-1/meets": 0.9, "S-1/misses": 0.2, "F/2/meets": 0.4, "F/2/misses": 0.1 };
+		const verdicts = verdictsFrom(definition, checks);
+		expect(Object.keys(verdicts)).toEqual(["S-1", "F/2"]);
+		expect(verdicts["S-1"]).toBeCloseTo(0.8);
+		expect(verdicts["F/2"]).toBe(0.4);
 	});
 });

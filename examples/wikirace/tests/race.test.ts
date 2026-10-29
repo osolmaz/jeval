@@ -1,26 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { type BoundChoice, PICK_ID, recordedModel, replayOf, run, STOP_KEY } from "@osolmaz/switch";
+import { type BoundChoice, PICK_ID, recordedModel, replayOf, run } from "@osolmaz/switch";
 import { answered, answering, fakeDecider, type Policy } from "@osolmaz/switch/testing";
-import { LINKS, openRace, outcomeOf, raceMachine, type RaceState, raceView, reached, WIKIRACE } from "../src/race.ts";
+import {
+	LINKS,
+	openRace,
+	outcomeOf,
+	raceChoices,
+	raceMachine,
+	type RaceState,
+	raceView,
+	reached,
+	TEXTS,
+	WIKIRACE,
+} from "../src/race.ts";
 import { fakeWiki, manyLinks, PAGES } from "./helpers/wiki.ts";
 
 const DUCK_TO_MOON = { id: "duck-to-moon", start: "Duck", target: "Moon" };
 
-/** A race of `pages` from Duck to Moon, opened, and its state machine. */
+/** A race of `pages` from Duck to Moon, opened, its state machine, and its choice functions. */
 async function raceOf(pages = PAGES) {
 	const wiki = fakeWiki(pages);
 	const race = await openRace(DUCK_TO_MOON, wiki);
-	return { wiki, race, machine: raceMachine(race, wiki) };
+	return { wiki, race, machine: raceMachine(race, wiki), ...raceChoices(wiki) };
 }
 
-/** Picks the choice whose text is the first of `route` among the choices; stop when none is. */
+/** Picks the choice whose text is the first of `route` among the choices; gives up when none is. */
 const following =
 	(route: readonly string[]): Policy =>
 	(request, call) => {
 		const question = request.decisionQuestions[PICK_ID];
 		if (question?.type !== "choice") return answering(0.5)(request, call);
 		const texts = Object.entries(question.criteria);
-		const label = route.flatMap((title) => texts.filter(([, text]) => text === title))[0]?.[0] ?? STOP_KEY;
+		const wanted = [...route, TEXTS.giveUp];
+		const label = wanted.flatMap((title) => texts.filter(([, text]) => text === title))[0]?.[0] ?? "o1";
 		return answered({
 			[PICK_ID]: { type: "choice", choice: label, probabilities: { [label]: 0.7 }, confidence: 0.6 },
 		});
@@ -35,6 +47,7 @@ describe("a race", () => {
 			target: "Moon",
 			path: [{ title: "Duck", via: "Duck" }],
 			open: null,
+			gaveUp: false,
 			last: "The race starts at Duck.",
 		});
 		expect(raceView(race.initial, race.about).decisionState).toEqual({
@@ -47,38 +60,50 @@ describe("a race", () => {
 		});
 	});
 
-	it("offers every link of a small article, the earlier links first, and none to an article visited before", async () => {
-		const { machine, race } = await raceOf();
-		expect(keysOf(machine.choices(race.initial))).toEqual([
+	it("offers every link of a small article, the earlier links first, none to an article visited before, and giving up", async () => {
+		const { choices, transition, race } = await raceOf();
+		expect(keysOf(choices(race.initial))).toEqual([
 			"link:Bird",
 			"link:Water",
 			"link:Pond",
 			"link:Rubber duck",
+			"give-up:give-up",
 		]);
-		const [toBird] = machine.choices(race.initial);
+		const [toBird] = choices(race.initial);
 		if (toBird === undefined) throw new Error("no link to Bird");
-		const bird = await machine.transition(race.initial, toBird);
+		const bird = await transition(race.initial, toBird);
 		expect(bird).toMatchObject({
 			path: [{ title: "Duck" }, { title: "Bird", via: "Bird" }],
 			last: 'Followed the link "Bird" to Bird.',
 		});
-		expect(keysOf(machine.choices(bird))).toEqual(["link:Sky", "link:Feather"]);
+		expect(keysOf(choices(bird))).toEqual(["link:Sky", "link:Feather", "give-up:give-up"]);
+	});
+
+	it("gives up with the give-up choice, which a cut never leaves out, and asks nothing more", async () => {
+		const { choices, transition, machine, race } = await raceOf();
+		const giveUp = choices(race.initial).at(-1);
+		if (giveUp === undefined) throw new Error("no choice to give up");
+		expect(giveUp).toMatchObject({ type: "give-up", text: TEXTS.giveUp, priority: -1 });
+		const gone = await transition(race.initial, giveUp);
+		expect(gone).toMatchObject({ gaveUp: true, last: "Gave up the race at Duck." });
+		expect(choices(gone)).toEqual([]);
+		expect(machine.questions(gone)).toEqual({});
 	});
 
 	it("reaches the target without reading it, and has no choices there", async () => {
-		const { machine, race, wiki } = await raceOf();
+		const { choices, transition, race, wiki } = await raceOf();
 		const sky: RaceState = {
 			...race.initial,
 			path: [...race.initial.path, { title: "Sky", via: "Sky" }],
 			sections: [{ name: "Lead", links: ["Moon"] }],
 		};
-		const [moon] = machine.choices(sky);
+		const [moon] = choices(sky);
 		if (moon === undefined) throw new Error("no link to the target");
 		const asked = wiki.asked.length;
-		const there = await machine.transition(sky, moon);
+		const there = await transition(sky, moon);
 		expect(wiki.asked.length).toBe(asked);
 		expect(reached(there)).toBe(true);
-		expect(machine.choices(there)).toEqual([]);
+		expect(choices(there)).toEqual([]);
 		expect(raceView(there, "").decisionState["showing"]).toBe("Moon is the target.");
 	});
 });
@@ -90,8 +115,8 @@ describe("an article with more links than one step shows", () => {
 	};
 
 	it("offers the lead's links and the other sections, which each open once to their links", async () => {
-		const { machine, race } = await raceOf(big);
-		const first = machine.choices(race.initial);
+		const { choices, transition, race } = await raceOf(big);
+		const first = choices(race.initial);
 		expect(first.filter((choice) => choice.type === "link")).toHaveLength(150);
 		const sections = first.filter((choice) => choice.type === "section");
 		expect(sections.map((choice) => [choice.key, choice.text])).toEqual([
@@ -103,14 +128,14 @@ describe("an article with more links than one step shows", () => {
 		);
 		const [toHistory] = sections;
 		if (toHistory === undefined) throw new Error("no section to open");
-		const history = await machine.transition(race.initial, toHistory);
+		const history = await transition(race.initial, toHistory);
 		expect(history).toMatchObject({ open: 1, opened: [1], last: 'Opened the section "History" of Duck.' });
-		const then = machine.choices(history);
+		const then = choices(history);
 		expect(then.filter((choice) => choice.type === "link").map((choice) => choice.text)).toEqual(
 			manyLinks(120, "History link"),
 		);
 		expect(keysOf(then.filter((choice) => choice.type === "section"))).toEqual(["section:1:0", "section:1:2"]);
-		expect(LINKS).toBeLessThan(WIKIRACE.limits.choices);
+		expect(LINKS).toBeLessThan(TEXTS.choices);
 	});
 });
 
@@ -118,14 +143,15 @@ describe("a whole race", () => {
 	it("follows the model's picks to the target, and the outcome counts the hops", async () => {
 		const { machine } = await raceOf();
 		const result = await run(WIKIRACE, machine, fakeDecider(following(["Bird", "Sky", "Moon"])));
-		expect(result).toMatchObject({ steps: 3, ended: "no choices" });
+		expect(result).toMatchObject({ steps: 3, ended: "done" });
 		expect(outcomeOf(result)).toEqual({ result: "reached", hops: 3, path: ["Duck", "Bird", "Sky", "Moon"] });
 	});
 
-	it("is given up when the model stops, and unfinished when the steps run out", async () => {
+	it("is given up when the model gives up, and unfinished when the steps run out", async () => {
 		const { machine } = await raceOf();
 		const gaveUp = await run(WIKIRACE, machine, fakeDecider(following([])));
-		expect(outcomeOf(gaveUp)).toEqual({ result: "gave up", reason: "stop", hops: 0, path: ["Duck"] });
+		expect(gaveUp).toMatchObject({ steps: 1, ended: "done" });
+		expect(outcomeOf(gaveUp)).toEqual({ result: "gave up", hops: 0, path: ["Duck"] });
 		const short = { ...WIKIRACE, limits: { ...WIKIRACE.limits, steps: 1 } };
 		const cut = await run(short, machine, fakeDecider(following(["Bird", "Sky", "Moon"])));
 		expect(outcomeOf(cut)).toMatchObject({ result: "unfinished", reason: "step limit", hops: 1 });

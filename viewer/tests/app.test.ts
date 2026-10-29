@@ -44,21 +44,20 @@ describe("the viewer, for a domain without a part", () => {
 		expect([hidden(root, ".live"), hidden(root, "button.download")]).toEqual([true, true]);
 		// A saved page has no server, so its header links nowhere.
 		expect(root.querySelector("a.home")?.hasAttribute("href")).toBe(false);
-		expect(JSON.parse(text(root, ".state-card"))).toEqual({ looked: [], found: [] });
+		expect(JSON.parse(text(root, ".state-card"))).toEqual({ looked: [], found: [], stopped: false, answers: null });
 		expect(text(root, ".timeline h2")).toBe("Result");
 		expect(text(root, ".banner")).toBe("answered · the model stopped");
 		expect(text(root, ".facts")).toContain("looked2");
-		expect(text(root, ".facts")).toContain("ayes 70.0%");
 	});
 
 	it("steps through the moments with the buttons, the slider and the keys", async () => {
 		const { root } = mount({ ...QUICK, session: await factsSession() });
 		click(root, "button.next");
 		await vi.waitFor(() => {
-			expect(label(root)).toBe("Step 1 of 3");
+			expect(label(root)).toBe("Step 1 of 4");
 		});
-		expect(text(root, ".decision h2")).toBe("The choices");
-		expect(text(root, ".decision .step")).toBe("Step 1 of 3");
+		expect(text(root, ".decision h2")).toBe("The answers");
+		expect(text(root, ".decision .step")).toBe("Step 1 of 4");
 		expect(root.querySelector(".choices .picked")?.textContent).toContain("(picked)");
 		expect(text(root, ".decision h3")).toBe("What changed");
 		expect(Array.from(root.querySelectorAll(".change")).map((line) => line.textContent)).toEqual([
@@ -67,7 +66,12 @@ describe("the viewer, for a domain without a part", () => {
 		]);
 		click(root, "button.next");
 		await vi.waitFor(() => {
-			expect(JSON.parse(text(root, ".state-card"))).toEqual({ looked: ["a"], found: ["fact a"] });
+			expect(JSON.parse(text(root, ".state-card"))).toEqual({
+				looked: ["a"],
+				found: ["fact a"],
+				stopped: false,
+				answers: null,
+			});
 		});
 		click(root, "button.latest");
 		await vi.waitFor(() => {
@@ -75,8 +79,10 @@ describe("the viewer, for a domain without a part", () => {
 		});
 		click(root, "button.previous");
 		await vi.waitFor(() => {
-			expect(label(root)).toBe("Step 3 of 3");
+			expect(label(root)).toBe("Step 4 of 4");
 		});
+		// The last step's yes-or-no answers are listed under their questions' ids.
+		expect(text(root, ".decision .facts")).toContain("ayes 70.0%");
 		click(root, "button.first");
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("Start");
@@ -89,12 +95,12 @@ describe("the viewer, for a domain without a part", () => {
 		document.dispatchEvent(new KeyboardEvent("keydown", { key: "Home" }));
 		document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
 		await vi.waitFor(() => {
-			expect(label(root)).toBe("Step 1 of 3");
+			expect(label(root)).toBe("Step 1 of 4");
 		});
 		document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", ctrlKey: true }));
 		const scrub = root.querySelector<HTMLInputElement>('input[type="range"]');
 		if (scrub === null) throw new Error("no slider");
-		scrub.value = "4";
+		scrub.value = "5";
 		scrub.dispatchEvent(new Event("input"));
 		await vi.waitFor(() => {
 			expect(label(root)).toBe("End");
@@ -128,14 +134,14 @@ describe("a running case", () => {
 		});
 		current = await factsSession({ steps: 0, finished: false });
 		await vi.waitFor(() => {
-			expect(label(root)).toBe("Step 1");
+			expect(label(root)).toBe("Step 2");
 			expect(hidden(root, ".live")).toBe(false);
 		});
 		expect(text(root, ".result-slot")).toContain("The case is running.");
 		expect(root.querySelector("a.home")?.getAttribute("href")).toBe("/");
 		current = await factsSession({ steps: 1, finished: false });
 		await vi.waitFor(() => {
-			expect(label(root)).toBe("Step 2");
+			expect(label(root)).toBe("Step 3");
 		});
 		current = await factsSession({ steps: 1 });
 		await vi.waitFor(() => {
@@ -151,7 +157,7 @@ describe("a running case", () => {
 		);
 		const { root } = mount({ ...QUICK, sessionUrl: "/s", versionUrl: "/v/version" });
 		await vi.waitFor(() => {
-			expect(label(root)).toBe("Step 2");
+			expect(label(root)).toBe("Step 3");
 		});
 		click(root, "button.first");
 		await vi.waitFor(() => {
@@ -159,34 +165,37 @@ describe("a running case", () => {
 		});
 		current = await factsSession({ steps: 2, finished: false });
 		await vi.waitFor(() => {
-			expect(root.querySelector<HTMLInputElement>('input[type="range"]')?.max).toBe("3");
+			expect(root.querySelector<HTMLInputElement>('input[type="range"]')?.max).toBe("4");
 		});
 		expect(label(root)).toBe("Start");
 	});
 
-	it("shows the choices without probabilities while the model is picking, and a case without an outcome", async () => {
+	it("shows the choices without probabilities while the model is answering, and a case without an outcome", async () => {
 		const session = await factsSession({ steps: 1, finished: false });
 		const frame = session.story.frames[0];
 		if (frame === undefined) throw new Error("no step");
 		const thinking = {
 			...frame,
-			picked: null,
+			answered: false,
 			after: null,
-			choices: frame.choices.map((choice) => ({ ...choice, probability: null, picked: false })),
+			questions: frame.questions.map((question) => ({
+				...question,
+				answer: null,
+				choices: question.choices.map((choice) => ({ ...choice, probability: null, picked: false })),
+			})),
 		};
 		const story = { ...session.story, frames: [thinking] };
 		const { root } = mount({ ...QUICK, session: { ...session, finished: true, story } });
 		click(root, "button.next");
 		await vi.waitFor(() => {
-			expect(text(root, ".decision h2")).toBe("The model is picking from the choices…");
+			expect(text(root, ".decision h2")).toBe("The model is answering…");
 		});
 		expect(Array.from(root.querySelectorAll(".choices .p")).map((p) => p.textContent)).toEqual(["–", "–", "–", "–"]);
-		// A case without an outcome still shows its answers.
 		expect(root.querySelector(".banner")).toBeNull();
-		expect(text(root, ".facts")).toContain("ayes 70.0%");
+		expect(text(root, ".result-slot")).toContain("The case ended with no outcome.");
 	});
 
-	it("says when the answers failed, a pick failed, or the case failed before or after its steps ended", async () => {
+	it("says when the run failed, a step limit ended it, or the case failed before or after its run ended", async () => {
 		const session = await factsSession({ steps: 1 });
 		const show = async (story: Partial<typeof session.story>, finished = true): Promise<string> => {
 			const { root, app } = mount({
@@ -199,24 +208,24 @@ describe("a running case", () => {
 			app.close();
 			return text(root, ".result-slot");
 		};
-		expect(await show({ answers: null, error: "too long" })).toContain("The answers failed: too long");
-		expect(await show({ ended: "pick failed" })).toContain("A pick failed, so the steps ended early.");
-		expect(await show({ ended: null, thrown: "broken" })).toContain("The case failed before its steps ended: broken");
-		expect(await show({ thrown: "no outcome" })).toContain("The case failed after its steps: no outcome");
+		expect(await show({ ended: "failed", error: "too long" })).toContain("The run failed: too long");
+		expect(await show({ ended: "step limit" })).toContain("The step limit ended the run early.");
+		expect(await show({ ended: null, thrown: "broken" })).toContain("The case failed before its run ended: broken");
+		expect(await show({ thrown: "no outcome" })).toContain("The case failed after its run ended: no outcome");
 		const frame = session.story.frames[0];
 		if (frame === undefined) throw new Error("no step");
+		const cut = { ...frame, questions: frame.questions.map((question) => ({ ...question, cut: 2 })) };
 		const { root: cutRoot } = mount({
 			...QUICK,
-			session: { ...session, story: { ...session.story, frames: [{ ...frame, cut: 2 }] } },
+			session: { ...session, story: { ...session.story, frames: [cut] } },
 		});
 		click(cutRoot, "button.next");
 		await vi.waitFor(() => {
 			expect(text(cutRoot, ".decision")).toContain("The limit cut 2 more, which the model did not see.");
 		});
-		const bare = { ...session, outcome: null, summary: null };
-		const { root } = mount({ ...QUICK, session: { ...bare, story: { ...bare.story, answers: {} } } });
+		const { root } = mount({ ...QUICK, session: { ...session, outcome: null, summary: null } });
 		await vi.waitFor(() => {
-			expect(text(root, ".result-slot")).toBe("The case ended with no outcome and no answers.");
+			expect(text(root, ".result-slot")).toBe("The case ended with no outcome.");
 		});
 	});
 });
@@ -284,17 +293,22 @@ describe("a domain's part of the page", () => {
 		expect([hidden(root, "button.download"), text(root, "button.download")]).toEqual([false, "Facts"]);
 		click(root, "button.next");
 		await vi.waitFor(() => {
-			expect(text(root, ".decision .step")).toBe("Step 1 of 3 · a note");
+			expect(text(root, ".decision .step")).toBe("Step 1 of 4 · a note");
 		});
-		expect(asked).toContain("draw Step 1 of 3 from Start of f1");
+		expect(asked).toContain("draw Step 1 of 4 from Start of f1");
 		click(root, "button.jump2");
 		await vi.waitFor(() => {
-			expect(text(root, ".drawn")).toBe("Step 2 of 3");
+			expect(text(root, ".drawn")).toBe("Step 2 of 4");
 		});
 		expect(root.querySelector(".current .jump2")).not.toBeNull();
 		click(root, "button.latest");
 		await vi.waitFor(() => {
-			expect(JSON.parse(text(root, ".state-card"))).toEqual({ looked: ["a", "b"], found: ["fact a", "fact b"] });
+			expect(JSON.parse(text(root, ".state-card"))).toEqual({
+				looked: ["a", "b"],
+				found: ["fact a", "fact b"],
+				stopped: true,
+				answers: { a: 0.7, b: 0.7, c: 0.7 },
+			});
 		});
 	});
 
@@ -319,8 +333,9 @@ describe("a domain's part of the page", () => {
 		});
 		expect(asked).toEqual([
 			"draw Start of f1",
-			"draw Step 1 of 1 from Start of f1",
-			"draw End from Step 1 of 1 of f1",
+			"draw Step 1 of 2 from Start of f1",
+			"draw Step 2 of 2 from Step 1 of 2 of f1",
+			"draw End from Step 2 of 2 of f1",
 		]);
 		// The fake part draws no end, so the page shows the state as JSON there.
 		expect(root.querySelector(".state-card")).not.toBeNull();

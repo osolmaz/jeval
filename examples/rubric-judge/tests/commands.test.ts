@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Answer, parseRequests, parseTrace, PICK_ID, STOP_KEY } from "@osolmaz/switch";
+import { type Answer, parseRequests, parseTrace, PICK_ID } from "@osolmaz/switch";
 import { replayCase, resultSchema, RunMismatchError, runCases, runRecordSchema } from "@osolmaz/switch/cli";
 import { answering, failing, fakeDecider, type Policy } from "@osolmaz/switch/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -13,6 +13,8 @@ import { rubricJudgeDomain, rubricJudgeSetup } from "../src/setup.ts";
 let folder = "";
 const rubricJudge = await rubricJudgeSetup(DEFAULT_JUDGE);
 const ingest = (input: string, output: string, id: string) => ingestCase(input, output, { id });
+/** Stop is the last choice of a gathering pick. */
+const stopping = (labels: string[]) => labels.at(-1) ?? "o1";
 
 /** `policy`, but every "misses" question gets `probability`: a judge that finds nothing missing, by default. */
 function missingNothing(policy: Policy, probability = 0.1): Policy {
@@ -78,36 +80,38 @@ describe("the rubric-judge harness", () => {
 			progress: (line: string) => lines.push(line),
 			set: { name: "s", file: "set.json" },
 		};
-		const decider = fakeDecider(missingNothing(answering(0.8, () => STOP_KEY)));
+		const decider = fakeDecider(missingNothing(answering(0.8, stopping)));
 		const cases = [join(folder, "cases", "c1"), join(folder, "cases", "c2"), join(folder, "cases", "missing")];
 		await runCases(rubricJudge, cases, decider, options);
 		const run = runRecordSchema.parse(JSON.parse(await readFile(join(folder, "out", "run.json"), "utf8")));
 		expect(run).toMatchObject({
 			domain: "rubric-judge",
-			version: "0.5.0",
+			version: "0.6.0",
 			definition: { name: "general", hash: rubricJudge.definition.hash, content: { domain: "rubric-judge" } },
 			model: "fake/decider",
-			limits: { steps: 8, choices: 30, windowShare: 0.9 },
+			limits: { windowShare: 0.9 },
 			set: { name: "s", file: "set.json" },
 			totals: { cases: 3, failed: 1, requests: 4 },
 		});
 		const result = resultSchema.parse(
 			JSON.parse(await readFile(join(folder, "out", "cases", "c1", "result.json"), "utf8")),
 		);
+		// One gathering step, stop, then the checks: the answer meets the item and misses nothing.
 		expect(result).toMatchObject({
 			case: "c1",
 			domain: "rubric-judge",
 			model: "fake/decider",
-			steps: 1,
-			ended: "stop",
+			steps: 2,
+			ended: "done",
 			error: null,
+			outcome: { verdicts: { "S-1": 0.8 }, steps: 1 },
 		});
 		const requests = parseRequests(await readFile(join(folder, "out", "cases", "c1", "requests.jsonl"), "utf8"));
 		expect(requests.map((recorded) => Object.keys(recorded.request.decisionQuestions))).toEqual([
 			[PICK_ID],
 			["S-1/meets", "S-1/misses"],
 		]);
-		// The check stage reads the view for the answers, with the process, the checking stage and the rules.
+		// The checks read the request and the evidence, with the process, the checking stage and the rules.
 		expect(Object.keys(requests[1]?.request.decisionState ?? {})).toEqual([
 			"request",
 			"evidence",
@@ -116,7 +120,10 @@ describe("the rubric-judge harness", () => {
 			"rules",
 		]);
 		expect(lines).toEqual(
-			expect.arrayContaining(["c1: stop", "c2: stop", expect.stringMatching(/^missing: - \| ERROR .*ENOENT/)]),
+			expect.arrayContaining([
+				expect.stringMatching(/^c1: 2 steps, \{"verdicts":\{"S-1":0\.8\},"steps":1\}$/),
+				expect.stringMatching(/^missing: 0 steps \| ERROR .*ENOENT/),
+			]),
 		);
 
 		await runCases(rubricJudge, [join(folder, "cases", "c1")], decider, options);
@@ -132,7 +139,7 @@ describe("the rubric-judge harness", () => {
 			join(folder, "cases", "c1"),
 			join(folder, "out", "cases", "c1", "trace.jsonl"),
 		);
-		expect(replayed.answers).toEqual(result.answers);
+		expect(replayed.outcome).toEqual(result.outcome);
 
 		const set = await loadLabelledSet(await setOf(["c1", "c3"], { c1: true, c3: false }));
 		expect(set.folders).toEqual([join(folder, "cases", "c1"), join(folder, "cases", "c3")]);
@@ -149,18 +156,19 @@ describe("the rubric-judge harness", () => {
 		await expect(loadLabelledSet(join(folder, "set.json"))).rejects.toThrow();
 	});
 
-	it("answers a run's cases again over its steps, and compares the two runs on the cases both answered", async () => {
+	it("asks a case's checks again under another judge by a fork, and compares the runs on the cases both judged", async () => {
 		await ingest(await inputFolder("c1"), join(folder, "cases", "c1"), "c1");
 		await ingest(await inputFolder("c2"), join(folder, "cases", "c2"), "c2");
 		const cases = [join(folder, "cases", "c1"), join(folder, "cases", "c2")];
-		const options = { concurrency: 2, progress: () => undefined };
+		const options = { concurrency: 1, progress: () => undefined };
+		// Each case: read the first choice, then stop, then the checks.
 		let calls = 0;
 		const first = fakeDecider(
-			missingNothing(answering(0.8, (labels) => (calls++ % 2 === 0 ? (labels[0] ?? STOP_KEY) : STOP_KEY))),
+			missingNothing(answering(0.8, (labels) => (calls++ % 2 === 0 ? (labels[0] ?? "o1") : stopping(labels)))),
 		);
 		await runCases(rubricJudge, cases, first, { ...options, out: join(folder, "first") });
 
-		// A stricter judge, whose stop text differs too: the steps are repeated by their keys, not their texts.
+		// A stricter judge, whose stop text differs too: the fork finds the recorded picks by their keys.
 		const strict = join(folder, "strict.json");
 		const definition = JSON.parse(await readFile(DEFAULT_JUDGE, "utf8")) as {
 			name: string;
@@ -170,31 +178,26 @@ describe("the rubric-judge harness", () => {
 			strict,
 			JSON.stringify({ ...definition, name: "strict", texts: { ...definition.texts, stop: "Stop: enough." } }),
 		);
-		const second = fakeDecider(answering(0.3, () => STOP_KEY));
+		const second = fakeDecider(answering(0.3));
 		const out = join(folder, "second");
-		await runCases(await rubricJudgeSetup(strict), cases, second, {
-			...options,
-			out,
-			stateFrom: join(folder, "first"),
-		});
+		const trace = join(folder, "first", "cases", "c1", "trace.jsonl");
+		await replayCase(await rubricJudgeSetup(strict), cases[0] ?? "", trace, { fork: 2, decider: second, out });
 
-		// Only the questions went to the model: the picks and states were repeated from the first run.
-		expect(second.requests.map((request) => Object.keys(request.decisionQuestions)[0])).toEqual([
-			"S-1/meets",
-			"S-1/meets",
+		// Only the checks went to the model: the two gathering steps were repeated from the first run.
+		expect(second.requests.map((request) => Object.keys(request.decisionQuestions))).toEqual([
+			["S-1/meets", "S-1/misses"],
 		]);
 		const run = runRecordSchema.parse(JSON.parse(await readFile(join(out, "run.json"), "utf8")));
 		expect(run).toMatchObject({
 			definition: { name: "strict" },
-			stateFrom: join(folder, "first"),
-			totals: { requests: 2 },
+			replay: { trace, fork: 2 },
+			totals: { requests: 1 },
 		});
 		const states = async (name: string) =>
 			parseTrace(await readFile(join(folder, name, "cases", "c1", "trace.jsonl"), "utf8")).flatMap((entry) =>
 				entry.type === "state" ? [entry.state] : [],
 			);
-		expect(await states("second")).toEqual(await states("first"));
-		expect((await states("first")).length).toBeGreaterThan(1);
+		expect((await states("second")).slice(0, 3)).toEqual((await states("first")).slice(0, 3));
 
 		const set = await loadLabelledSet(await setOf(["c1", "c2", "c3"], { c1: true, c2: true, c3: true }));
 		const compared = await compareRuns([join(folder, "first"), out], set);
@@ -204,21 +207,20 @@ describe("the rubric-judge harness", () => {
 			["general", 1],
 			["strict", 0],
 		]);
-		expect(compared.text).toMatch(/^2 cases that every run answered/);
-		expect(compared.text).toContain(`state of ${join(folder, "first")}`);
+		expect(compared.text).toMatch(/^1 cases that every run answered/);
 	});
 
-	it("records a failed case's error", async () => {
+	it("records a failed case's error, and gives it no verdicts", async () => {
 		await ingest(await inputFolder("c1"), join(folder, "cases", "c1"), "c1");
 		const lines: string[] = [];
 		const broken = fakeDecider((request, call) =>
-			PICK_ID in request.decisionQuestions ? answering(0.5, () => STOP_KEY)(request, call) : failing("down"),
+			PICK_ID in request.decisionQuestions ? answering(0.5, stopping)(request, call) : failing("down"),
 		);
 		await runCases(rubricJudge, [join(folder, "cases", "c1")], broken, {
 			out: join(folder, "out"),
 			concurrency: 1,
 			progress: (line) => lines.push(line),
 		});
-		expect(lines).toEqual(["c1: stop | ERROR down"]);
+		expect(lines).toEqual(['c1: 2 steps, {"verdicts":null,"steps":1} (failed) | ERROR down']);
 	});
 });

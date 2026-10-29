@@ -3,7 +3,7 @@
 - Read the README's "How it works", [docs/MATH.md](docs/MATH.md) and
   [docs/DECISION_MODEL_API.md](docs/DECISION_MODEL_API.md) before you change the design. The dated docs in `docs/` are
   plans and reports of their day; the latest plan is
-  [docs/2026-10-28-domains-as-examples.md](docs/2026-10-28-domains-as-examples.md).
+  [docs/2026-10-29-questions-as-steps.md](docs/2026-10-29-questions-as-steps.md).
 - Run `pnpm check` before you finish: format, lint, typecheck, tests with the 85% coverage gate, the DRY scan, the
   same checks in the viewer and each example, and `slophammer-ts check .`. CI does not run mutation tests; `pnpm mutate` runs them
   locally on request.
@@ -14,11 +14,13 @@
 
 ## Terms
 
-- Use the terms of switch, as the README's "How it works" defines them, in code and docs: state, initial state, choice
-  function, choice, pick, transition function, step, view function, view, instructions, question, answer, trace and
-  type. A case is a state machine: an initial state, a choice function from the latest state to its choices, and a
-  transition function from the state and the picked choice to the next state. The view function turns a state into the
-  view, what the model reads. "State" means only that state; the JSON that the model reads is the view's
+- Use the terms of switch, as the README's "How it works" defines them, in code and docs: state, initial state,
+  question function, question, answer, transition function, step, view function, view, instructions, pick, choice,
+  choice function, outcome, trace and type. A case is a state machine: an initial state, a question function from the
+  latest state to the questions that the model must answer in it, and a transition function from the state and the
+  answers to the next state. A pick is one choice question over the choices of a state, which `picking` builds from a
+  domain's choice function; a choice is one allowed answer of a choice question. The view function turns a state into
+  the view, what the model reads. "State" means only that state; the JSON that the model reads is the view's
   `decisionState`.
 - Do not use their old names: world, history, observation, menu, kind, workspace, log, entry for a step, option and
   action. Use judge only inside rubric-judge, for its own judge files. "Entry" still means one line of a trace, and
@@ -37,7 +39,7 @@
 ## Only the interface in switch
 
 - switch is the interface between a domain and a decision model, and nothing more: the types of a domain and its state
-  machine, the loop, the choice checks, the trace, replay, the model glue in `src/models`, the command line that runs
+  machine, the loop, the pick helper, the trace, replay, the model glue in `src/models`, the command line that runs
   cases, and the fake decider for tests.
 - switch has no user interface. `src/` has no web page, HTTP server, styles or browser code. The web viewer is a
   package of its own in `viewer/`, which uses switch as the examples do.
@@ -53,20 +55,21 @@
 
 - switch knows nothing about any domain. `src/`, the trace, `viewer/` and its page have no domain's words, fields, file
   formats, styles or special cases. This also holds for their comments, help texts and examples.
-- A domain brings what it needs through switch's general parts: its state, its choice function, its transition
-  function, its view function and its questions. For the viewer, it may give its own part of the page, which draws its
+- A domain brings what it needs through switch's general parts: its state, its question function, its transition
+  function, its view function and its outcome. For the viewer, it may give its own part of the page, which draws its
   states, its own controls and its own styles.
-- A concept goes into switch or the viewer only when it means the same thing for any domain.
-- A domain must give an initial state, a choice function and a transition function. The view function, the questions,
-  the answer stages and the outcome are optional. Behind these functions, a domain may use any library, program or data
-  of its own, and switch never sees it.
+- A concept goes into switch or the viewer only when it means the same thing for any domain. A stop choice is a
+  domain's own, such as resigning a chess game; switch adds none.
+- A domain must give an initial state, a question function and a transition function. The view function and the
+  outcome are optional. Behind these functions, a domain may use any library, program or data of its own, and switch
+  never sees it.
 
 ## Boundaries
 
 `slophammer.yml` enforces these:
 
 - `src/` is switch, and imports no domain. `src/core` imports nothing else from `src`. It holds the building blocks, the
-  loop, the choice checks, the trace, replay and the domain type that runs a domain on case folders.
+  loop, the pick helper, the trace, replay and the domain type that runs a domain on case folders.
 - `src/models` and `src/testing` import only `src/core`.
 - `src/cli` wires the others together into `commandLine`, the program of a harness with `run` and `replay`, which takes
   the harness's domains by name.
@@ -82,7 +85,7 @@
   coverage settings. They import switch only by the package's name and entry points, such as `@osolmaz/switch/cli`,
   never by a path out of their folder. In this repository the `switch-source` condition points those names at
   switch's TypeScript sources: `tsconfig.json`, the Vitest configs and each example's `src/main.ts` shebang set it.
-- A domain's choice function reads only the state and the case's fixed data. In a run, only `load`, the initial state,
+- A domain's question function and choice function read only the state and the case's fixed data. In a run, only `load`, the initial state,
   the transition and the view function's reads of the case's own files read files or start programs. The rest of the
   file and process work stays in the domain's setup and harness: its `ingest/` folder, `load.ts`, `setup.ts`,
   `viewer.ts`, the reading of its definition file, and its own commands, such as rubric-judge's scoring. A state

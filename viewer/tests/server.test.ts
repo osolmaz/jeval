@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runnerOf, STOP_KEY } from "@osolmaz/switch";
+import { runnerOf } from "@osolmaz/switch";
 import { runCases } from "@osolmaz/switch/cli";
 import { viewCommand } from "../src/command.ts";
 import { caseVersion, onlyCase, route, serveRun, ViewerError, writeCasePage } from "../src/server.ts";
@@ -19,11 +19,11 @@ afterEach(async () => {
 	await rm(folder, { recursive: true, force: true });
 });
 
-/** A run of the test domain on cases `ids`, in which the model stops at once. */
+/** A run of the test domain on cases `ids`, in which the model stops looking at once, then answers. */
 async function factsRun(ids: readonly string[]): Promise<string> {
 	const folders = await Promise.all(ids.map((id) => factsFolder(folder, id)));
 	const out = join(folder, "run");
-	await runCases(await factsSetup(), folders, fakeDecider(answering(0.6, () => STOP_KEY)), {
+	await runCases(await factsSetup(), folders, fakeDecider(answering(0.6)), {
 		out,
 		concurrency: 1,
 		progress: () => undefined,
@@ -42,9 +42,9 @@ describe("the viewer", () => {
 			summary: (outcome: Readonly<Record<string, unknown>>) => `${String(outcome["reason"])}!`,
 		};
 		const index = await route(out, "/", { facts: summarized });
-		expect(index.body).toContain('<a href="/case/f%202">f 2</a> <span class="meta">stop!</span>');
+		expect(index.body).toContain('<a href="/case/f%202">f 2</a> <span class="meta">done!</span>');
 		expect(JSON.parse((await route(out, "/case/f1/session.json", { facts: summarized })).body)).toMatchObject({
-			summary: "stop!",
+			summary: "done!",
 		});
 		const page = await route(out, "/case/f1", { facts: viewer });
 		expect(page.type).toMatch(/^text\/html/);

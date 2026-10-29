@@ -6,10 +6,10 @@ import { resultSchema, runCases, runRecordSchema } from "@osolmaz/switch/cli";
 import { route } from "@osolmaz/switch-viewer";
 import { fakeDecider } from "@osolmaz/switch/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CHESS, LIMITS } from "../src/index.ts";
+import { LIMITS, TEXTS } from "../src/index.ts";
 import { chessSetup } from "../src/setup.ts";
 import { chessViewer } from "../src/viewer.ts";
-import { picking } from "./helpers/chess.ts";
+import { choosing } from "./helpers/chess.ts";
 
 let folder = "";
 beforeEach(async () => {
@@ -31,7 +31,7 @@ async function chessRun(ids: readonly string[]): Promise<string> {
 	);
 	const out = join(folder, "run");
 	const lines: string[] = [];
-	await runCases(await chessSetup(), folders, fakeDecider(picking("stop")), {
+	await runCases(await chessSetup(), folders, fakeDecider(choosing("resign")), {
 		out,
 		concurrency: 1,
 		progress: (line) => lines.push(line),
@@ -48,11 +48,9 @@ describe("the chess harness", () => {
 		const result = resultSchema.parse(JSON.parse(await readFile(join(out, "cases", "g1", "result.json"), "utf8")));
 		expect(result.outcome).toMatchObject({ result: "loss", reason: "resignation", moves: 0 });
 		const { definition } = runRecordSchema.parse(JSON.parse(await readFile(join(out, "run.json"), "utf8")));
-		expect(definition).toEqual({
-			name: "chess",
-			hash: hashOf({ stop: CHESS.stop, instructions: CHESS.instructions, limits: LIMITS }),
-			content: { stop: "Resign the game", instructions: CHESS.instructions, limits: { ...LIMITS } },
-		});
+		const content = { ...TEXTS, limits: { ...LIMITS } };
+		expect(definition).toEqual({ name: "chess", hash: hashOf(content), content });
+		expect(content).toMatchObject({ resign: "Resign the game", choices: 220 });
 	});
 
 	it("serves a game's page with the chess part, its pieces, its styles and its summary in the index", async () => {

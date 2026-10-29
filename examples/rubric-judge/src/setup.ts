@@ -1,6 +1,6 @@
 import { type Runner, runnerOf } from "@osolmaz/switch";
 import type { DomainSetup } from "@osolmaz/switch/cli";
-import { DEFAULT_JUDGE, rubricJudge, judgeMachine, loadJudge } from "./index.ts";
+import { DEFAULT_JUDGE, judgeMachine, judgeOutcome, loadJudge, rubricJudge } from "./index.ts";
 import { loadCase } from "./load.ts";
 
 /**
@@ -14,6 +14,7 @@ export async function rubricJudgeSetup(file: string | undefined): Promise<Runner
 		definition: { name: judge.definition.name, hash: judge.hash, content: judge.definition },
 		caseId: async (folder) => (await loadCase(folder)).case.id,
 		load: async (folder) => judgeMachine(judge.definition, await loadCase(folder)),
+		outcome: judgeOutcome(judge.definition),
 	});
 }
 

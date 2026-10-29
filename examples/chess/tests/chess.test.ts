@@ -1,6 +1,6 @@
 import { Chess } from "chess.js";
 import { describe, expect, it } from "vitest";
-import { recordedModel, replayOf, run } from "@osolmaz/switch";
+import { PICK_ID, recordedModel, replayOf, run } from "@osolmaz/switch";
 import { failing, fakeDecider } from "@osolmaz/switch/testing";
 import {
 	caseSchema,
@@ -13,11 +13,12 @@ import {
 	LIMITS,
 	outcomeOf,
 	STANDARD_START,
+	TEXTS,
 } from "../src/index.ts";
 import { boardOf, gameAfter, materialOf, opponentMove, statusOf, unitOf } from "../src/game.ts";
-import { describe as describeMove, movesIn } from "../src/move.ts";
+import { describe as describeMove, movesIn as movesWith } from "../src/move.ts";
 import { chessView, numbered } from "../src/view.ts";
-import { game, picking, stateOf } from "./helpers/chess.ts";
+import { choosing, game, stateOf } from "./helpers/chess.ts";
 
 const MATE_IN_ONE = "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1";
 const STALEMATE_IN_ONE = "k7/8/2Q5/8/8/8/8/7K w - - 0 1";
@@ -29,15 +30,18 @@ const FIRST_MOVE: Engine = {
 };
 
 const initialOf = (match: ChessGame): Promise<ChessState> => chessMachine(match).initial();
+/** The choices of a state: its moves, and resigning. */
+const movesIn = (state: ChessState) => movesWith(state, TEXTS.resign);
 
-/** The state after the model played the choice with `key` in `state`. */
+/** The state after the model picked the choice with `key` in `state`, under the label that its pick gives it. */
 async function played(match: ChessGame, state: ChessState, key: string): Promise<ChessState> {
-	const choice = movesIn(state).find((offered) => offered.key === key);
-	if (choice === undefined) throw new Error(`no choice ${key}`);
-	return chessMachine(match).transition(state, choice);
+	const index = movesIn(state).findIndex((offered) => offered.key === key);
+	if (index < 0) throw new Error(`no choice ${key}`);
+	const answer = { type: "choice", choice: `o${String(index + 1)}`, probabilities: {}, confidence: 1 } as const;
+	return chessMachine(match).transition(state, { [PICK_ID]: answer });
 }
 
-const playGame = (match: ChessGame, policy = picking(), steps = LIMITS.steps) =>
+const playGame = (match: ChessGame, policy = choosing(), steps = LIMITS.steps) =>
 	run({ ...CHESS, limits: { ...LIMITS, steps } }, chessMachine(match), fakeDecider(policy));
 
 describe("chess cases", () => {
@@ -101,13 +105,23 @@ describe("the game", () => {
 describe("the choice function and the transition function", () => {
 	it("offer every legal move with a unique key, words for the model and squares for the viewer", async () => {
 		const choices = movesIn(await initialOf(game()));
-		expect(choices).toHaveLength(20);
+		expect(choices).toHaveLength(21);
 		expect(choices.find((choice) => choice.key === "move:0:e2e4")).toMatchObject({
 			type: "move",
 			text: "e4 (pawn e2 to e4)",
 			lan: "e2e4",
 			data: { from: "e2", to: "e4", san: "e4" },
 		});
+	});
+
+	it("offer resigning last, kept by its priority, which ends the game and asks nothing more", async () => {
+		const match = game();
+		const initial = await initialOf(match);
+		expect(movesIn(initial).at(-1)).toEqual({ type: "resign", key: "resign", text: TEXTS.resign, priority: -1 });
+		const gone = await played(match, initial, "resign");
+		expect(gone).toMatchObject({ status: "resignation", last: "You resigned.", moves: [] });
+		expect(movesIn(gone)).toEqual([]);
+		expect(chessMachine(match).questions(gone)).toEqual({});
 	});
 
 	it("offer no move once the game is over", async () => {
@@ -184,22 +198,21 @@ describe("the model's view", () => {
 
 describe("a game", () => {
 	it("ends in a win when the model gives checkmate", async () => {
-		const result = await playGame(game({ start: MATE_IN_ONE }), picking(/checkmate/));
-		expect(result.steps).toBe(1);
-		expect(result.answers).toEqual({});
+		const result = await playGame(game({ start: MATE_IN_ONE }), choosing(/checkmate/));
+		expect(result).toMatchObject({ steps: 1, ended: "done" });
 		expect(outcomeOf(result)).toMatchObject({ result: "win", reason: "checkmate", moves: 1 });
 	});
 
-	it("ends in a draw at stalemate, in a loss on resignation, and unfinished at the step limit or a failed pick", async () => {
-		const drawn = await playGame(game({ start: STALEMATE_IN_ONE }), picking(/^Qb6/));
+	it("ends in a draw at stalemate, in a loss on resignation, and unfinished at the step limit or a failed request", async () => {
+		const drawn = await playGame(game({ start: STALEMATE_IN_ONE }), choosing(/^Qb6/));
 		expect(outcomeOf(drawn)).toMatchObject({ result: "draw", reason: "stalemate" });
-		const resigned = await playGame(game(), picking("stop"));
+		const resigned = await playGame(game(), choosing("resign"));
 		expect(outcomeOf(resigned)).toMatchObject({
 			result: "loss",
 			reason: "resignation",
 			moves: 0,
 		});
-		const short = await playGame(game(), picking(), 2);
+		const short = await playGame(game(), choosing(), 2);
 		expect(outcomeOf(short)).toMatchObject({
 			result: "unfinished",
 			reason: "step limit",
@@ -210,12 +223,12 @@ describe("a game", () => {
 			chessMachine(game()),
 			fakeDecider(() => failing("down")),
 		);
-		expect(outcomeOf(lost)).toMatchObject({ result: "unfinished", reason: "pick failed" });
+		expect(outcomeOf(lost)).toMatchObject({ result: "unfinished", reason: "failed" });
 	});
 
 	it("counts a checkmate against the model as a loss", () => {
 		const state = stateOf(["f2f3", "e7e5", "g2g4", "d8h4"]);
-		expect(outcomeOf({ state, ended: "no choices" })).toMatchObject({ result: "loss", reason: "checkmate" });
+		expect(outcomeOf({ state, ended: "done" })).toMatchObject({ result: "loss", reason: "checkmate" });
 	});
 
 	it("lets the model play both sides in self-play, one move a step, from the side to move", async () => {
@@ -234,14 +247,15 @@ describe("a game", () => {
 	});
 
 	it("names the winner in self-play: checkmate, resignation, a draw or the step limit", async () => {
-		const won = await playGame(game({ opponent: "self", start: MATE_IN_ONE }), picking(/checkmate/));
+		const won = await playGame(game({ opponent: "self", start: MATE_IN_ONE }), choosing(/checkmate/));
 		expect(outcomeOf(won)).toMatchObject({ result: "white wins", reason: "checkmate", moves: 1 });
 		const open = game({ opponent: "self" });
-		const resigned = await playGame(open, picking("stop"));
+		const resigned = await playGame(open, choosing("resign"));
 		expect(outcomeOf(resigned)).toMatchObject({ result: "black wins", reason: "resignation" });
-		const drawn = await playGame(game({ opponent: "self", start: STALEMATE_IN_ONE }), picking(/^Qb6/));
+		expect(resigned.state.last).toBe("White resigned.");
+		const drawn = await playGame(game({ opponent: "self", start: STALEMATE_IN_ONE }), choosing(/^Qb6/));
 		expect(outcomeOf(drawn)).toMatchObject({ result: "draw", reason: "stalemate" });
-		const short = await playGame(open, picking(), 3);
+		const short = await playGame(open, choosing(), 3);
 		expect(outcomeOf(short)).toMatchObject({
 			result: "unfinished",
 			reason: "step limit",
@@ -260,7 +274,7 @@ describe("a game", () => {
 			start: STANDARD_START,
 		});
 		expect(initial.moves).toHaveLength(1);
-		expect(movesIn(initial)).toHaveLength(20);
+		expect(movesIn(initial)).toHaveLength(21);
 	});
 });
 
@@ -295,7 +309,7 @@ describe("a game against an engine", () => {
 
 	it("counts the result for the model, as against the random opponent", async () => {
 		const match = { ...game({ opponent: "stockfish", start: MATE_IN_ONE }), engine: FIRST_MOVE };
-		const won = await playGame(match, picking(/checkmate/));
+		const won = await playGame(match, choosing(/checkmate/));
 		expect(outcomeOf(won)).toMatchObject({ result: "win", reason: "checkmate" });
 	});
 
@@ -310,7 +324,8 @@ describe("a game against an engine", () => {
 		const again = await run(CHESS, chessMachine(match), recordedModel(entries), { replay: replayOf(entries) });
 		expect(engine.calls).toBe(asked);
 		expect(again.state.moves).toEqual(first.state.moves);
-		expect(again.ended).toBe("stop");
+		expect(again.ended).toBe("done");
+		expect(again.state.status).toBe("resignation");
 
 		const fork = replayOf(entries, { fork: 1 });
 		const forked = await run(CHESS, chessMachine(match), firstMoves(1), { replay: fork });
@@ -338,4 +353,4 @@ function restlessEngine(): Engine & { readonly calls: number } {
 
 /** A model that plays the first legal move `moves` times, then resigns. */
 const firstMoves = (moves: number) =>
-	fakeDecider((request, call) => (call <= moves ? picking() : picking("stop"))(request, call));
+	fakeDecider((request, call) => (call <= moves ? choosing() : choosing("resign"))(request, call));

@@ -1,65 +1,62 @@
-import { STOP_KEY, startOf, type TraceEntry } from "./trace.ts";
-import type { Answers, Decider, Ending, JsonObject } from "./types.ts";
+import { startOf, type TraceEntry } from "./trace.ts";
+import type { Answers, Decider, Ending, JsonObject, Questions } from "./types.ts";
 
 export class ReplayError extends Error {
 	override readonly name = "ReplayError";
 }
 
-type PickEntry = Extract<TraceEntry, { type: "pick" }>;
+/** One recorded step: the questions that the model answered, and its answers. */
+export interface RecordedStep {
+	readonly questions: Questions;
+	readonly answers: Answers;
+}
+
+/** How a recorded run ended: why, after how many steps, and why it failed. */
+export interface RecordedEnd {
+	readonly ended: Ending;
+	readonly steps: number;
+	readonly error: string | null;
+}
 
 /**
- * What a run takes again from a recorded trace. The run repeats the recorded picks by their keys and takes the recorded
- * states, so no transition runs and the model is not asked, for the first `steps` steps.
+ * What a run takes again from a recorded trace. The run repeats the recorded answers and takes the recorded states, so
+ * no transition runs and the model is not asked, for the recorded steps that it repeats.
  */
 export interface Replay {
 	/** What the recorded run was: its domain, definition, case and model, and the limits, which the run takes. */
 	readonly start: Extract<TraceEntry, { type: "start" }>;
-	readonly steps: number;
 	/** The recorded states by step: the initial state first. */
 	readonly states: readonly JsonObject[];
-	/** The recorded picks by step: the first step's pick first. */
-	readonly picks: readonly PickEntry[];
-	/** How the recorded steps ended, which the run repeats; null for a fork, after which the model goes on. */
-	readonly ending: Ending | null;
-	/** The recorded answers by question id, which the run repeats; null when the model answers again. */
-	readonly answers: Answers | null;
-	/** Why the recorded answers failed, which the run repeats; null when they did not, or when the model answers again. */
-	readonly answersError: string | null;
+	/** The recorded steps that the run repeats: the first step first. */
+	readonly steps: readonly RecordedStep[];
+	/** How the recorded run ended, which the run repeats; null for a fork, after which the model goes on. */
+	readonly ending: RecordedEnd | null;
 }
 
 export interface ReplayOptions {
-	/** Repeat only this many steps: the model picks after them, and answers. */
+	/** Repeat only this many steps: the model answers after them. */
 	readonly fork?: number;
-	/** Repeat every step and how the steps ended, and ask the model only the questions again. */
-	readonly askAgain?: boolean;
 }
 
-/** What a run repeats of the trace `entries`: every step and the answers, every step only, or the steps of a fork. */
+/** What a run repeats of the trace `entries`: the whole run, or the first steps of a fork. */
 export function replayOf(entries: readonly TraceEntry[], options: ReplayOptions = {}): Replay {
 	const start = startOf(entries);
 	const states = statesOf(entries);
-	const picks = entries.filter((entry) => entry.type === "pick");
+	const steps = stepsOf(entries);
 	if (options.fork !== undefined) {
-		const most = forkable(picks, states);
+		// A fork repeats a step with its answers and the state after it.
+		const most = Math.min(steps.length, states.length - 1);
 		if (options.fork > most) {
 			throw new ReplayError(
 				`the trace has ${String(most)} steps that a fork can repeat, fewer than the fork's ${String(options.fork)}`,
 			);
 		}
-		return { start, steps: options.fork, states, picks, ending: null, answers: null, answersError: null };
+		return { start, states, steps: steps.slice(0, options.fork), ending: null };
 	}
 	const ended = entries.find((entry) => entry.type === "ended");
-	if (ended === undefined) throw new ReplayError("the trace's steps did not end: its run stopped before");
-	const steps = { start, steps: picks.length, states, picks, ending: ended.ended };
-	if (options.askAgain === true) return { ...steps, answers: null, answersError: null };
-	const final = entries.find((entry) => entry.type === "answers");
-	if (final === undefined) throw new ReplayError("the trace has no answers: its run stopped before them");
-	return { ...steps, answers: answersOf(entries), answersError: final.error };
+	if (ended === undefined) throw new ReplayError("the trace's run did not end: it stopped before");
+	return { start, states, steps, ending: { ended: ended.ended, steps: ended.steps, error: ended.error } };
 }
-
-/** How many steps a fork can repeat: each with its pick and the state after it, which only a last pick of stop lacks. */
-const forkable = (picks: readonly PickEntry[], states: readonly JsonObject[]): number =>
-	picks.at(-1)?.choice === STOP_KEY ? picks.length : Math.min(picks.length, states.length - 1);
 
 /** The recorded states in order of their steps; each step from 0 on must have one. */
 function statesOf(entries: readonly TraceEntry[]): JsonObject[] {
@@ -72,13 +69,20 @@ function statesOf(entries: readonly TraceEntry[]): JsonObject[] {
 	return states;
 }
 
-/** Every recorded answer by question id, from every answer stage and the final answers. */
-function answersOf(entries: readonly TraceEntry[]): Answers {
-	return Object.fromEntries(
-		entries.flatMap((entry) =>
-			entry.type === "stage" || entry.type === "answers" ? Object.entries(entry.answers ?? {}) : [],
-		),
-	);
+/** The recorded steps that have answers, in order: each with the questions of its step. */
+function stepsOf(entries: readonly TraceEntry[]): RecordedStep[] {
+	const asked = new Map<number, Questions>();
+	const steps: RecordedStep[] = [];
+	for (const entry of entries) {
+		if (entry.type === "questions") asked.set(entry.step, entry.questions);
+		if (entry.type !== "answers") continue;
+		if (entry.step !== steps.length + 1)
+			throw new ReplayError(`the trace's answers skip to step ${String(entry.step)}`);
+		const questions = asked.get(entry.step);
+		if (questions === undefined) throw new ReplayError(`the trace has no questions of step ${String(entry.step)}`);
+		steps.push({ questions, answers: entry.answers });
+	}
+	return steps;
 }
 
 /** The recorded state after `step` steps. */
@@ -88,16 +92,9 @@ export function recordedState(replay: Replay, step: number): JsonObject {
 	return state;
 }
 
-/** The recorded pick of `step`. */
-export function recordedPick(replay: Replay, step: number): PickEntry {
-	const pick = replay.picks[step - 1];
-	if (pick === undefined) throw new ReplayError(`the trace has no pick at step ${String(step)}`);
-	return pick;
-}
-
 /**
- * The decider of a replay that repeats everything: the trace's model, which is never asked, since the run takes the
- * picks and the answers from the trace.
+ * The decider of a replay that repeats everything: the trace's model, which is never asked, since the run takes every
+ * answer from the trace.
  */
 export function recordedModel(entries: readonly TraceEntry[]): Decider {
 	return {

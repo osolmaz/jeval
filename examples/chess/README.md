@@ -41,9 +41,11 @@ Each game is a state machine, in `src/index.ts` and `src/move.ts`:
   repeated position. The view uses that rebuilt game; the SAN, the FEN, the status and the check are kept for the
   viewer, whose browser code has no chess.js.
 - The initial state is the start position, after the opponent's first move when the opponent is to move.
-- The choice function gives the legal moves of the state's position, and none once the game is over.
+- While the game is on, the question function asks one pick. Its choice function gives the legal moves of the
+  state's position and resigning, which a cut never leaves out. Once the game is over, by checkmate, a draw or a
+  resignation, the question function asks nothing, so the run ends.
 - The transition function plays the model's move and, against an opponent, the reply: a random legal move, or
-  Stockfish's.
+  Stockfish's. When the model resigns, the position stays and the status says that the side to move resigned.
 
 The case's random opponent, with its seed, and its engine with its move time stay inside these functions; the state
 names the opponent, with its seed or move time, only as text. The side, the opponent's name and the start position
@@ -61,12 +63,13 @@ STOCKFISH=/path/to/stockfish examples/chess/src/main.ts run examples/chess/cases
 Each case's `result.json` gets an `outcome`: the `result`, its `reason`, the number of `moves` both sides made, each
 side's `material` (pawn 1, knight and bishop 3, rook 5, queen 9) and the final position as `fen`. Against an opponent
 the result is the model's: win, loss or draw. In self-play it names the winner: white wins or black wins, or a draw. A
-game that the step limit or a failed pick cut is unfinished, with that as its reason.
+game that the step limit or a failed request cut is unfinished, with that as its reason. The step limit is only a
+safety net, since the game ends the run.
 
 The model sees the board as text with rank 8 at the top, each side's pieces, whether it is in check, what the last
 step did, and the moves so far; when the whole game does not fit the window, only the latest 20 moves. Each choice is
-a legal move in algebraic notation with its meaning in words, such as `exd5 (pawn e4 to d5, takes the pawn)`. The stop
-choice resigns the game.
+a legal move in algebraic notation with its meaning in words, such as `exd5 (pawn e4 to d5, takes the pawn)`, or
+"Resign the game".
 
 ## Replay a game
 

@@ -4,7 +4,7 @@ import { type AppConfig, type Session, start } from "@osolmaz/switch-viewer/page
 import "../src/web/part.ts";
 import type { SoundSet } from "../src/web/sound.ts";
 import { clipUrl, type FakeAudioContext, stubAudio } from "./helpers/audio.ts";
-import { picking } from "./helpers/chess.ts";
+import { choosing } from "./helpers/chess.ts";
 import { chessSession } from "./helpers/sessions.ts";
 
 const QUICK = { motion: 0, dwell: 0, poll: 5, parts: { chess: { pieces: {} } } } as const;
@@ -63,7 +63,7 @@ describe("the chess part of the page", () => {
 			session: await chessSession({
 				opponent: "self",
 				steps: 1,
-				policy: picking(/checkmate/),
+				policy: choosing(/checkmate/),
 				start: "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
 			}),
 		});
@@ -85,7 +85,7 @@ describe("the chess part of the page", () => {
 			expect(label(root)).toBe("Step 1 of 2");
 		});
 		expect(root.querySelectorAll("polygon.arrow")).toHaveLength(5);
-		expect(text(root, ".decision h2")).toBe("The choices");
+		expect(text(root, ".decision h2")).toBe("The answers");
 		expect(text(root, ".decision .step")).toBe("Step 1 of 2 · white to move");
 		expect(root.querySelector(".choices .picked")?.textContent).toContain("(picked)");
 		click(root, "button.latest");
@@ -231,21 +231,25 @@ describe("a running case", () => {
 		expect(label(root)).toBe("Start");
 	});
 
-	it("shows the choices without probabilities or arrows while the model is picking", async () => {
+	it("shows the choices without probabilities or arrows while the model is answering", async () => {
 		const session = await chessSession({ steps: 1, finished: false });
 		const frame = session.story.frames[0];
 		if (frame === undefined) throw new Error("no step");
 		const thinking = {
 			...frame,
-			picked: null,
+			answered: false,
 			after: null,
-			choices: frame.choices.map((choice) => ({ ...choice, probability: null, picked: false })),
+			questions: frame.questions.map((question) => ({
+				...question,
+				answer: null,
+				choices: question.choices.map((choice) => ({ ...choice, probability: null, picked: false })),
+			})),
 		};
 		const story = { ...session.story, frames: [thinking] };
 		const { root } = mount({ ...QUICK, session: { ...session, story } });
 		click(root, "button.latest");
 		await vi.waitFor(() => {
-			expect(text(root, ".decision h2")).toBe("The model is picking from the choices…");
+			expect(text(root, ".decision h2")).toBe("The model is answering…");
 		});
 		expect(root.querySelectorAll("polygon")).toHaveLength(0);
 	});

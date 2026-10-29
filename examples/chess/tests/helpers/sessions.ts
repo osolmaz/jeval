@@ -4,7 +4,7 @@ import { storyOf } from "@osolmaz/switch-viewer";
 import type { Session } from "@osolmaz/switch-viewer/page";
 import { CHESS, type ChessCase, chessMachine, LIMITS, outcomeOf } from "../../src/index.ts";
 import { chessViewer } from "../../src/viewer.ts";
-import { game, picking } from "./chess.ts";
+import { choosing, game } from "./chess.ts";
 
 /** The chess viewer's summary of an outcome, as the server puts it in a session. */
 const summaryOf = (outcome: Readonly<Record<string, unknown>> | null): string | null =>
@@ -18,7 +18,7 @@ export async function chessSession(
 		finished?: boolean;
 	} = {},
 ): Promise<Session> {
-	const { steps = 3, policy = picking(), finished = true, ...fields } = options;
+	const { steps = 3, policy = choosing(), finished = true, ...fields } = options;
 	const result = await run(
 		{ ...CHESS, limits: { ...LIMITS, steps } },
 		chessMachine(game(fields)),

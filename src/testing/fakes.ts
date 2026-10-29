@@ -46,12 +46,12 @@ export const answered = (answers: Answers): DecisionResult => ({
 });
 
 /**
- * Answers every bool question with `probability`, every choice question with `pick(labels)` at probability 0.9, and
- * every score question with 1.
+ * Answers every bool question with `probability`, every choice question with `pick(labels)` at probability 0.9, the
+ * last label by default, and every score question with 1.
  */
 export function answering(
 	probability: number,
-	pick: (labels: string[]) => string = (labels) => labels.at(-1) ?? "stop",
+	pick: (labels: string[]) => string = (labels) => labels.at(-1) ?? "",
 ): Policy {
 	return (request) => {
 		const answers: Record<string, Answer> = {};

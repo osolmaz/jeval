@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PICK_ID, STOP_KEY } from "@osolmaz/switch";
+import { PICK_ID } from "@osolmaz/switch";
 import { resultSchema, runCases } from "@osolmaz/switch/cli";
 import { answered, fakeDecider, type Policy } from "@osolmaz/switch/testing";
 import { loadRace } from "../src/case.ts";
@@ -27,7 +27,7 @@ const toward =
 	(request) => {
 		const question = request.decisionQuestions[PICK_ID];
 		const texts = question?.type === "choice" ? Object.entries(question.criteria) : [];
-		const label = texts.find(([, text]) => text === title)?.[0] ?? texts[0]?.[0] ?? STOP_KEY;
+		const label = texts.find(([, text]) => text === title)?.[0] ?? texts[0]?.[0] ?? "o1";
 		return answered({
 			[PICK_ID]: { type: "choice", choice: label, probabilities: { [label]: 0.8 }, confidence: 0.7 },
 		});
@@ -50,12 +50,10 @@ describe("the wikirace harness", () => {
 		const result = resultSchema.parse(
 			JSON.parse(await readFile(join(out, "cases", "duck-to-pond", "result.json"), "utf8")),
 		);
-		expect(result).toMatchObject({ steps: 1, ended: "no choices", thrown: null });
+		expect(result).toMatchObject({ steps: 1, ended: "done", thrown: null });
 		expect(result.outcome).toEqual({ result: "reached", hops: 1, path: ["Duck", "Pond"] });
-		// Reaching the target ends the steps, as the target offers no choices.
-		expect(lines).toEqual([
-			'duck-to-pond: 1 steps, {"result":"reached","hops":1,"path":["Duck","Pond"]} (no choices)',
-		]);
+		// Reaching the target ends the run, as the target offers no choices.
+		expect(lines).toEqual(['duck-to-pond: 1 steps, {"result":"reached","hops":1,"path":["Duck","Pond"]}']);
 		expect(wikiraceViewer.summary?.(result.outcome ?? {})).toBe("reached · 1 hops");
 		await expect(wikiraceViewer.config()).resolves.toEqual({});
 	});

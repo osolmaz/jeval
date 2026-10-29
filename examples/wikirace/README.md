@@ -34,17 +34,18 @@ Each race is a state machine, in [`src/race.ts`](src/race.ts):
   current article's links by section. Wikipedia changes, so the state keeps the links as the race saw them.
 - The initial state is the start article. The load of the case also reads the target's first sentences, which every
   view shows.
-- The choice function gives the links of the current article in the order of the article, without the links to
-  articles visited before. An article with more than 200 links shows the links of its lead and its other sections, and
-  a section opens to its links; TypeSafe's demo also splits such pages in two stages, since Jev takes at most 255
-  answers in one question. The target has no choices, so the race ends when it gets there.
-- The transition function follows the picked link and reads the article it leads to, after redirects, or opens the
-  picked section.
+- Until the race is over, the question function asks one pick. Its choice function gives the links of the current
+  article in the order of the article, without the links to articles visited before, and giving up, which a cut never
+  leaves out. An article with more than 200 links shows the links of its lead and its other sections, and a section
+  opens to its links; TypeSafe's demo also splits such pages in two steps, since Jev takes at most 255 answers in one
+  question. At the target, or after giving up, the question function asks nothing, so the race ends.
+- The transition function follows the picked link and reads the article it leads to, after redirects, opens the
+  picked section, or gives up the race.
 - The view shows the target and what it is about, the current article, the path so far, what the step shows and what
   the last step did. The links themselves are the pick's choices.
 
-The stop choice gives up the race. A race's outcome is `reached`, `gave up` or `unfinished`, with the number of hops
-between articles and the path.
+A race's outcome is `reached`, `gave up` or `unfinished`, with the number of hops between articles and the path. A
+race that the step limit or a failed request cut is unfinished.
 
 [`src/wiki.ts`](src/wiki.ts) reads an article's HTML from the API and keeps the links to other articles, grouped by
 the top-level sections. It leaves out files, categories, help pages and the like, the pages that only list the

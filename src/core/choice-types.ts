@@ -1,4 +1,5 @@
-import type { Choice, JsonObject, StateMachine } from "./types.ts";
+import type { PickSpec } from "./pick.ts";
+import type { Choice, JsonObject } from "./types.ts";
 
 /** One choice of a type, before `choiceType` adds its type: its key within the type, the text, and its argument. */
 export interface TypedChoice<A> {
@@ -46,10 +47,13 @@ export function choiceType<S, A>(spec: ChoiceTypeSpec<S, A>): ChoiceType<S> {
 		});
 }
 
-/** The choice function and the transition function of several types of choice, with the types' choices in this order. */
+/**
+ * The choice function of several types of choice, with the types' choices in this order, and the transition of a
+ * picked one, as `picking` takes them.
+ */
 export function joinTypes<S extends JsonObject>(
 	...types: readonly ChoiceType<S>[]
-): Pick<StateMachine<S, BoundChoice<S>>, "choices" | "transition"> {
+): Pick<PickSpec<S, BoundChoice<S>>, "choices" | "transition"> {
 	return {
 		choices: (state) => types.flatMap((type) => type(state)),
 		transition: (state, choice) => choice.next(state),

@@ -19,6 +19,7 @@ describe("read", () => {
 		expect(texts(choices)).toContain("Read all of documents/lease.pdf (pdf, 2 parts, ~15 words)");
 		const lease = choices.find((choice) => choice.key === "read:d1:0-1");
 		await expect(lease?.next(empty)).resolves.toEqual({
+			...empty,
 			evidence: [
 				{
 					key: "read:d1:0-1",
@@ -78,6 +79,7 @@ describe("look", () => {
 			"Look at documents/photo.png",
 		]);
 		await expect(choices[0]?.next(empty)).resolves.toEqual({
+			...empty,
 			evidence: [
 				{
 					key: "look:d1:0",
@@ -134,6 +136,7 @@ describe("count", () => {
 		expect(choice?.text).toBe("Count the words of the answer, in total and for each section");
 		const counted = await choice?.next(empty);
 		expect(counted).toEqual({
+			...empty,
 			evidence: [
 				{
 					key: "count:words",

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Answer } from "@osolmaz/switch";
 import { formatReport, metrics, score, type Verdicts } from "../src/score/score.ts";
 
-const yes: Answer = { type: "bool", probability: 0.9 };
+/** An item's probability of passing that counts as a pass. */
+const yes = 0.9;
 
 describe("metrics", () => {
 	it("counts accuracy, kappa, pass rates and the two sorts of error", () => {
@@ -45,9 +45,9 @@ describe("score", () => {
 		{ id: "c3", items: [{ id: "S-1", pass: false }] },
 	];
 	const verdicts = new Map<string, Verdicts>([
-		["c1", { answers: { "S-1": yes, "F-1": yes } }],
-		["c2", { answers: { "S-1": yes } }],
-		["c3", { answers: null }],
+		["c1", { verdicts: { "S-1": yes, "F-1": yes } }],
+		["c2", { verdicts: { "S-1": yes } }],
+		["c3", { verdicts: null }],
 	]);
 
 	it("keeps invalid answers in the scheduled denominator and splits accuracy by category", () => {
@@ -72,10 +72,8 @@ describe("score", () => {
 		expect(report.byCategory).toEqual({ substance: 1, form: 0 });
 	});
 
-	it("treats a missing or non-yes-or-no answer as a fail, and names unknown categories", () => {
-		const odd = new Map<string, Verdicts>([
-			["c1", { answers: { "S-1": { type: "score", score: 1, confidence: 1 } } }],
-		]);
+	it("treats a missing verdict or one under one half as a fail, and names unknown categories", () => {
+		const odd = new Map<string, Verdicts>([["c1", { verdicts: { "S-1": 0.4 } }]]);
 		const report = score([labels[0] ?? { id: "", items: [] }], odd);
 		expect(report.itemMetrics).toMatchObject({ falseFails: 1, falsePasses: 0 });
 		expect(report.byCategory).toEqual({ unknown: 0.5 });

@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { answerText, changesOf, momentsOf, percent, pickProbabilities, plain, ranked } from "../src/web/model.ts";
+import {
+	answerText,
+	changesOf,
+	momentsOf,
+	percent,
+	pickOf,
+	pickProbabilities,
+	plain,
+	ranked,
+} from "../src/web/model.ts";
 import { factsSession } from "./helpers/sessions.ts";
 
 describe("moments", () => {
@@ -7,9 +16,10 @@ describe("moments", () => {
 		const session = await factsSession({ steps: 2 });
 		expect(momentsOf(session.story, true).map((moment) => moment.label)).toEqual([
 			"Start",
-			"Step 1 of 3",
-			"Step 2 of 3",
-			"Step 3 of 3",
+			"Step 1 of 4",
+			"Step 2 of 4",
+			"Step 3 of 4",
+			"Step 4 of 4",
 			"End",
 		]);
 		expect(momentsOf(session.story, false).map((moment) => moment.label)).toEqual([
@@ -17,8 +27,17 @@ describe("moments", () => {
 			"Step 1",
 			"Step 2",
 			"Step 3",
+			"Step 4",
 		]);
-		expect(pickProbabilities(session.story)).toEqual([0.9, 0.9, 0.9]);
+		// The last step asks yes-or-no questions and no pick.
+		expect(pickProbabilities(session.story)).toEqual([0.9, 0.9, 0.9, null]);
+	});
+
+	it("find the pick of a step, and none for a step without one", async () => {
+		const { story } = await factsSession({ steps: 1 });
+		expect(pickOf(story.frames[0] ?? null)?.id).toBe("pick");
+		expect(pickOf(story.frames.at(-1) ?? null)).toBeNull();
+		expect(pickOf(null)).toBeNull();
 	});
 });
 
@@ -35,6 +54,7 @@ describe("text", () => {
 
 	it("ranks choices by probability, with unanswered ones last", () => {
 		const choice = (key: string, probability: number | null) => ({
+			label: key,
 			key,
 			text: key,
 			probability,

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { Answer } from "@osolmaz/switch";
 
 /** A reference label: the expected verdict of every item of one case. Other fields are ignored. */
 export const labelSchema = z.object({
@@ -8,9 +7,12 @@ export const labelSchema = z.object({
 });
 export type Label = z.infer<typeof labelSchema>;
 
-/** A judge's verdicts on one case, as the harness's `run` writes them; `answers` is null when the case failed. */
+/**
+ * A judge's verdicts on one case, as its outcome in the case's result gives them: each item's probability of passing,
+ * by the item's id; null when the case got no verdicts.
+ */
 export interface Verdicts {
-	readonly answers: Readonly<Record<string, Answer>> | null;
+	readonly verdicts: Readonly<Record<string, number>> | null;
 }
 
 export interface Metrics {
@@ -38,7 +40,7 @@ export interface Report {
 
 type Pair = readonly [judge: boolean, label: boolean];
 
-const passes = (answer: Answer | undefined): boolean => answer?.type === "bool" && answer.probability >= 0.5;
+const passes = (probability: number | undefined): boolean => probability !== undefined && probability >= 0.5;
 
 export function metrics(pairs: readonly Pair[]): Metrics | null {
 	const n = pairs.length;
@@ -73,10 +75,10 @@ function categoryAccuracy(
 ): Record<string, number> {
 	const tallies = new Map<string, { right: number; all: number }>();
 	for (const label of labels) {
-		const answers = verdicts.get(label.id)?.answers ?? null;
-		if (answers === null) continue;
+		const given = verdicts.get(label.id)?.verdicts ?? null;
+		if (given === null) continue;
 		for (const item of label.items) {
-			tally(tallies, categories.get(`${label.id}/${item.id}`) ?? "unknown", passes(answers[item.id]) === item.pass);
+			tally(tallies, categories.get(`${label.id}/${item.id}`) ?? "unknown", passes(given[item.id]) === item.pass);
 		}
 	}
 	return Object.fromEntries([...tallies].map(([category, { right, all }]) => [category, right / all]));
@@ -91,10 +93,10 @@ export function score(
 	verdicts: ReadonlyMap<string, Verdicts>,
 	categories: ReadonlyMap<string, string> = new Map(),
 ): Report {
-	const valid = labels.filter((label) => (verdicts.get(label.id)?.answers ?? null) !== null);
+	const valid = labels.filter((label) => (verdicts.get(label.id)?.verdicts ?? null) !== null);
 	const pairs = (label: Label): Pair[] => {
-		const answers = verdicts.get(label.id)?.answers ?? {};
-		return label.items.map((item) => [passes(answers[item.id]), item.pass] as const);
+		const given = verdicts.get(label.id)?.verdicts ?? {};
+		return label.items.map((item) => [passes(given[item.id]), item.pass] as const);
 	};
 	const itemPairs = valid.flatMap(pairs);
 	const items = labels.reduce((sum, label) => sum + label.items.length, 0);

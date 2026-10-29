@@ -1,16 +1,18 @@
-import { run, STOP_KEY } from "@osolmaz/switch";
+import { run } from "@osolmaz/switch";
 import { storyOf } from "../../src/frames.ts";
 import type { Session } from "../../src/web/model.ts";
 import { answering, factsMachine, FACTS, fakeDecider } from "./fakes.ts";
 
 /**
- * A case of the test domain, which has no part of the page: the model looks up `steps` facts, then stops, and answers
- * every fact's question. As the viewer receives it.
+ * A case of the test domain, which has no part of the page: the model looks up `steps` facts, then stops looking, and
+ * answers every fact's question. As the viewer receives it.
  */
 export async function factsSession(options: { steps?: number; finished?: boolean } = {}): Promise<Session> {
 	const { steps = 2, finished = true } = options;
 	let calls = 0;
-	const decider = fakeDecider(answering(0.7, (labels) => (calls++ < steps ? (labels[0] ?? STOP_KEY) : STOP_KEY)));
+	const decider = fakeDecider(
+		answering(0.7, (labels) => (calls++ < steps ? (labels[0] ?? "o1") : (labels.at(-1) ?? "o1"))),
+	);
 	const machine = factsMachine({ facts: { a: "fact a", b: "fact b", c: "fact c" } });
 	const result = await run(FACTS, machine, decider);
 	return {

@@ -45,13 +45,23 @@ export interface Evidence extends JsonObject {
 	readonly image?: Render;
 }
 
-/** Where a case is: the evidence found so far, in order. */
+/**
+ * Where a case is: the evidence found so far, in order, the gathering steps taken, whether gathering is over, and the
+ * answers to the checks once the model gave them.
+ */
 export interface JudgeState extends JsonObject {
 	readonly evidence: readonly Evidence[];
+	/** The gathering steps taken so far. */
+	readonly steps: number;
+	/** Whether the model stopped gathering evidence. */
+	readonly gathered: boolean;
+	/** The probability of yes of each check, by `<item id>/<question id>`; null until the model answered them. */
+	readonly checks: Readonly<Record<string, number>> | null;
 }
 
 /** The state with one more piece of evidence. */
 export const withEvidence = (state: JudgeState, found: Evidence): JudgeState => ({
+	...state,
 	evidence: [...state.evidence, found],
 });
 

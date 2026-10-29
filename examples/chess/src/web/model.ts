@@ -1,5 +1,5 @@
 /** The chess part's model of a game, in the browser and in tests: no DOM here. */
-import type { Session, Story } from "@osolmaz/switch-viewer/page";
+import { pickOf, type Session, type Story } from "@osolmaz/switch-viewer/page";
 import { type ChessState, chessState, movesOfStep } from "./data.ts";
 
 export type Color = "w" | "b";
@@ -151,7 +151,7 @@ export function pliesOf(story: Story): Ply[] {
 	for (const san of initial.san) moves.push({ san, byModel: false, probability: null, moment: 0, shown: 0 });
 	story.frames.forEach((frame, index) => {
 		const step = movesOfStep(chessState(frame.before), chessState(frame.after));
-		const picked = frame.choices.find((choice) => choice.picked)?.probability ?? null;
+		const picked = pickOf(frame)?.choices.find((choice) => choice.picked)?.probability ?? null;
 		step.san.forEach((san, ply) => {
 			const byModel = ply === 0;
 			const moment = index + (byModel ? 1 : 2);

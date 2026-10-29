@@ -1,6 +1,19 @@
 import { z } from "zod";
-import type { Answers, Choice, Ending, Json, JsonObject } from "./types.ts";
+import type { Answers, Ending, Json, JsonObject, Questions } from "./types.ts";
 
+/** A JSON value, as the core types it. */
+const json: z.ZodType<Json> = z.json();
+const jsonObject = z.record(z.string(), json);
+const text = z.string();
+/** switch's own facts about a question, which the model never sees. */
+const data = jsonObject.optional();
+
+export const questionSchema = z.discriminatedUnion("type", [
+	z.object({ type: z.literal("bool"), instructions: text, criteria: z.object({ true: text, false: text }), data }),
+	z.object({ type: z.literal("choice"), instructions: text, criteria: z.record(z.string(), text), data }),
+	z.object({ type: z.literal("score"), instructions: text, criteria: z.array(text).readonly(), data }),
+]);
+const questions = z.record(z.string(), questionSchema);
 export const answerSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("bool"), probability: z.number() }),
 	z.object({
@@ -12,12 +25,11 @@ export const answerSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("score"), score: z.number(), confidence: z.number() }),
 ]);
 const answers = z.record(z.string(), answerSchema);
-export const endingSchema = z.enum(["stop", "no choices", "step limit", "pick failed"]);
-/** A JSON value, as the core types it. */
-const json: z.ZodType<Json> = z.json();
-const jsonObject = z.record(z.string(), json);
-/** Facts for tools that read the trace, written only when there are any. */
-const data = jsonObject.optional();
+export const endingSchema = z.enum(["done", "step limit", "failed"]);
+export const limitsSchema = z.object({
+	steps: z.number().int().positive().optional(),
+	windowShare: z.number().positive().max(1),
+});
 
 /**
  * One line of a trace, in the order the run wrote them. The usage of each request is in the run's requests file, which
@@ -33,32 +45,20 @@ const traceEntrySchema = z.discriminatedUnion("type", [
 		/** The case's id; null when the run was given none. */
 		case: z.string().nullable(),
 		model: z.string(),
-		limits: z.object({ steps: z.number(), choices: z.number(), windowShare: z.number() }),
+		limits: limitsSchema,
 	}),
 	z.object({ type: z.literal("state"), step: z.number().int(), state: jsonObject }),
+	/** The questions of a step, written before the model is asked. */
+	z.object({ type: z.literal("questions"), step: z.number().int(), questions }),
 	z.object({
-		type: z.literal("choices"),
+		type: z.literal("answers"),
 		step: z.number().int(),
-		choices: z.array(z.object({ key: z.string(), type: z.string(), text: z.string(), data })),
-		/** How many of the choice function's choices the limit cut, written only when it cut any. */
-		cut: z.number().int().positive().optional(),
-	}),
-	z.object({
-		type: z.literal("pick"),
-		step: z.number().int(),
-		/** The key of the picked choice, or stop. */
-		choice: z.string(),
-		/** The probability of each choice, by key. */
-		probabilities: z.record(z.string(), z.number()),
-		confidence: z.number(),
-		/** The pick was taken from a recorded trace, and the model was not asked. */
+		answers,
+		/** The answers were taken from a recorded trace, and the model was not asked. */
 		repeated: z.literal(true).optional(),
 	}),
-	/** Why the steps ended, and how many there were, before the answers. */
-	z.object({ type: z.literal("ended"), ended: endingSchema, steps: z.number().int() }),
-	z.object({ type: z.literal("stage"), stage: z.string(), answers }),
-	/** The final answer to each question, or why the answers failed: the last entry of a run. */
-	z.object({ type: z.literal("answers"), answers: answers.nullable(), error: z.string().nullable() }),
+	/** Why the run ended, how many steps it took and why it failed: the last entry of a run. */
+	z.object({ type: z.literal("ended"), ended: endingSchema, steps: z.number().int(), error: z.string().nullable() }),
 	z.object({ type: z.literal("note"), message: z.string() }),
 	/** The case failed: its code, or switch, threw this error, and the run stopped there. */
 	z.object({ type: z.literal("thrown"), error: z.string() }),
@@ -66,9 +66,6 @@ const traceEntrySchema = z.discriminatedUnion("type", [
 
 export type TraceEntry = z.infer<typeof traceEntrySchema>;
 type Body<T extends TraceEntry["type"]> = Omit<Extract<TraceEntry, { type: T }>, "type">;
-
-/** The key and the type of the stop choice in traces. */
-export const STOP_KEY = "stop";
 
 /** Records a run as a list of entries; `onEntry` sees each one as it is written, for streaming to a file. */
 export class Trace {
@@ -88,36 +85,19 @@ export class Trace {
 		this.push({ type: "state", step, state });
 	}
 
-	/** Records the choices that the model sees at `step`, the stop choice after them, and how many the limit cut. */
-	choices(step: number, offered: readonly Choice[], stop: string, cut: number): void {
-		const choices = offered.map(({ key, type, text, data }) => ({
-			key,
-			type,
-			text,
-			...(data === undefined ? {} : { data }),
-		}));
-		choices.push({ key: STOP_KEY, type: STOP_KEY, text: stop });
-		this.push({ type: "choices", step, choices, ...(cut > 0 ? { cut } : {}) });
+	/** Records the questions of `step`, with switch's own facts about them. */
+	questions(step: number, asked: Questions): void {
+		this.push({ type: "questions", step, questions: { ...asked } });
 	}
 
-	/** Records the pick at `step`: the picked choice's key, the probabilities by key, and the model's confidence. */
-	picked(step: number, pick: Omit<Body<"pick">, "step">): void {
-		this.push({ type: "pick", step, ...pick, probabilities: { ...pick.probabilities } });
+	/** Records the answers of `step`; `repeated` when they came from a recorded trace. */
+	answered(step: number, given: Answers, repeated: boolean): void {
+		this.push({ type: "answers", step, answers: { ...given }, ...(repeated ? { repeated: true as const } : {}) });
 	}
 
-	/** Records why the steps ended, and how many there were. */
-	ended(ended: Ending, steps: number): void {
-		this.push({ type: "ended", ended, steps });
-	}
-
-	/** Records the answers of one stage of a domain's own answer function. */
-	stage(stage: string, answers: Answers): void {
-		this.push({ type: "stage", stage, answers: { ...answers } });
-	}
-
-	/** Records the final answer to each question, or, with no answers, why they failed. */
-	answered(answers: Answers | null, error: string | null): void {
-		this.push({ type: "answers", answers: answers === null ? null : { ...answers }, error });
+	/** Records why the run ended, how many steps it took, and why it failed. */
+	ended(ended: Ending, steps: number, error: string | null): void {
+		this.push({ type: "ended", ended, steps, error });
 	}
 
 	note(message: string): void {

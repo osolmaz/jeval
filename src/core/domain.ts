@@ -2,7 +2,7 @@ import { definitionFor } from "./definition.ts";
 import { run } from "./loop.ts";
 import type { Replay } from "./replay.ts";
 import type { Trace } from "./trace.ts";
-import type { Choice, Decider, Definition, Domain, JsonObject, Limits, RunResult } from "./types.ts";
+import type { Decider, Definition, Domain, JsonObject, Limits, RunResult } from "./types.ts";
 
 /** One case run from its folder: its id, the loop's result and how the case ended. */
 export interface CaseRun {
@@ -14,7 +14,7 @@ export interface CaseRun {
 
 export interface CaseOptions {
 	readonly trace: Trace;
-	/** A trace whose picks and states the case takes again, under its limits. */
+	/** A trace whose answers and states the case takes again, under its limits. */
 	readonly replay?: Replay;
 }
 
@@ -30,9 +30,9 @@ export interface Runner {
 
 /**
  * The runner of a domain: it loads a case folder's state machine, runs the loop on it and reports the case. A domain
- * without a definition of its own is defined by its stop text, its instructions and its limits.
+ * without a definition of its own is defined by its limits.
  */
-export function runnerOf<S extends JsonObject, C extends Choice>(domain: Domain<S, C>): Runner {
+export function runnerOf<S extends JsonObject>(domain: Domain<S>): Runner {
 	const definition = definitionFor(domain);
 	return {
 		name: domain.name,

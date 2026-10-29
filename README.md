@@ -17,19 +17,20 @@ API as Jev, and the Hugging Face Hub tags thousands of models as
 them with Jev on tasks such as tool use, retrieval, reasoning and games.
 
 Decision models are fast and cheap, but they cannot write a tool call, so the usual agent loop does not fit them.
-switch gives them a loop that does. At each step, your program offers the model a short list of choices, and the model
-picks one. Your program carries out the choice and shows the model where the task is now, and this repeats until the
-model can answer the task's questions. The name comes from a railway switch, where one track splits into a few: your
-program lays the tracks, and the model sets the switch.
+switch gives them a loop that does. At each step, your program asks the model typed questions about where the task is,
+most often one pick from a short list of choices. Your program carries out the answers and shows the model where the
+task is now, and this repeats until your program has nothing more to ask. The name comes from a railway switch, where
+one track splits into a few: your program lays the tracks, and the model sets the switch.
 
 The task itself comes from a domain, which you write in TypeScript. For each case, a domain gives a state machine: an
-initial state, a choice function that gives the choices in a state, and a transition function that gives the next
-state after the model's pick. These three are the whole interface that a domain must give. Behind them, a domain may
-use any library, program or data of its own, such as a chess engine. A domain may also set the questions that the
-model answers at the end, and the view function, which turns a state into what the model reads. switch runs the same
-loop for every domain and keeps the model's probability for every choice of every step. It gives the view function a
-budget that fits the model's window, asks for a smaller view when a request is still too long, and writes a trace of
-every state, which can be replayed or forked. What goes to the model and comes back follows the classifier interface of
+initial state, a question function that gives the questions that the model must answer in a state, and a transition
+function that gives the next state from the answers. These three are the whole interface that a domain must give.
+Behind them, a domain may use any library, program or data of its own, such as a chess engine. A pick from a list of
+choices is one choice question, which switch's `picking` helper builds from the domain's choices. A domain may also
+give the view function, which turns a state into what the model reads. switch runs the same loop for every domain and
+keeps the model's probabilities for every answer of every step. It gives the view function a budget that fits the
+model's window, asks for a smaller view when a request is still too long, and writes a trace of every state, which can
+be replayed or forked. What goes to the model and comes back follows the classifier interface of
 the [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) library, so any classifier model that pi-ai lists can
 decide; [docs/DECISION_MODEL_API.md](docs/DECISION_MODEL_API.md) explains these APIs. Three example harnesses in
 [`examples/`](examples) use switch the way another project would: `rubric-judge`, which grades answers to tasks against
@@ -43,20 +44,23 @@ Each case is a state machine. A run of one case goes like this:
 
 1. The domain makes the case's **initial state**. A **state** is everything that the domain needs to know about where
    the case is, as JSON, such as the evidence read so far or the moves of a chess game.
-2. The **choice function** takes the latest state and gives the **choices** in it. Each choice has a type, such as
-   `read` or `move`, a key and a text that the model reads. switch checks the choices, cuts them to its limit and adds
-   stop.
+2. The **question function** takes the latest state and gives the **questions** that the model must answer in it, by
+   id: pi-ai's `bool`, `choice` and `score` questions. A **pick** is a choice question whose answers are the
+   **choices** of the state, such as the logs to read or the legal moves. Each choice has a type, such as `read` or
+   `move`, a key and a text that the model reads. The `picking` helper builds the pick from the domain's **choice
+   function**: it checks the choices, cuts them to a limit and gives them short labels.
 3. The **view function** takes the state and gives the **view**: the `decisionState`, a JSON object, and any
-   `decisionImages` that the model sees with it. switch adds the pick question, whose answers are the choices, and the
-   model **picks** one choice, with a probability for every choice.
-4. The **transition function** takes the state and the picked choice, does the work of the choice, and gives the next
-   state. One pass of the choices, the pick and the transition is a **step**.
-5. The run goes back to the choice function, until the model picks stop, the state has no choices, the step limit is
-   reached, or a pick fails. Then the model answers the domain's **questions**, and every **answer** comes with its
-   probabilities.
+   `decisionImages` that the model sees with it. The model reads the view and gives an **answer** to every question,
+   with its probabilities. The answer to a pick names the picked choice, with a probability for every choice.
+4. The **transition function** takes the state and the answers, does the work that they ask for, such as the work of
+   the picked choice, and gives the next state. One pass of the questions, the answers and the transition is a
+   **step**.
+5. The run goes back to the question function, until it gives no questions, a request fails, or the run reaches its
+   step limit, a safety net that a domain may set. The result of the run is its last state, and a domain's
+   **outcome** says how the case ended in the domain's own terms.
 
-The **trace** of a run keeps every state, the choices of each step with the model's probabilities, each pick, why the
-steps ended, and the answers. So a replay reads the states from the trace and runs no transition again.
+The **trace** of a run keeps every state, the questions of each step, the answers with the model's probabilities, and
+how the run ended. So a replay reads the states from the trace and runs no transition again.
 
 ## Install
 
@@ -71,7 +75,7 @@ The package has these entry points:
 
 | Import                    | What it gives                                                                                       |
 | ------------------------- | --------------------------------------------------------------------------------------------------- |
-| `@osolmaz/switch`         | The loop, the types of a domain and its state machine, the choice checks, traces and replay         |
+| `@osolmaz/switch`         | The loop, the types of a domain and its state machine, the pick helper, traces and replay           |
 | `@osolmaz/switch/models`  | `piAiDecider`, which asks a classifier model that pi-ai lists                                       |
 | `@osolmaz/switch/cli`     | `commandLine`, which gives a harness the `run` and `replay` commands, and the functions behind them |
 | `@osolmaz/switch/testing` | A fake decider that answers by a rule, for tests that make no model calls                           |
@@ -106,94 +110,119 @@ examples/chess/src/main.ts view runs/chess
 
 ## Replay a case
 
-`replay` runs a case again from its trace, under the trace's limits. It takes each recorded pick by its key and each
-state from the trace, so no transition runs and no model is asked. It ends as the recorded steps ended, and repeats
-the recorded answers, or their failure. A replay thus gives the recorded case, even when a transition would find
-something else now, such as the reply of a chess engine. It fails, and the command exits with an error, when the
-trace is of another domain or case, or when the domain's code no longer gives the choices that the run saw: a recorded
-pick that is not among the choices, no choices where the run had some, or choices where its steps ended. A definition
-that changed since is noted in the replay's trace. With `--fork <n>`, `replay` repeats only the first n steps, and the
-model that `--model` names picks and answers from there, with the transitions running again. With `--out <folder>`,
-it writes the replay as a run folder of one case, which the viewer can show:
+`replay` runs a case again from its trace, under the trace's limits. It takes each recorded answer and each state from
+the trace, so no transition runs and no model is asked. It ends as the recorded run ended, also at a failed request.
+A replay thus gives the recorded case, even when a transition would find something else now, such as the reply of a
+chess engine. It fails, and the command exits with an error, when the trace is of another domain or case, or when the
+domain's code no longer asks the questions that the run answered: other ids or types, a recorded pick whose choice is
+gone, questions where the run ended, or none where it asked. A recorded pick is found by its choice's key, so a choice
+whose text or label changed since still fits. A definition that changed since is noted in the replay's trace. With
+`--fork <n>`, `replay` repeats only the first n steps, and the model that `--model` names answers from there, with the
+transitions running again. A fork thus also asks a case's last questions again under another definition or model, such
+as rubric-judge's checks under another judge file. With `--out <folder>`, it writes the replay as a run folder of one
+case, which the viewer can show:
 
 ```bash
 examples/chess/src/main.ts replay examples/chess/cases/white-seed-1 runs/chess/cases/white-seed-1/trace.jsonl --fork 5 --out runs/fork
 ```
 
-`run --state-from <run>` repeats the steps of each case that it runs from an earlier run in this way, under that run's
-limits, and asks the model only the questions again, for example with another definition or model. A case that the
-earlier run does not have fails.
-
 A run folder holds `run.json`, with what ran, the limits that the cases ran under, and, at the end, its totals: the
 cases, the failed ones, the requests and their summed usage, cost included. Each case has its `result.json` with its
-answers, why its steps ended, why its answers failed if they did, and the error that stopped the case if one did; its
-`trace.jsonl`; and its `requests.jsonl`, with every decision request and its result. When a stopped run goes on, it
-runs again each case that has no result, or whose case was stopped by an error.
+steps, why the run ended, why it failed if it did, the domain's outcome, and the error that stopped the case if one
+did; its `trace.jsonl`; and its `requests.jsonl`, with every decision request and its result. When a stopped run goes
+on, it runs again each case that has no result, or whose case was stopped by an error.
 
 ## Write a domain
 
-A domain gives each case as a state machine. The state is JSON that the domain designs. The choice function gives the
-choices in a state, and the transition function does the work of the picked choice and gives the next state. The
-case's own data, which never changes, stays inside the functions. This domain routes a support ticket and lets the
-model read the ticket's logs first:
+A domain gives each case as a state machine. The state is JSON that the domain designs. The question function gives
+the questions in a state, and the transition function does the work that the answers ask for and gives the next
+state. The case's own data, which never changes, stays inside the functions. This domain routes a support ticket and
+lets the model read the ticket's logs first:
 
 ```ts
-import type { Choice, DomainShared, JsonObject, StateMachine } from "@osolmaz/switch";
+import {
+  type Choice,
+  type ChoiceQuestion,
+  type DomainShared,
+  type JsonObject,
+  picking,
+  type StateMachine,
+} from "@osolmaz/switch";
 
 export interface Ticket {
   readonly text: string;
   readonly logs: Readonly<Record<string, string>>;
 }
 
-/** Where a ticket is: the logs read so far, with what each one said. */
+/** Where a ticket is: the logs read so far, with what each one said, whether reading is over, and the team. */
 interface TriageState extends JsonObject {
   readonly read: readonly { readonly log: string; readonly text: string }[];
+  readonly done: boolean;
+  readonly team: string | null;
 }
 
-/** A log to read; the transition gets the choice back. */
+/** A log to read, or null to stop reading; the transition gets the choice back. */
 interface ReadLog extends Choice {
-  readonly log: string;
+  readonly log: string | null;
 }
 
-export const TRIAGE: DomainShared = {
-  name: "triage",
-  version: "0.1.0",
-  stop: "Stop reading: the evidence is enough",
-  instructions: "Which log should be read next to route this ticket?",
-  limits: { steps: 8, choices: 20, windowShare: 0.9 },
+export const TRIAGE: DomainShared = { name: "triage", version: "0.1.0", limits: { steps: 20, windowShare: 0.9 } };
+
+const TEAM: ChoiceQuestion = {
+  type: "choice",
+  instructions: "Which team should handle the ticket?",
+  criteria: { billing: "Billing", infra: "Infrastructure", app: "Application" },
 };
 
-export function triageMachine(ticket: Ticket): StateMachine<TriageState, ReadLog> {
-  return {
-    initial: () => Promise.resolve({ read: [] }),
-    choices: (state) =>
-      Object.keys(ticket.logs)
+export function triageMachine(ticket: Ticket): StateMachine<TriageState> {
+  const pick = picking<TriageState, ReadLog>({
+    instructions: "Which log should be read next to route this ticket?",
+    limit: 20,
+    choices: (state) => [
+      ...Object.keys(ticket.logs)
         .filter((log) => !state.read.some((entry) => entry.log === log))
         .map((log) => ({ type: "read-log", key: log, text: `Read ${log}`, log })),
-    transition: (state, choice) =>
-      Promise.resolve({ read: [...state.read, { log: choice.log, text: ticket.logs[choice.log] ?? "" }] }),
+      { type: "stop", key: "stop", text: "Stop reading: the evidence is enough", log: null, priority: -1 },
+    ],
+    transition: (state, { log }) =>
+      Promise.resolve(
+        log === null
+          ? { ...state, done: true }
+          : { ...state, read: [...state.read, { log, text: ticket.logs[log] ?? "" }] },
+      ),
+  });
+  return {
+    initial: () => Promise.resolve({ read: [], done: false, team: null }),
+    questions: (state) => {
+      if (state.team !== null) return {};
+      return state.done ? { team: TEAM } : pick.questions(state);
+    },
+    transition: (state, answers) => {
+      if (!state.done) return pick.transition(state, answers);
+      const team = answers["team"];
+      return Promise.resolve({ ...state, team: team?.type === "choice" ? team.choice : "unknown" });
+    },
     view: (state) => Promise.resolve({ decisionState: { ticket: ticket.text, read: state.read } }),
-    questions: () => ({
-      team: {
-        type: "choice",
-        instructions: "Which team should handle the ticket?",
-        criteria: { billing: "Billing", infra: "Infrastructure", app: "Application" },
-      },
-    }),
   };
 }
 ```
 
-The model reads the ticket and opens logs one step at a time until it picks stop, then answers the question. The
-questions are pi-ai's, by id: a `bool`, a `choice` or a `score` question, each with its `criteria`. Every answer comes
-with the model's probabilities. Only `initial`, `choices` and `transition` are needed: without a view function, the
-model reads the state as it is, and without questions, the run asks nothing. A view function also gets the most tokens
-that its view may take, and the decider's characters per token, so that it can measure with `estimateTokens`; when the
-model says that a request was still too long, switch asks it for a smaller view. A choice function must leave out what
-the state says is done, because switch refuses a choice that the model picked before. The limits are the most steps of
-a run, the most choices that the model sees in one step, stop included, which is at least 2, and the share of the
-model's window that a request may fill. Any classifier model that pi-ai lists can decide; pi-ai finds its key in the
-environment, such as `TYPESAFE_API_KEY`:
+The model reads the ticket and opens logs one step at a time until it picks stop. In the next step it answers which
+team should handle the ticket, and then the run ends, because the last state asks nothing. The questions are pi-ai's,
+by id: a `bool`, a `choice` or a `score` question, each with its `criteria`. Every answer comes with the model's
+probabilities. Only `initial`, `questions` and `transition` are needed: without a view function, the model reads the
+state as it is.
+
+`picking` turns a choice function into the question function and the transition function of a pick in each state. It
+checks that the choices' keys and texts differ, keeps at most `limit` of them, the ones of lowest priority value,
+labels them `o1`, `o2` and so on, and gives the transition the picked choice. A state with no choices asks nothing. A
+domain that wants a stop choice gives it, as this one does, with a low priority so that a cut keeps it. A choice
+function must leave out what the state says is done, since switch does not know which picks were made before. A view
+function also gets the most tokens that its view may take, and the decider's characters per token, so that it can
+measure with `estimateTokens`; when the model says that a request was still too long, switch asks it for a smaller
+view. The limits are the share of the model's window that a request may fill and, as a safety net, the most steps of
+a run, which is none unless the domain sets it. Any classifier model that pi-ai lists can decide; pi-ai finds its key
+in the environment, such as `TYPESAFE_API_KEY`:
 
 ```ts
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
@@ -204,14 +233,14 @@ const decider = piAiDecider("typesafe/jev-latest", { registry: builtinModels() }
 const result = await run(TRIAGE, triageMachine(ticket), decider);
 ```
 
-`result.answers` holds the answers, and `result.state` the last state. `result.trace` holds every state, every choice
-that the model saw with the probability it gave it, and each pick. `result.ended` tells why the steps ended: the model
-picked stop, the state had no choices, the steps ran out, or the pick failed. A domain with several types of choice
-can give each type in a file of its own with `choiceType`, and join them with `joinTypes`. A type's transition gets the
-picked choice's key, which `typedKey` makes from the type and the key within it, so that the state can record what is
-done under the same key that the choice function leaves out. A domain that needs more
-than one round of questions, such as asking about each part of an item before deciding the item, adds an `answer`
-function that asks in stages; a stage can give a view function of its own.
+`result.state` holds the last state, and `result.trace` every state, the questions of every step, and the answers with
+the model's probabilities. `result.ended` tells why the run ended: `done` when the domain asked nothing more,
+`step limit`, or `failed` when a request failed or gave answers that do not fit its questions, with the reason in
+`result.error`. A domain may ask several questions in one step, such as one about each part of an item, and switch
+splits them into batches when they do not fit one request. A domain with several types of choice can give each type in
+a file of its own with `choiceType`, and join them with `joinTypes`, which gives `picking` its choice function and its
+transition. A type's transition gets the picked choice's key, which `typedKey` makes from the type and the key within
+it, so that the state can record what is done under the same key that the choice function leaves out.
 
 ## Write a harness
 
@@ -220,8 +249,8 @@ every case shares, the definition, how to read a case's id, how to load a case f
 domain has one, how a case ended, from the run's result. The definition holds what a domain lets a run vary, such as
 the texts that tell the model what to do, and the limits; `run.json` records it with its hash, and each trace starts
 with that hash and the case's id. The texts in the domain's code, such as those of its choices, come with the
-domain's version. By default, the definition is the domain's stop text, instructions and limits, and a domain set up
-from a file of its own gives that file as its definition. This setup needs nothing:
+domain's version. By default, the definition is the domain's limits, and a domain set up from a file of its own gives
+that file as its definition. This setup needs nothing, and reports the team as the case's outcome:
 
 ```ts
 import { basename } from "node:path";
@@ -235,6 +264,7 @@ export function triageSetup(): Promise<Runner> {
       ...TRIAGE,
       caseId: (folder) => Promise.resolve(basename(folder)),
       load: async (folder) => triageMachine(await loadTicket(folder)),
+      outcome: ({ state }) => ({ team: state.team }),
     }),
   );
 }

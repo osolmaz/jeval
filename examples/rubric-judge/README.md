@@ -44,19 +44,25 @@ sudo apt install poppler-utils libreoffice-writer netpbm
 
 Each case is a state machine, in `src/index.ts`:
 
-- The state is the evidence found so far, in order. Each entry has the key of the choice that found it, its source,
-  its text, and, for a look at an image, the image's file next to the case.
+- The state is the evidence found so far, in order, the number of gathering steps, whether the model stopped
+  gathering, and, after the checks, each check's probability of yes. Each piece of evidence has the key of the choice
+  that found it, its source, its text, and, for a look at an image, the image's file next to the case.
 - The initial state holds the answer's files, read before the first pick: their text up to a budget, their images and
   their Word formatting.
-- The choice function joins six types of choice, each in a file of its own in [`src/choices/`](src/choices): read a
-  file or a part of it, look at an image, search a term from the rubric, count the answer's words, list a document's
-  tracked changes, and compare the answer's Word file with the original. Each type leaves out what the evidence
-  already holds.
-- The transition function adds the evidence of the picked choice.
-- The view function shows the request, the rubric, the files and what has been read of them, and the evidence, cut to fit the
-  window. It loads the images that the evidence names from the case folder.
-- The answer stage asks the judge's two questions about every rubric item over the evidence, and combines them into
-  one verdict per item.
+- While the model gathers evidence, the question function asks one pick. Its choice function joins seven types of
+  choice, six of them each in a file of its own in [`src/choices/`](src/choices): read a file or a part of it, look
+  at an image, search a term from the rubric, count the answer's words, list a document's tracked changes, and compare
+  the answer's Word file with the original. Each of these leaves out what the evidence already holds. The seventh is
+  stop, with the judge file's stop text, which is always among the choices.
+- The transition function of a pick adds the evidence of the picked choice, or ends the gathering at stop, and counts
+  the step.
+- After stop, or after the most gathering steps that the judge file allows, the question function asks the judge's two
+  questions about every rubric item in one step. Its transition keeps their probabilities, and then the question
+  function asks nothing, so the run ends.
+- The view function shows the request, the rubric, the files and what has been read of them, and the evidence, cut to
+  fit the window. For the checks, it shows the request and the evidence with the judge's rules. It loads the images
+  that the evidence names from the case folder.
+- The outcome combines each item's two answers into its verdict, and counts the gathering steps.
 
 The case, its search terms and its folder stay inside these functions.
 
@@ -75,23 +81,30 @@ examples/rubric-judge/src/main.ts run cases/case-1 --out results --model typesaf
 ```
 
 A run writes one folder. `run.json` records what ran, including the judge file as the run's definition, its hash and
-the switch commit, and at the end the totals, with the cost. Each case keeps its answers and a trace of every state,
-and `requests.jsonl` keeps every decision request that switch passed to pi-ai, with each image by its label, and its
-result. A stopped run goes on in the same folder; a judge file with another hash needs another folder.
+the switch commit, and at the end the totals, with the cost. Each case keeps its outcome in `result.json`, with each
+rubric item's probability of passing under `verdicts` and the gathering steps under `steps`, and a trace of every
+state. Its `requests.jsonl` keeps every decision request that switch passed to pi-ai, with each image by its label,
+and its result. A stopped run goes on in the same folder; a judge file with another hash needs another folder.
 
 ## Measure a judge
 
 To measure a judge, an eval set file names the case folders and the scheduled case ids. It also points to a labels
 file in JSON Lines (`{"id", "items": [{"id", "pass"}]}`). `score` checks a run against the set's labels, overall and
-by each rubric item's category. `run --state-from <run>` asks another judge file or model over the evidence that an
-earlier run gathered, for about a third of the cost of a new run. It takes the earlier run's states from its traces.
-Of each case folder, it reads `case.json`, as every command does, and the images that the evidence names.
-`compare` then scores runs side by side on the cases that all of them answered:
+by each rubric item's category. `compare` scores runs side by side on the cases that all of them judged:
 
 ```bash
 examples/rubric-judge/src/main.ts run --set sets/quick.json --out results
-examples/rubric-judge/src/main.ts run --set sets/quick.json --state-from results --out results-legal --judge examples/rubric-judge/judges/legal.json
+examples/rubric-judge/src/main.ts run --set sets/quick.json --out results-legal --judge examples/rubric-judge/judges/legal.json
 examples/rubric-judge/src/main.ts compare results results-legal --set sets/quick.json
+```
+
+To ask another judge file or model over the evidence that a run gathered, fork a case's trace after its gathering
+steps, which the case's outcome counts under `steps`. The fork repeats those steps from the trace and asks only the
+checks again, for about a third of the cost of a new run, and writes a run folder of one case. There is no command yet
+that forks every case of a set:
+
+```bash
+examples/rubric-judge/src/main.ts replay cases/case-1 results/cases/case-1/trace.jsonl --fork 5 --out forks/case-1 --judge examples/rubric-judge/judges/legal.json
 ```
 
 ## Verdicts
@@ -134,7 +147,7 @@ item has an accuracy of 0.9 and a kappa of 0.
 
 The report adds three more numbers:
 
-- Items right over all scheduled items, where every item of a case without answers counts as wrong.
+- Items right over all scheduled items, where every item of a case without verdicts counts as wrong.
 - Whole answers right: the judge's verdict on an answer is pass when every item passes, compared with the same for
   the labels.
 - Accuracy by each rubric item's category, which `score` reads from the case folders.

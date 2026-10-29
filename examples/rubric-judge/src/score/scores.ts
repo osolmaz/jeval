@@ -39,13 +39,22 @@ async function categoriesOf(set: EvalSet, results: readonly CaseResult[]): Promi
 	);
 }
 
+/** The outcome's verdicts: each item's probability of passing. */
+const outcomeSchema = z.object({ verdicts: z.record(z.string(), z.number()).nullable() });
+
+/** A case's verdicts, from the outcome in its result; null when the case got none, such as a case that failed. */
+function verdictsOf(result: CaseResult): Verdicts {
+	const parsed = outcomeSchema.safeParse(result.outcome);
+	return { verdicts: parsed.success ? parsed.data.verdicts : null };
+}
+
 function reportOn(
 	results: readonly CaseResult[],
 	labels: readonly Label[],
 	cases: ReadonlySet<string>,
 	categories: ReadonlyMap<string, string>,
 ): Report {
-	const verdicts = new Map<string, Verdicts>(results.map((result) => [result.case, { answers: result.answers }]));
+	const verdicts = new Map<string, Verdicts>(results.map((result) => [result.case, verdictsOf(result)]));
 	return score(
 		labels.filter((label) => cases.has(label.id)),
 		verdicts,
@@ -53,7 +62,7 @@ function reportOn(
 	);
 }
 
-/** Scores a run against its set's labels on every case the set schedules; a case without answers counts as wrong. */
+/** Scores a run against its set's labels on every case the set schedules; a case without verdicts counts as wrong. */
 export async function scoreResults(runFolder: string, set: LabelledSet): Promise<{ report: Report; text: string }> {
 	const [results, labels] = await Promise.all([readResults(runFolder), readLabels(set.labels)]);
 	const report = reportOn(results, labels, set.ids, await categoriesOf(set, results));
@@ -66,7 +75,6 @@ export interface ComparedRun {
 	/** The run's definition as `name@hash`, with the first 12 characters of the hash. */
 	readonly definition: string;
 	readonly model: string;
-	readonly stateFrom: string | null;
 	readonly report: Report;
 	/** The requests to the decision model. */
 	readonly requests: number | null;
@@ -88,10 +96,7 @@ function metricsLine({ report, requests, inputTokens, cost: dollars }: ComparedR
 
 function formatComparison(cases: number, runs: readonly ComparedRun[]): string {
 	const lines = [`${String(cases)} cases that every run answered`];
-	for (const run of runs) {
-		const source = run.stateFrom === null ? "" : `, state of ${run.stateFrom}`;
-		lines.push(`${run.run}: ${run.definition}, ${run.model}${source}`, metricsLine(run));
-	}
+	for (const run of runs) lines.push(`${run.run}: ${run.definition}, ${run.model}`, metricsLine(run));
 	return lines.join("\n");
 }
 
@@ -113,14 +118,15 @@ export async function compareRuns(
 	);
 	let common = new Set(set.ids);
 	for (const { results } of loaded) {
-		const answered = new Set(results.filter((result) => result.answers !== null).map((result) => result.case));
-		common = new Set([...common].filter((id) => answered.has(id)));
+		const judged = new Set(
+			results.filter((result) => verdictsOf(result).verdicts !== null).map((result) => result.case),
+		);
+		common = new Set([...common].filter((id) => judged.has(id)));
 	}
 	const runs = loaded.map(({ run, record, results }) => ({
 		run,
 		definition: `${record.definition.name}@${record.definition.hash.slice(0, 12)}`,
 		model: record.model,
-		stateFrom: record.stateFrom,
 		report: reportOn(results, labels, common, categories),
 		requests: record.totals?.requests ?? null,
 		inputTokens: record.totals?.usage.input ?? null,

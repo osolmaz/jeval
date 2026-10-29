@@ -1,25 +1,49 @@
-import { type Answer, type Ending, type JsonObject, startOf, type TraceEntry } from "@osolmaz/switch";
+import {
+	type Answer,
+	type Answers,
+	type Ending,
+	type JsonObject,
+	PICK_ID,
+	type Question,
+	startOf,
+	type TraceEntry,
+} from "@osolmaz/switch";
 
-/** One choice that the model saw, with the probability it gave it; null when the model never answered. */
+/** One choice of a choice question, with the probability that the model gave it; null until the model answered. */
 export interface FrameChoice {
+	/** The choice's label in the question. */
+	readonly label: string;
+	/** The choice's own key, from the question's facts; its label when the question has none. */
 	readonly key: string;
 	readonly text: string;
 	readonly probability: number | null;
 	readonly picked: boolean;
+	/** The choice's own facts for tools, from the question's facts. */
 	readonly data: unknown;
 }
 
-/** One step of a case: the state the model picked in, the choices it saw, its pick, and the state after it. */
+/** One question of a step, with its answer: null until the model answered, or when the step failed. */
+export interface FrameQuestion {
+	readonly id: string;
+	readonly question: Question;
+	readonly answer: Answer | null;
+	/** A choice question's choices in their order; none for a question of another type. */
+	readonly choices: readonly FrameChoice[];
+	/** How many choices a pick's limit cut, so the model never saw them. */
+	readonly cut: number;
+}
+
+/** One step of a case: the state it asked in, its questions with their answers, and the state after it. */
 export interface Frame {
 	readonly step: number;
-	/** The state before the pick. */
+	/** The state before the step. */
 	readonly before: JsonObject | null;
-	readonly choices: readonly FrameChoice[];
-	/** How many of the choice function's choices the limit cut, so the model never saw them. */
-	readonly cut: number;
-	/** The picked choice's key; null when the pick failed. */
-	readonly picked: string | null;
-	/** The state after the transition; null after stop or a failed pick. */
+	readonly questions: readonly FrameQuestion[];
+	/** The place among `questions` of the step's pick: switch's pick question, or else its first choice question. */
+	readonly pick: number | null;
+	/** Whether the model answered the step. */
+	readonly answered: boolean;
+	/** The state after the transition; null until then, or when the step failed. */
 	readonly after: JsonObject | null;
 	readonly notes: readonly string[];
 }
@@ -30,52 +54,81 @@ export interface Story {
 	readonly case: string;
 	readonly domain: string;
 	readonly model: string;
-	/** The state before the first pick; null until the trace has it. */
+	/** The state before the first step; null until the trace has it. */
 	readonly initial: JsonObject | null;
 	readonly frames: readonly Frame[];
 	/** The latest state of the case. */
 	readonly last: JsonObject | null;
-	readonly answers: Readonly<Record<string, Answer>> | null;
-	/** Why the steps ended; null until they have ended. */
+	/** Why the run ended; null until it has ended. */
 	readonly ended: Ending | null;
-	/** Why the answers failed; null when they did not, or until the answers are in. */
+	/** Why the run failed; null when it did not, or until it has ended. */
 	readonly error: string | null;
 	/** The error that stopped the case; null when none did. */
 	readonly thrown: string | null;
-	/** Notes made outside the steps, such as a retry of the answers. */
+	/** Notes made outside the steps, such as one after the run ended. */
 	readonly notes: readonly string[];
 }
 
 interface Building {
 	step: number;
 	before: JsonObject | null;
-	choices: FrameChoice[];
-	cut: number;
-	picked: string | null;
+	questions: FrameQuestion[];
+	pick: number | null;
+	answered: boolean;
 	after: JsonObject | null;
 	notes: string[];
 }
 
 type Entry<T extends TraceEntry["type"]> = Extract<TraceEntry, { type: T }>;
 
-function withPick(frame: Building, pick: Entry<"pick">): void {
-	frame.picked = pick.choice;
-	frame.choices = frame.choices.map((offered) => ({
-		...offered,
-		probability: pick.probabilities[offered.key] ?? null,
-		picked: offered.key === pick.choice,
-	}));
+const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** What the question's facts say about the choice under `label`: its key and its own facts, as a pick writes them. */
+function factsOf(question: Question, label: string): { key: string; data: unknown } {
+	const choices = isObject(question.data) ? question.data["choices"] : undefined;
+	const facts = isObject(choices) ? choices[label] : undefined;
+	if (!isObject(facts)) return { key: label, data: undefined };
+	return { key: typeof facts["key"] === "string" ? facts["key"] : label, data: facts["data"] };
 }
 
-function choicesFrame(entry: Entry<"choices">, before: JsonObject | null): Building {
-	const choices = entry.choices.map((choice) => ({
-		key: choice.key,
-		text: choice.text,
+/** A question of a step, before its answer: a choice question with its choices. */
+function frameQuestion(id: string, question: Question): FrameQuestion {
+	const cut = isObject(question.data) && typeof question.data["cut"] === "number" ? question.data["cut"] : 0;
+	if (question.type !== "choice") return { id, question, answer: null, choices: [], cut };
+	const choices = Object.entries(question.criteria).map(([label, text]) => ({
+		label,
+		text,
 		probability: null,
 		picked: false,
-		data: choice.data,
+		...factsOf(question, label),
 	}));
-	return { step: entry.step, before, choices, cut: entry.cut ?? 0, picked: null, after: null, notes: [] };
+	return { id, question, answer: null, choices, cut };
+}
+
+/** A question with its answer: a choice answer gives each choice its probability and marks the picked one. */
+function withAnswer(question: FrameQuestion, answer: Answer | undefined): FrameQuestion {
+	if (answer === undefined) return question;
+	if (answer.type !== "choice") return { ...question, answer };
+	const choices = question.choices.map((choice) => ({
+		...choice,
+		probability: answer.probabilities[choice.label] ?? null,
+		picked: choice.label === answer.choice,
+	}));
+	return { ...question, answer, choices };
+}
+
+/** The place of a step's pick among its questions: switch's pick question, or else the first choice question. */
+function pickAmong(questions: readonly FrameQuestion[]): number | null {
+	const named = questions.findIndex((question) => question.id === PICK_ID);
+	const first = questions.findIndex((question) => question.question.type === "choice");
+	const found = named >= 0 ? named : first;
+	return found >= 0 ? found : null;
+}
+
+function questionsFrame(entry: Entry<"questions">, before: JsonObject | null): Building {
+	const questions = Object.entries(entry.questions).map(([id, question]) => frameQuestion(id, question));
+	return { step: entry.step, before, questions, pick: pickAmong(questions), answered: false, after: null, notes: [] };
 }
 
 interface Reading {
@@ -83,7 +136,6 @@ interface Reading {
 	readonly frames: Building[];
 	readonly notes: string[];
 	last: JsonObject | null;
-	answers: Readonly<Record<string, Answer>> | null;
 	ended: Ending | null;
 	error: string | null;
 	thrown: string | null;
@@ -96,32 +148,31 @@ function stated(reading: Reading, entry: Entry<"state">): void {
 	reading.last = entry.state;
 }
 
-function picked(reading: Reading, entry: Entry<"pick">): void {
+function answered(reading: Reading, entry: Entry<"answers">): void {
 	const frame = reading.frames.at(-1);
-	if (frame !== undefined) withPick(frame, entry);
+	if (frame === undefined) return;
+	const answers: Answers = entry.answers;
+	frame.questions = frame.questions.map((question) => withAnswer(question, answers[question.id]));
+	frame.answered = true;
 }
 
-/** A note belongs to the step that is still waiting for its pick; any other note, such as one after the steps ended, belongs to the story. */
+/** A note belongs to the step that is still waiting for its answers; any other note belongs to the story. */
 function noted(reading: Reading, entry: Entry<"note">): void {
 	const frame = reading.frames.at(-1);
-	if (reading.ended === null && frame?.picked === null && frame.after === null) frame.notes.push(entry.message);
+	if (reading.ended === null && frame !== undefined && !frame.answered) frame.notes.push(entry.message);
 	else reading.notes.push(entry.message);
 }
 
-/** How each type of entry adds to the story; the start and the answer stages add nothing. */
+/** How each type of entry adds to the story; the start adds nothing. */
 const READERS: { readonly [T in TraceEntry["type"]]: (reading: Reading, entry: Entry<T>) => void } = {
 	start: () => undefined,
 	state: stated,
-	choices: (reading, entry) => {
-		reading.frames.push(choicesFrame(entry, reading.last));
+	questions: (reading, entry) => {
+		reading.frames.push(questionsFrame(entry, reading.last));
 	},
-	pick: picked,
+	answers: answered,
 	ended: (reading, entry) => {
 		reading.ended = entry.ended;
-	},
-	stage: () => undefined,
-	answers: (reading, entry) => {
-		reading.answers = entry.answers;
 		reading.error = entry.error;
 	},
 	note: noted,
@@ -135,7 +186,7 @@ function read(reading: Reading, entry: TraceEntry): void {
 	(READERS[entry.type] as (reading: Reading, entry: TraceEntry) => void)(reading, entry);
 }
 
-/** Reads the trace of the case named `name` into its initial state, one frame per step, its answers and its end. */
+/** Reads the trace of the case named `name` into its initial state, one frame per step, and its end. */
 export function storyOf(entries: readonly TraceEntry[], name: string): Story {
 	const head = startOf(entries);
 	const reading: Reading = {
@@ -143,13 +194,12 @@ export function storyOf(entries: readonly TraceEntry[], name: string): Story {
 		frames: [],
 		notes: [],
 		last: null,
-		answers: null,
 		ended: null,
 		error: null,
 		thrown: null,
 	};
 	for (const entry of entries) read(reading, entry);
-	const { initial, frames, notes, last, answers, ended, error, thrown } = reading;
+	const { initial, frames, notes, last, ended, error, thrown } = reading;
 	const { domain, model } = head;
-	return { case: name, domain, model, initial, frames, last, answers, ended, error, thrown, notes };
+	return { case: name, domain, model, initial, frames, last, ended, error, thrown, notes };
 }

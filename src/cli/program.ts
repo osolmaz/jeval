@@ -52,7 +52,6 @@ interface RunFlags {
 	readonly model: string;
 	readonly apiKeyEnv?: string;
 	readonly concurrency: number;
-	readonly stateFrom?: string;
 }
 
 /** `command` with the domains' own flags after its own. */
@@ -72,11 +71,7 @@ function runCommand(domains: Domains): Command {
 		.option("--domain <name>", DOMAIN)
 		.option("--model <provider/id>", "a pi-ai classifier model", "typesafe/jev-latest")
 		.option("--api-key-env <variable>", "the environment variable that holds the API key")
-		.option("--concurrency <n>", "cases at once", positive, 4)
-		.option(
-			"--state-from <run>",
-			"repeat each named case's steps from this run, under its limits, and ask the model only the questions again",
-		);
+		.option("--concurrency <n>", "cases at once", positive, 4);
 	return withDomainFlags(command, domains).action(async (cases: string[], options: RunFlags, self: Command) => {
 		const { folders, set } = await casesOf(cases, options.set);
 		const domain = await runnerNamed(domains, options.domain, self.opts());
@@ -86,7 +81,6 @@ function runCommand(domains: Domains): Command {
 			concurrency: options.concurrency,
 			progress,
 			...(set === undefined ? {} : { set }),
-			...(options.stateFrom === undefined ? {} : { stateFrom: options.stateFrom }),
 		});
 	});
 }
@@ -102,12 +96,12 @@ interface ReplayFlags {
 function replayCommand(domains: Domains): Command {
 	const command = new Command("replay")
 		.description(
-			"Run a case again with the picks, states, ending and answers of its trace; with --fork, the model goes on after the fork. It fails when the case does not repeat the trace",
+			"Run a case again with the answers, states and ending of its trace; with --fork, the model goes on after the fork. It fails when the case does not repeat the trace",
 		)
 		.argument("<case>")
 		.argument("<trace>")
 		.option("--domain <name>", DOMAIN)
-		.option("--fork <steps>", "repeat this many recorded steps, then let --model pick and answer", positive)
+		.option("--fork <steps>", "repeat this many recorded steps, then let --model answer", positive)
 		.option("--model <provider/id>", "the model for a fork", "typesafe/jev-latest")
 		.option("--api-key-env <variable>", "the environment variable that holds the API key")
 		.option("--out <folder>", "write the replay to this run folder, as a run of one case");
@@ -135,7 +129,7 @@ function replayCommand(domains: Domains): Command {
 export function commandLine(domains: Domains): Command {
 	return new Command()
 		.description(
-			"A switch harness: a decision model works through cases by picking each step from the choices that code gives.",
+			"A switch harness: a decision model works through cases by answering the questions that code asks at each step.",
 		)
 		.addCommand(runCommand(domains))
 		.addCommand(replayCommand(domains));

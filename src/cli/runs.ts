@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { z } from "zod";
-import { answerSchema, decisionUsageSchema, endingSchema } from "../core/index.ts";
+import { decisionUsageSchema, endingSchema, limitsSchema } from "../core/index.ts";
 import { caseFiles, casesFolder, runFile } from "./layout.ts";
 
 /** What a harness's `run` and `replay --out` write as each case's `result.json`. */
@@ -10,11 +10,10 @@ export const resultSchema = z.object({
 	version: z.string(),
 	model: z.string(),
 	steps: z.number().int(),
-	/** Why the steps ended; null when the case threw before they ended. */
+	/** Why the run ended; null when the case threw before it ended. */
 	ended: endingSchema.nullable(),
-	/** Why the answers failed; null when they did not, or when the case threw before them. */
+	/** Why the run failed; null when it did not, or when the case threw before it ended. */
 	error: z.string().nullable(),
-	answers: z.record(z.string(), answerSchema).nullable(),
 	/** How the case ended in the domain's own terms; null when the domain reports none, or when the case threw. */
 	outcome: z.record(z.string(), z.unknown()).nullable(),
 	/**
@@ -25,28 +24,22 @@ export const resultSchema = z.object({
 });
 export type CaseResult = z.infer<typeof resultSchema>;
 
-/** A case failed: it threw, its answers failed, or its pick failed. */
-export const failed = (result: CaseResult): boolean =>
-	result.thrown !== null || result.error !== null || result.ended === "pick failed";
+/** A case failed: it threw, or its run failed. */
+export const failed = (result: CaseResult): boolean => result.thrown !== null || result.ended === "failed";
 
 /**
  * What a harness's `run` and `replay --out` write as `run.json`: what ran, with which definition and model, on which
- * code, from which earlier run's steps or which trace if any, and at the end its totals.
+ * code, from which trace if any, and at the end its totals.
  */
 export const runRecordSchema = z.object({
 	domain: z.string(),
 	version: z.string(),
 	definition: z.object({ name: z.string(), hash: z.string(), content: z.record(z.string(), z.unknown()) }),
 	model: z.string(),
-	/**
-	 * The limits that the cases ran under: the domain's, or those of the run or trace that they repeat, which take the
-	 * place of the definition's.
-	 */
-	limits: z.object({ steps: z.number().int(), choices: z.number().int(), windowShare: z.number() }),
+	/** The limits that the cases ran under: the domain's, or those of the trace that a replay repeats. */
+	limits: limitsSchema,
 	switch: z.object({ version: z.string(), commit: z.string().nullable(), changed: z.boolean().nullable() }),
 	set: z.object({ name: z.string(), file: z.string() }).nullable(),
-	/** The run whose steps each case repeats, asking only the questions again. */
-	stateFrom: z.string().nullable(),
 	/** The trace that a replay repeats, and the step of its fork. */
 	replay: z.object({ trace: z.string(), fork: z.number().int().nullable() }).nullable(),
 	started: z.string(),

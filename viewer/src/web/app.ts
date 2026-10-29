@@ -103,7 +103,7 @@ export class App {
 		}
 		if (!this.following) this.panels();
 		else if (this.last > this.goal) this.walk(this.last);
-		// The newest step can change in place: its pick arrives after its choices.
+		// The newest step can change in place: its answers arrive after its questions.
 		else void this.go(this.last, false);
 	}
 

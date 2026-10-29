@@ -4,8 +4,8 @@ import { openRace, outcomeOf, raceMachine, WIKIRACE } from "./race.ts";
 import { type Wiki, wikipedia } from "./wiki.ts";
 
 /**
- * The wikirace domain, which reads Wikipedia through `wiki`. It has no flags of its own, and its definition is switch's
- * default: its two texts and its limits.
+ * The wikirace domain, which reads Wikipedia through `wiki`. It has no flags of its own, and its definition is the
+ * pick's texts and the limits.
  */
 export function wikiraceSetup(wiki: Wiki = wikipedia()): Promise<Runner> {
 	return Promise.resolve(

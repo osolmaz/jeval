@@ -3,7 +3,7 @@
  * The chess part's pieces of the page: the board's position and arrows, the move list with the score, the players'
  * bars and the sound button.
  */
-import { button, type Child, h, type Moment, percent, ranked, type Session } from "@osolmaz/switch-viewer/page";
+import { button, type Child, h, type Moment, percent, pickOf, ranked, type Session } from "@osolmaz/switch-viewer/page";
 import type { Arrow, Position } from "./board.ts";
 import { type ChessState, chessChoice, chessState } from "./data.ts";
 import { captures, piecesOf, pliesOf, type Ply, scoreOf } from "./model.ts";
@@ -20,9 +20,9 @@ function checkSquare(state: ChessState): string | null {
 	return piecesOf(state.fen).find((piece) => piece.type === "k" && piece.color === turn)?.square ?? null;
 }
 
-/** The arrows of a step: the likeliest moves and the picked one. */
+/** The arrows of a step: the likeliest moves of its pick and the picked one. */
 function arrowsOf(moment: Moment): Arrow[] {
-	const choices = ranked(moment.frame?.choices ?? []);
+	const choices = ranked(pickOf(moment.frame)?.choices ?? []);
 	return choices.flatMap((choice, rank) => {
 		const move = chessChoice(choice.data);
 		const { probability } = choice;

@@ -76,5 +76,10 @@ export const evidence = (key: string, text = "x", extra: Partial<Evidence> = {})
 	...extra,
 });
 
-/** A state that holds `entries`. */
-export const stateOf = (...entries: Evidence[]): JudgeState => ({ evidence: entries });
+/** A state that holds `entries`, before any gathering step. */
+export const stateOf = (...entries: Evidence[]): JudgeState => ({
+	evidence: entries,
+	steps: 0,
+	gathered: false,
+	checks: null,
+});

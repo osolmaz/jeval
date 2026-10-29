@@ -3,7 +3,7 @@
  * page's one script these names are in scope, so the script drops every import of this module.
  */
 export type { Json, JsonObject } from "@osolmaz/switch";
-export type { Frame, FrameChoice, Story } from "../frames.ts";
+export type { Frame, FrameChoice, FrameQuestion, Story } from "../frames.ts";
 export { App, type AppConfig, start } from "./app.ts";
 export {
 	answerText,
@@ -11,6 +11,7 @@ export {
 	type Moment,
 	momentsOf,
 	percent,
+	pickOf,
 	pickProbabilities,
 	plain,
 	ranked,

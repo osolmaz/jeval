@@ -246,12 +246,32 @@ function sendable(question: Question): Question {
 	return data === undefined ? question : sent;
 }
 
+/**
+ * The answer to a choice question with one option, which needs no model: Clef and vLLM-SR refuse a choice question
+ * with fewer than two options. Null for any other question.
+ */
+function onlyAnswer(question: Question): Answer | null {
+	if (question.type !== "choice") return null;
+	const options = Object.keys(question.criteria);
+	const [choice] = options;
+	if (options.length !== 1 || choice === undefined) return null;
+	return { type: "choice", choice, probabilities: { [choice]: 1 }, confidence: 1 };
+}
+
 /** The model's answers to `questions`, in batches that fit the window; a string says why they failed. */
 async function askModel<S extends JsonObject>(loop: Loop<S>, state: S, questions: Questions): Promise<Answered> {
 	const { decider, limits } = loop;
 	const room = Math.floor(decider.window * limits.windowShare * QUESTION_SHARE);
-	const sent = Object.fromEntries(Object.entries(questions).map(([id, question]) => [id, sendable(question)]));
 	const answers: Record<string, Answer> = {};
+	for (const [id, question] of Object.entries(questions)) {
+		const only = onlyAnswer(question);
+		if (only !== null) answers[id] = only;
+	}
+	const sent = Object.fromEntries(
+		Object.entries(questions)
+			.filter(([id]) => !(id in answers))
+			.map(([id, question]) => [id, sendable(question)]),
+	);
 	for (const batch of batches(sent, room, decider.charsPerToken)) {
 		const result = await ask(loop, state, batch);
 		if (result.stopReason !== "stop") return failureOf(result);

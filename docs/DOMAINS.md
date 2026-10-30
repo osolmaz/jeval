@@ -10,7 +10,8 @@ A domain gives each case as a state machine: `initial`, `questions` and `transit
 
 The questions of a state are pi-ai's, by id: a `bool`, a `choice` or a `score` question, each with its `criteria`.
 Every answer comes with the model's probabilities. A domain may ask several questions in one step, such as one about
-each part of an item; switch splits them into batches when they do not fit one request.
+each part of an item; switch splits them into batches when they do not fit one request. A choice question with one
+option needs no model, so switch answers it with that option and sends no request for it.
 
 `picking` turns a choice function into the question function and the transition function of a pick in each state. It
 checks that the choices' keys and texts differ, keeps at most `limit` of them, the ones of lowest priority value,

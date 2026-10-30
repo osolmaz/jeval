@@ -146,6 +146,24 @@ const endless: StateMachine<Count> = {
 	}),
 };
 
+describe("a pick with one choice", () => {
+	it("is answered without a request, since its choice is the only answer", async () => {
+		const once: StateMachine<Count> = {
+			initial: () => Promise.resolve({ n: 0 }),
+			...picking({
+				instructions: "Add one.",
+				limit: 10,
+				choices: (state) => (state.n > 0 ? [] : [add(1)]),
+				transition: (state, choice) => Promise.resolve({ n: state.n + choice.by }),
+			}),
+		};
+		const decider = fakeDecider(answering(0.5));
+		const result = await run(FACTS, once, decider);
+		expect(result).toMatchObject({ steps: 1, ended: "done", error: null, state: { n: 1 } });
+		expect(decider.requests.length).toBe(0);
+	});
+});
+
 describe("the step limit", () => {
 	it("ends a run at the step limit that the domain sets, with nothing more asked", async () => {
 		const decider = fakeDecider(answering(0.5));

@@ -50,6 +50,8 @@ const SHRINK = 0.7;
 const ATTEMPTS = 3;
 /** The share of a request that the questions of one batch may take. */
 const QUESTION_SHARE = 0.4;
+/** The most questions in one batch: Clef and vLLM-SR take at most 64 in a request. */
+const MAX_QUESTIONS = 64;
 
 /**
  * Runs one case's state machine: from the initial state, the model answers the questions of each state and the
@@ -280,14 +282,17 @@ function misfitOf(id: string, question: Question, answer: Answer | undefined): s
 	return null;
 }
 
-/** Questions in groups whose estimated size stays under `room` tokens; a single larger question gets its own group. */
+/**
+ * Questions in groups whose estimated size stays under `room` tokens, with at most `MAX_QUESTIONS` in a group; a single
+ * larger question gets its own group.
+ */
 export function batches(questions: Questions, room: number, charsPerToken: number): Questions[] {
 	const groups: Record<string, Question>[] = [];
 	let size = 0;
 	for (const [id, question] of Object.entries(questions)) {
 		const tokens = estimateTokens({ [id]: question }, charsPerToken);
 		const current = groups.at(-1);
-		if (current === undefined || size + tokens > room) {
+		if (current === undefined || size + tokens > room || Object.keys(current).length === MAX_QUESTIONS) {
 			groups.push({ [id]: question });
 			size = tokens;
 		} else {

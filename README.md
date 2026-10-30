@@ -1,3 +1,6 @@
+
+
+
 <p align="center">
   <img src="assets/cover.svg" alt="switch: a framework for building decision-model harnesses for any kind of task" width="880">
 </p>
@@ -13,6 +16,9 @@ and the model picks the answers.
   <br>
   <em>A simple explainer for switch</em>
 </p>
+
+https://github.com/user-attachments/assets/a5d834cb-f55b-4f2c-96cf-61ab1ba1e432
+
 
 A decision model answers typed questions with probabilities and writes no text, so it cannot generate the tool calls
 that a coding agent harness such as [Pi](https://pi.dev) relies on. switch generates the tool calls for it in code,

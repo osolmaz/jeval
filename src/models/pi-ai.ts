@@ -33,7 +33,7 @@ export class ModelNotFoundError extends Error {
 }
 
 /** Errors that mean the request was larger than the model's window. */
-const TOO_LONG = /max_tokens_exceeded|context length|too long|too many tokens/i;
+const TOO_LONG = /max_tokens_exceeded|context (?:length|size)|too[ _]long|too large to process|too many tokens/i;
 
 /**
  * A decider for a pi-ai classifier model named `provider/id`, for example `typesafe/jev-latest`. It passes the decision

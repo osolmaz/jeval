@@ -1,4 +1,10 @@
 <p align="center">
+  <a href="https://www.youtube.com/watch?v=5GF52-Uqd9w"><img src="https://img.youtube.com/vi/5GF52-Uqd9w/maxresdefault.jpg" alt="This AI can't call tools, so I built it a harness (video on YouTube)" width="880"></a>
+  <br>
+  <em>A simple explainer for switch</em>
+</p>
+
+<p align="center">
   <img src="assets/cover.svg" alt="switch: a framework for building decision-model harnesses for any kind of task" width="880">
 </p>
 

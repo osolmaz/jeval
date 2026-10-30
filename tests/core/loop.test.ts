@@ -274,6 +274,11 @@ describe("many questions", () => {
 		expect(batches({ a: question, b: question }, 1, 3).map((group) => Object.keys(group))).toEqual([["a"], ["b"]]);
 	});
 
+	it("go at most 64 into one batch, however much room there is", () => {
+		const all = Object.fromEntries(Array.from({ length: 130 }, (_, index) => [`q${String(index)}`, question]));
+		expect(batches(all, 1_000_000, 3).map((group) => Object.keys(group).length)).toEqual([64, 64, 2]);
+	});
+
 	it("of a step are split into batches that fit the window, and their answers joined", async () => {
 		const decider = fakeDecider(answering(0.5), 200);
 		const result = await run(FACTS, factsMachine(three), decider);

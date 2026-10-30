@@ -200,8 +200,9 @@ request, with these values:
 The questions of a step can be many, so switch first splits them into batches, and each batch goes to the model with
 a view of the same state. Each batch may
 take $\lfloor q \, w \sigma \rfloor$ tokens of questions, with $q < 1$, which leaves room for the view. switch fills the
-batches in order: a question goes into the current batch if it fits, and otherwise it starts a new one. A question
-larger than the room gets a batch of its own. The answers of all the batches together are the answers of the step.
+batches in order: a question goes into the current batch if it fits and the batch has fewer than 64 questions, the
+most that Clef and vLLM-SR take in a request, and otherwise it starts a new one. A question larger than the room gets
+a batch of its own. The answers of all the batches together are the answers of the step.
 
 The budget of a request is $B = \lfloor w \sigma \rfloor$ tokens. The questions of its batch come first, and the view
 gets the rest:

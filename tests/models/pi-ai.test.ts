@@ -120,6 +120,32 @@ describe("piAiDecider", () => {
 		expect(aborted).not.toHaveProperty("errorMessage");
 	});
 
+	it.each([
+		[
+			"vLLM-SR",
+			'System One API error (400): {"error":{"code":"state_too_long","message":"the state of the request has 33000 characters; at most 32000","type":"systemone_error"}}',
+			true,
+		],
+		[
+			"llama.cpp with a causal model",
+			'System One API error (400): {"error":{"code":400,"message":"request (3020 tokens) exceeds the available context size (512 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":3020,"n_ctx":512}}',
+			true,
+		],
+		[
+			"llama.cpp with an encoder",
+			'System One API error (500): {"error":{"code":500,"message":"input (3021 tokens) is too large to process. increase the physical batch size (current batch size: 512)","type":"server_error"}}',
+			true,
+		],
+		[
+			"another refusal",
+			'System One API error (400): {"error":{"code":"too_many_options","message":"question \\"q\\" of the request has 256 options; at most 255","type":"systemone_error"}}',
+			false,
+		],
+	])("reads the error of %s as too long or not", async (_, errorMessage, tooLong) => {
+		const decider = piAiDecider("typesafe/jev-latest", { registry: registry({ stopReason: "error", errorMessage }) });
+		await expect(decider.decide(request)).resolves.toMatchObject({ stopReason: "error", tooLong });
+	});
+
 	it("refuses a model name without a provider or a model pi-ai does not list", () => {
 		expect(() => piAiDecider("jev-latest", { registry: registry({}) })).toThrow(ModelNotFoundError);
 		expect(() => piAiDecider("typesafe/other", { registry: registry({}) })).toThrow(/lists no classifier model/);

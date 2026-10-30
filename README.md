@@ -1,10 +1,4 @@
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=5GF52-Uqd9w"><img src="https://img.youtube.com/vi/5GF52-Uqd9w/maxresdefault.jpg" alt="This AI can't call tools, so I built it a harness (video on YouTube)" width="880"></a>
-  <br>
-  <em>A simple explainer for switch</em>
-</p>
-
-<p align="center">
   <img src="assets/cover.svg" alt="switch: a framework for building decision-model harnesses for any kind of task" width="880">
 </p>
 
@@ -13,6 +7,12 @@
 switch is a harness framework for decision models like Jev. It gives a decision model an agent loop for finite
 choices. Your code turns the state of a task into typed questions, such as which next step to take from a short list,
 and the model picks the answers.
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=5GF52-Uqd9w"><img src="https://img.youtube.com/vi/5GF52-Uqd9w/maxresdefault.jpg" alt="This AI can't call tools, so I built it a harness (video on YouTube)" width="880"></a>
+  <br>
+  <em>A simple explainer for switch</em>
+</p>
 
 A decision model answers typed questions with probabilities and writes no text, so it cannot generate the tool calls
 that a coding agent harness such as [Pi](https://pi.dev) relies on. switch generates the tool calls for it in code,
